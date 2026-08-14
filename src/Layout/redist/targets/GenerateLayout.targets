@@ -10,11 +10,27 @@
       <PortableRuntimeIdentifierGraphTargetFile>$(OutputPath)PortableRuntimeIdentifierGraph.json</PortableRuntimeIdentifierGraphTargetFile>
     </PropertyGroup>
 
-    <Copy SourceFiles="$(NuGetPackageRoot)/microsoft.netcore.platforms/$(MicrosoftNETCorePlatformsPackageVersion)/runtime.json"
+    <!--
+      The RID graph is normally copied verbatim from the Microsoft.NETCore.Platforms package. For
+      in-repo/unofficial target platforms (e.g. linux-ohos) whose RIDs are not yet in the shipped
+      graph, allow overriding the graph sources with locally injected files:
+        * $(RidGraphOverrideRuntimeJson) -> replaces runtime.json
+        * $(RidGraphOverridePortableJson) -> replaces PortableRuntimeIdentifierGraph.json
+      When set, the overrides are copied instead of the package files, and the Platforms package is
+      still restored (for its other assets) but its graph files are not used.
+    -->
+    <PropertyGroup>
+      <RuntimeJsonSourceFile Condition="'$(RidGraphOverrideRuntimeJson)' != ''">$(RidGraphOverrideRuntimeJson)</RuntimeJsonSourceFile>
+      <RuntimeJsonSourceFile Condition="'$(RuntimeJsonSourceFile)' == ''">$(NuGetPackageRoot)/microsoft.netcore.platforms/$(MicrosoftNETCorePlatformsPackageVersion)/runtime.json</RuntimeJsonSourceFile>
+      <PortableRuntimeJsonSourceFile Condition="'$(RidGraphOverridePortableJson)' != ''">$(RidGraphOverridePortableJson)</PortableRuntimeJsonSourceFile>
+      <PortableRuntimeJsonSourceFile Condition="'$(PortableRuntimeJsonSourceFile)' == ''">$(NuGetPackageRoot)/microsoft.netcore.platforms/$(MicrosoftNETCorePlatformsPackageVersion)/PortableRuntimeIdentifierGraph.json</PortableRuntimeJsonSourceFile>
+    </PropertyGroup>
+
+    <Copy SourceFiles="$(RuntimeJsonSourceFile)"
           DestinationFiles="$(OutputPath)RuntimeIdentifierGraph.json"
           SkipUnchangedFiles="true" />
 
-    <Copy SourceFiles="$(NuGetPackageRoot)/microsoft.netcore.platforms/$(MicrosoftNETCorePlatformsPackageVersion)/PortableRuntimeIdentifierGraph.json"
+    <Copy SourceFiles="$(PortableRuntimeJsonSourceFile)"
           DestinationFiles="$(PortableRuntimeIdentifierGraphTargetFile)"
           SkipUnchangedFiles="true" />
   </Target>

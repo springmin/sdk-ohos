@@ -1,12 +1,20 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
+  <Import Project="$(RepositoryEngineeringDir)common\native\NativeAotSupported.props" />
+
   <PropertyGroup>
     <TargetFramework>$(SdkTargetFramework)</TargetFramework>
     <AssemblyName>dn</AssemblyName>
     <OutputType>Exe</OutputType>
     <RootNamespace>Microsoft.DotNet.Cli</RootNamespace>
-    <PublishAot>true</PublishAot>
-    <IsAotCompatible>true</IsAotCompatible>
+    <!--
+      dn is a dev-only NativeAOT debug host. NativeAOT is not supported on every platform
+      (e.g. linux-musl, linux-ohos, browser, ...), so only enable PublishAot where
+      NativeAotSupported props allow it; otherwise the sdk.slnx build would attempt to
+      AOT-compile dn with a missing ILCompiler toolchain and fail.
+    -->
+    <PublishAot Condition="'$(NativeAotSupported)' == 'true'">true</PublishAot>
+    <IsAotCompatible Condition="'$(NativeAotSupported)' == 'true'">true</IsAotCompatible>
     <StrongNameKeyId>MicrosoftAspNetCore</StrongNameKeyId>
     <SignAssembly>true</SignAssembly>
     <PublicSign Condition=" '$([MSBuild]::IsOSPlatform(`Windows`))' == 'false' ">true</PublicSign>
