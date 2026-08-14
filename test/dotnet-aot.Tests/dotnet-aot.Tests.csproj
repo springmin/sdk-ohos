@@ -4,6 +4,12 @@
     <TargetFramework>$(SdkTargetFramework)</TargetFramework>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <DefineConstants>$(DefineConstants);CLI_AOT</DefineConstants>
+    <!-- Matches dotnet-aot.csproj: when building without the ASP.NET Core runtime, the AOT
+         source files (AotSourceFiles.props) compile AspNetCoreCertificateGenerator.cs with an
+         empty body via EXCLUDE_ASPNETCORE. The test project must define the same macro, or the
+         #if !EXCLUDE_ASPNETCORE block references the AspNetCore namespace with no package
+         reference and fails CS0103. -->
+    <DefineConstants Condition="'$(IncludeAspNetCoreRuntime)' == 'false'">$(DefineConstants);EXCLUDE_ASPNETCORE</DefineConstants>
     <RootNamespace>Microsoft.DotNet.Cli.Tests</RootNamespace>
     <StrongNameKeyId>MicrosoftAspNetCore</StrongNameKeyId>
     <!-- Tests modify process-global state; run serially. None makes MSTest.Sdk emit [assembly: DoNotParallelize]. -->
