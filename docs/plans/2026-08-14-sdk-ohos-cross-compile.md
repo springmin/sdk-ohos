@@ -68,7 +68,7 @@
 
 ## 五、问题日志
 
-### 问题 1: NETSDK1083 / NETSDK1203 — RID 'linux-ohos-arm64' 不识别 + AOT 不支持
+### 问题 1: NETSDK1083 / NETSDK1203 — RID 'linux-ohos-arm64' 不识别 + bootstrap SDK 的 AOT 判定
 - **现象**: restore 报 `NETSDK1083: The specified RuntimeIdentifier 'linux-ohos-arm64' is not recognized` + `NETSDK1203: Ahead-of-time compilation is not supported`
 - **根因**: bootstrap SDK 的 RID 图（Microsoft.NETCore.Platforms 官方包）无 linux-ohos；且 dotnet-aot.csproj 的 `RuntimeIdentifier=$(TargetRid)` 在 `NativeAotSupported` 为 true 时激活（vendored props 排除表无 ohos）
 - **方案**: (a) RID 图注入（GenerateLayout.targets 覆盖源 + eng/ 注入文件）；(b) `Directory.Build.props` 提前置 `NativeAotSupported=false`（早于 vendored props 的 `== ''` 判定）
@@ -166,8 +166,106 @@ cp ~/springmin/sources/runtime/artifacts/packages/Release/Shipping/dotnet-runtim
 
 ## 九、遗留事项
 
+- [x] ~~NativeAOT 支持~~ → **已验证可用**（见第十节；runtime 11.0.0-dev 的 NativeAOT pack 已完整）
 - [ ] 完整 R2R + PGO 数据（runtime 侧，性能优化）
 - [ ] AspNetCore 组件（aspnetcore repo 产 ohos 包）
 - [ ] 真实设备运行验证（当前为 qemu 模拟）
 - [ ] CI 集成（sdk-job-matrix.yml 加 ohos leg）
 - [ ] 上游化（runtime.json 补 portable 图 + SDK RID 列表正式入库）
+- [x] ~~.NET 10 (10.0.1xx) ohos SDK 移植~~ → **已完成**（`feature/ohos-cross-sdk-10.0` 分支，见第十一节）
+
+## 十、AOT (NativeAOT) 支持验证（2026-08-17 补充）
+
+**结论：当前 SDK（11.0.100-dev）已完整支持 linux-ohos-arm64 的 NativeAOT 发布。**
+
+### 10.1 背景修正
+
+初始分析（2026-08-14）误判 "NativeAOT 不支持"——原因是当时只看到 **10.0.10-dev** 的 NativeAOT pack（19.2MB，旧分支产物）。复查发现 **runtime 11.0.0-dev 已重新编译完整的 NativeAOT 组件**（Aug 17 12:45-13:09），且 **ILCompiler 包最初打包遗漏**（打包时 ilc/jit 产物未就绪，包仅含源码头文件）。
+
+### 10.2 修复的打包遗漏
+
+- **现象**: `runtime.linux-ohos-arm64.Microsoft.DotNet.ILCompiler.11.0.0-dev.nupkg` 仅 352KB（只有 native/src 头文件），缺 `tools/` 编译产物
+- **根因**: 打包时间（12:45）早于 ilc/jit 产物生成（13:00-13:13），`GetIlcCompilerFiles` 收集为空；且打包用的 `CoreCLRILCompilerDir`（ohos 目录 ilc-published）当时不存在
+- **修复**: 将 `linux.arm64.Release/ilc-published`（含 ilc + 全套 JIT 变体）复制到 ohos 目录后重新打包 → **43.4MB 完整包**（ilc + ilc.dll + 6 个 libclrjit 变体 + libjitinterface + 全套类库）
+
+### 10.3 完整组件清单（验证后）
+
+| 组件 | 版本 | 大小 | 内容 |
+|---|---|---|---|
+| `runtime.linux-ohos-arm64.Microsoft.DotNet.ILCompiler` | 11.0.0-dev | **43.4MB** | ilc 编译器 + ilc.dll + 6 JIT 变体 + jitinterface + 类库 |
+| `Microsoft.NETCore.App.Runtime.NativeAOT.linux-ohos-arm64` | 11.0.0-dev | **25.4MB** | 19 个 aarch64 静态库（libRuntime.ServerGC/WorkstationGC.a 等）+ AOT 类库 |
+| SDK BundledVersions | 11.0.100-dev | — | `linux-ohos-arm64` 在 ILCompiler RID 列表（8 处）|
+
+### 10.4 交叉编译实测
+
+```
+输入: hello.dll (IL) + AOT System.Private.CoreLib + NativeAOT 静态库
+工具: ilc (x64 host) + libclrjit_universal_arm64_x64.so (ohos 目标 JIT)
+输出: hello-ohos.o = ELF relocatable, ARM aarch64, 6.8MB ✅
+```
+
+**完整链路验证**：IL 编译 → ilc 扫描 → RyuJIT 生成 aarch64 机器码 → 输出目标文件。JIT 变体加载成功、NativeAOT CoreLib 解析正确。
+
+### 10.5 已知限制
+
+- qemu 用户模式不支持 dlopen（`Dynamic loading not supported`）→ 完整 PublishAot 需在 ohos 设备/arm64 环境验证（libssl dlopen 也受限）
+- 完整 R2R 仍需 PGO 数据（见遗留事项）
+
+## 十一、.NET 10 (10.0.1xx) ohos SDK 移植（2026-08-17 补充）
+
+**分支**: `feature/ohos-cross-sdk-10.0`（基于 `release/10.0.1xx`）
+
+### 11.1 版本匹配
+
+10.0.1xx 依赖 runtime `10.0.10`，ohos 产物是 `10.0.10-dev`——**只需 Host 版本覆盖**（`/p:MicrosoftNETCoreAppHostPackageVersion=10.0.10-dev`），比 11（rc.1 vs dev）干净得多。win Runtime 包（Resolvers 用）保持官方 10.0.10 无需 repack。
+
+### 11.2 与 11 的差异（移植修改）
+
+| 项 | 11 分支 | 10.0 分支 |
+|---|---|---|
+| dotnet-aot/dn（NativeAOT CLI） | ✅ 有 | ❌ 无（10.0 CLI 纯 managed）|
+| OSName/RID 推导 | 11 有显式推导 | **10.0 缺** → 需补（见 11.4）|
+| RID 列表 | Net110 | Net90 |
+| EXCLUDE_ASPNETCORE | 需处理 | 无需（无 dotnet-aot.Tests）|
+
+### 11.3 源码修改（3 commits）
+
+- `72a15b8c57` 移植 linux-ohos 支持（Layout.props + GenerateBundledVersions + GenerateLayout RID 图覆盖 + 版本别名守卫 + eng/ 注入图）
+- `68ecc54218` **关键修复**: Arcade 10.0 不识别 linux-ohos → OSName 兜底为 linux，SDK 会静默装配 glibc linux-* 布局。显式映射 `TargetOS=linux-ohos → OSName=linux-ohos` + 强制 TargetRid/PortableTargetRid
+- `094684aa25` Backport main 的 CA1830 修复（10.0.1xx 分支既有编译错误，`TabularOutput.cs` 用 `Append(char, int)` 替代 `new string`）
+
+### 11.4 构建中的特殊问题
+
+1. **Arcade 运行时安装卡死**: `build.sh` 触发 tools.runtimes 下载（6.0.0 等）卡死 → 改用 `./.dotnet/dotnet restore sdk.slnx` + `./.dotnet/dotnet build src/Layout/redist/redist.csproj` 直接 MSBuild
+2. **NETSDK1004/1005**: 11 构建残留的 obj 混合 → 清 obj + 全量 restore
+3. **NETSDK1226 PrunePackageData**: 非官方 RID 无 prune 数据 → `/p:AllowMissingPrunePackageData=true`
+4. **bootstrap SDK 选择**: global.json 无 sdk.version → CLI rollForward 选错 → 临时移开 11 preview SDK 强制 10.0.109
+
+### 11.5 验证结果
+
+- muxer = ARM aarch64 musl（`/lib/ld-musl-aarch64.so.1`）
+- SDK `10.0.110-dev`，RID 链 `linux-ohos-arm64 → linux-ohos → linux-arm64 → linux → unix-arm64 → unix → any → base`
+- RID 图：RuntimeIdentifierGraph 7 处 + Portable 9 处 ohos
+- qemu: `dotnet --info` 识别 RID/SDK/runtime 正确
+
+### 11.6 构建命令
+
+```bash
+./.dotnet/dotnet restore sdk.slnx -c Release \
+  /p:TargetOS=linux-ohos /p:TargetArchitecture=arm64 \
+  /p:MicrosoftNETCoreAppHostPackageVersion=10.0.10-dev \
+  /p:RestoreAdditionalProjectSources=$PWD/artifacts/ohos-local-feed-10 \
+  /p:IncludeAspNetCoreRuntime=false /p:AllowMissingPrunePackageData=true
+./.dotnet/dotnet build src/Layout/redist/redist.csproj -c Release \
+  /p:TargetOS=linux-ohos /p:TargetArchitecture=arm64 \
+  /p:MicrosoftNETCoreAppHostPackageVersion=10.0.10-dev \
+  /p:RestoreAdditionalProjectSources=$PWD/artifacts/ohos-local-feed-10 \
+  /p:RidGraphOverrideRuntimeJson=$PWD/eng/RuntimeIdentifierGraph.ohos.json \
+  /p:RidGraphOverridePortableJson=$PWD/eng/PortableRuntimeIdentifierGraph.ohos.json \
+  /p:IncludeAspNetCoreRuntime=false /p:SkipUsingCrossgen=true \
+  /p:SkipBuildingInstallers=true /p:AllowMissingPrunePackageData=true
+```
+
+---
+
+*文档更新: 2026-08-17（补充 AOT 验证 + .NET 10 移植）*
