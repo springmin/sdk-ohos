@@ -544,6 +544,8 @@
 
       <Net110NativeAOTRuntimePackRids Include="
         @(Net100NativeAOTRuntimePackRids);
+        linux-ohos-arm64;
+        linux-ohos-x64;
         haiku-x64;
         illumos-x64;
         solaris-x64;
@@ -563,7 +565,11 @@
       <AspNetCore80RuntimePackRids Remove="win-arm" />
       <AspNetCore90RuntimePackRids Include="@(AspNetCore80RuntimePackRids);linux-riscv64;linux-musl-riscv64;linux-loongarch64;linux-musl-loongarch64;" />
       <AspNetCore100RuntimePackRids Include="@(AspNetCore90RuntimePackRids)" />
-      <AspNetCore110RuntimePackRids Include="@(AspNetCore100RuntimePackRids)" />
+      <AspNetCore110RuntimePackRids Include="
+        @(AspNetCore100RuntimePackRids);
+        linux-ohos-arm64;
+        linux-ohos-x64;
+        " />
       <AspNetCoreRuntimePackRids Include="@(AspNetCore110RuntimePackRids)" />
 
       <WindowsDesktop30RuntimePackRids Include="win-x64;win-x86" />
