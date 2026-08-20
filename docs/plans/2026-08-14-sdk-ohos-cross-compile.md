@@ -269,3 +269,75 @@ cp ~/springmin/sources/runtime/artifacts/packages/Release/Shipping/dotnet-runtim
 ---
 
 *文档更新: 2026-08-17（补充 AOT 验证 + .NET 10 移植）*
+
+## 十二、AspNetCore 完整支持（IncludeAspNetCoreRuntime=true）（2026-08-20 补充）
+
+**结论：SDK 现在完整包含 ASP.NET Core runtime 和 aspnetcoretools，`IncludeAspNetCoreRuntime=true` 可用。**
+
+### 12.1 前置资产（aspnetcore repo 交叉编译）
+
+`/home/springmin/aspnetcore-ohos-release-11.0.0-dev/`（aspnetcore `feature/ohos-cross-compile` 分支产物）：
+- `Microsoft.AspNetCore.App.Runtime.linux-ohos-arm64.11.0.0-dev.nupkg`（4.5MB）
+- `aspnetcore-runtime-11.0.0-dev-linux-ohos-arm64.tar.gz`（19.4MB）
+- `aspnetcore-targeting-pack-11.0.0-dev-linux-ohos-arm64.tar.gz`（5.7MB）
+- `Microsoft.AspNetCore.App.Ref.11.0.0-dev.nupkg`
+
+### 12.2 aspnetcoretools NativeAOT 交叉编译
+
+**修改点（aspnetcore repo，commit `97b2e67c91`）**：
+- `src/Tools/Directory.Build.props`：`BundledToolTargetRuntimeIdentifiers` 加 `linux-ohos-*`
+
+**构建配置（解决 NativeAOT 交叉编译）**：
+1. **RID 图注入**：bootstrap SDK BundledVersions 加 ohos 到 `ILCompilerPortableRuntimeIdentifiers`/`ILCompilerRuntimeIdentifiers`/`RuntimePackRuntimeIdentifiers`（NativeAOT 解析 linux-ohos-arm64 的 pack）
+2. **ILCompiler 版本对齐**：重打包 `runtime.linux-ohos-arm64.Microsoft.DotNet.ILCompiler` 为 rc.1（匹配 aspnetcore 的 ILCompiler 版本范围）；`Microsoft.DotNet.ILCompiler` rc.1 的 runtime.json 注入 ohos 条目
+3. **NativeAOT runtime pack**：重打包 `Microsoft.NETCore.App.Runtime.NativeAOT.linux-ohos-arm64` 为 rc.1（+ x64 占位包）
+4. **NativeAOT targets 注入**（NuGet 缓存 rc.1 ilcompiler）：
+   - `Microsoft.NETCore.Native.Unix.targets:164`：`System.Net.Security.Native` 加 ohos 排除（ohos 无 krb5）
+   - `Unix.targets:82`：注入 `linux-ohos` 的 `TargetTriple` 分支（`arm64-unknown-linux-ohos`）
+5. **链接参数**：`SysRoot=$OHOS_NDK_HOME/native/sysroot` + `CrossCompileArch=arm64` + `LinkerFlavor=lld` + `StripSymbols=false`（宿主机 objcopy 不认识 ohos 架构）+ `CppCompilerAndLinker=aarch64-unknown-linux-ohos-clang`
+
+**产物验证**（qemu-aarch64）：
+```
+dotnet-dev-certs --help → Usage: dotnet dev-certs [options] [command] ✅
+dotnet-user-secrets --help → User Secrets Manager 11.0.0-dev ✅
+dotnet-user-jwts --help → Usage: dotnet user-jwts [options] [command] ✅
+```
+
+### 12.3 SDK 源码修改（commit `a206708dd2`）
+
+- `GenerateBundledVersions.targets`：`AspNetCore110RuntimePackRids` + `Net110NativeAOTRuntimePackRids` 加 `linux-ohos-arm64;linux-ohos-x64`
+
+### 12.4 构建命令（IncludeAspNetCoreRuntime=true）
+
+```bash
+./build.sh -os linux-ohos -arch arm64 -c Release \
+  /p:MicrosoftNETCoreAppHostPackageVersion=11.0.0-dev \
+  /p:MicrosoftNETCoreAppRuntimePackageVersion=11.0.0-dev \
+  /p:MicrosoftAspNetCoreAppRefPackageVersion=11.0.0-dev \
+  /p:RestoreAdditionalProjectSources=$PWD/artifacts/ohos-local-feed \
+  /p:RidGraphOverrideRuntimeJson=$PWD/eng/RuntimeIdentifierGraph.ohos.json \
+  /p:RidGraphOverridePortableJson=$PWD/eng/PortableRuntimeIdentifierGraph.ohos.json \
+  /p:AllowMissingPrunePackageData=true
+```
+
+**关键**：预置 `aspnetcore-runtime-11.0.0-dev-linux-ohos-arm64.tar.gz` 到 `redist-downloads/`（blob 下载），feed 含 dev 版 AspNetCore 包（Ref/Runtime/tools）。
+
+### 12.5 验证结果
+
+| 组件 | 状态 |
+|---|---|
+| `shared/Microsoft.AspNetCore.App/11.0.0-dev` | ✅ 完整 ASP.NET Core runtime |
+| `DotnetTools/aspnetcoretools/11.0.0-dev/` | ✅ NativeAOT 工具（dev-certs/jwts/secrets）|
+| `packs/Microsoft.AspNetCore.App.Ref` | ✅ targeting pack |
+| qemu `--list-runtimes` | ✅ `Microsoft.AspNetCore.App 11.0.0-dev` |
+| qemu `dotnet-dev-certs --help` | ✅ 完整运行 |
+
+### 12.6 已知限制
+
+- **`dotnet dev-certs` 等仍受 qemu dlopen 限制**（真机验证待做）
+- **R2R 仍部分**（AspNetCore 也缺 PGO）
+- **WindowsDesktop / WPF 无 ohos 版**（不含，正常）
+
+---
+
+*文档更新: 2026-08-20（补充 AspNetCore 完整支持）*
