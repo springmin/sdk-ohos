@@ -27,6 +27,8 @@ complete runnable layout: muxer + hostfxr + SDK toolset + shared runtime.
 
 - **Full managed CLI** (`dotnet build`, `restore`, `publish`, `test`, `run`, ...)
 - **NativeAOT support** for `linux-ohos-arm64` (`PublishAot=true`)
+- **ASP.NET Core runtime** (`Microsoft.AspNetCore.App 11.0.0-dev`) and bundled
+  `aspnetcoretools` (dev-certs, user-jwts, user-secrets)
 - **RID graph injected**: `linux-ohos-arm64 → linux-ohos → linux-arm64 → linux → unix-arm64 → unix → any → base`
 - **musl-based** — matches HarmonyOS libc (`/lib/ld-musl-aarch64.so.1`)
 
@@ -52,10 +54,11 @@ produced an `ARM aarch64` relocatable object from a hello-world IL assembly.
 
 ## Known Limitations
 
-- **No ASP.NET Core runtime bundled** (`IncludeAspNetCoreRuntime=false`; the
-  aspnetcore repo has not produced a linux-ohos runtime pack).
-- **No `aspnetcoretools`** (dev-certs, user-jwts, user-secrets — NativeAOT tools
-  not available for ohos).
+- **ASP.NET Core runtime bundled** (`IncludeAspNetCoreRuntime=true`):
+  `shared/Microsoft.AspNetCore.App/11.0.0-dev` (ohos-arm64).
+- **`aspnetcoretools` bundled**: `dotnet-dev-certs`, `dotnet-user-jwts`,
+  `dotnet-user-secrets` — NativeAOT cross-compiled for ohos-arm64 and verified
+  under qemu.
 - **No Kerberos / Negotiate** (`libSystem.Net.Security.Native.so` omitted —
   HarmonyOS lacks krb5/gssapi).
 - **No LTTNG EventPipe provider** (`libcoreclrtraceptprovider.so` omitted).
