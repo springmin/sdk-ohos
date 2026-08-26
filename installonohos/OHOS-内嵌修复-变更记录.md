@@ -97,3 +97,31 @@ export TMPDIR=/data/storage/el2/base/tmp   # 可选；SDK 会自动设置默认�
 - runtime 交叉编译产物需重新生成（本地 feed 更新）后重建 SDK tar.gz 并重新发布
 - `dotnet-ohos` wrapper 的 `run` 快捷命令（构建+签名+执行）仍可作为可选项保留，但核心修复已内嵌
 - 需在真实 OHOS 设备回归：SIGSYS 消除、/tmp 共享内存、W^X、签名执行
+
+## 6. ASP.NET Core 内嵌（2026-08-26 追加）
+
+SDK 构建默认 `IncludeAspNetCoreRuntime=false`（runtime 单独分发）。用户要求 aspnetcore 一直内嵌进 SDK 包，已实现：
+
+**构建方式**：`./build.sh -os linux-ohos -arch arm64 -c Release ... -p:IncludeAspNetCoreRuntime=true -p:MicrosoftAspNetCoreAppRuntimePackageVersion=11.0.0-dev`
+
+**关键处理**（版本对齐）：
+1. 交叉编译的 aspnetcore 包（`Microsoft.AspNetCore.App.Runtime.linux-ohos-arm64.11.0.0-dev.nupkg`）内部
+   `Microsoft.AspNetCore.App.runtimeconfig.json` 硬编码 framework version `11.0.0-rc.1.26410.101`
+   （来自 aspnetcore 的 darc `MicrosoftInternalRuntimeAspNetCoreTransportVersion`）→ 与 SDK 内置
+   `11.0.0-dev` runtime 错配（dev < rc.1，roll-forward 不能向下，设备上会启动失败）。
+2. **重打包 nupkg**：把 runtimeconfig framework version 改为 `11.0.0-dev`（纯配置改动，无二进制影响）。
+3. **重打包 blob**：`aspnetcore-runtime-11.0.0-dev-linux-ohos-arm64.tar.gz` 内同样修 runtimeconfig，
+   预置到 `artifacts/obj/redist/Release/net11.0/redist-downloads/`。
+4. SDK 构建覆盖 `MicrosoftAspNetCoreAppRuntimePackageVersion` + `MicrosoftAspNetCoreAppRefPackageVersion`
+   为 `11.0.0-dev`，让 SDK 从本地 feed 拉 dev 包并铺到 `shared/Microsoft.AspNetCore.App/11.0.0-dev/`。
+
+**产物验证**（`dotnet-sdk-11.0.100-dev-linux-ohos-arm64.tar.gz`，175MB）：
+- `shared/Microsoft.AspNetCore.App/11.0.0-dev/`：132 个 aspnetcore dll（Kestrel/Mvc/SignalR/Identity 等）
+- aspnetcore runtimeconfig 依赖 `11.0.0-dev` ✅（与内置 runtime 对齐）
+- `shared/Microsoft.NETCore.App/11.0.0-dev/`：base runtime（含 NUMA/TMPDIR 修复）✅
+- 设备上装完 SDK 即可直接运行 ASP.NET Core 应用（`dotnet run` 自动 codesign），无需单独装 aspnetcore runtime
+
+**注意**：aspnetcore 的 dev 包是从 aspnetcore-ohos 仓库（`feature/ohos-cross-compile`）交叉编译的
+（8-19），本次仅重打包修 runtimeconfig；若 aspnetcore 源码更新需重新交叉编译后重复本步骤。
+aspnetcore 仓库构建时用 `-p:MicrosoftInternalRuntimeAspNetCoreTransportVersion=11.0.0-dev` 会在
+restore 阶段因 transport 包无 dev 版本而失败（plan 问题 1），故采用重打包方案。
