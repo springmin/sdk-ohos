@@ -71,6 +71,8 @@ static unsafe partial class NativeEntryPoint
         string hostPath, string dotnetRoot, string sdkDir,
         string hostfxrPath, string[] args)
     {
+        OhosEnvironmentDefaults.Apply();
+
         // Publish the versioned SDK directory as the "Microsoft.DotNet.Sdk.Root" AppContext value
         // (SdkPaths.DataName) for the assemblies compiled into the AOT host (MSBuild, NuGet, the command
         // resolvers, ...) that otherwise probe AppContext.BaseDirectory - which under the NativeAOT muxer

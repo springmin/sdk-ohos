@@ -595,6 +595,10 @@ Copyright (c) .NET Foundation. All rights reserved.
                                     Condition="'$(RetainVMGarbageCollection)' != ''"
                                     Value="$(RetainVMGarbageCollection)" />
 
+    <RuntimeHostConfigurationOption Include="System.Runtime.EnableWriteXorExecute"
+                                    Condition="'$(EnableWriteXorExecute)' != ''"
+                                    Value="$(EnableWriteXorExecute)" />
+
     <RuntimeHostConfigurationOption Include="System.Globalization.Invariant"
                                     Condition="'$(InvariantGlobalization)' != ''"
                                     Value="$(InvariantGlobalization)"
@@ -867,6 +871,33 @@ Copyright (c) .NET Foundation. All rights reserved.
                    EnableMacOSCodeSign="$(_EnableMacOSCodeSign)"
                    DisableCetCompat="$(_DisableCetCompat)"
                    />
+  </Target>
+
+  <!--
+    ============================================================
+                                        _OhosCodesignBuildOutputs
+    OpenHarmony only executes ELF binaries carrying a valid .codesign section, and a signed
+    binary whose content changed (e.g. the apphost, rewritten on every build) fails with EPERM.
+    Re-sign every ELF output under the target/publish directories when building on or for OHOS
+    so the results run on the device without external tooling. Non-ELF files are skipped by the
+    task. Matches RuntimeIdentifier for self-contained/file-based builds and the SDK's own RID
+    for portable builds executed on an OHOS SDK.
+    ============================================================
+     -->
+  <UsingTask TaskName="OhosCodesign" AssemblyFile="$(MicrosoftNETBuildTasksAssembly)" />
+  <PropertyGroup>
+    <_OhosCodesignEnabled Condition="$([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('linux-ohos')) or $([System.String]::Copy('$(NETCoreSdkRuntimeIdentifier)').StartsWith('linux-ohos'))">true</_OhosCodesignEnabled>
+  </PropertyGroup>
+  <Target Name="_OhosCodesignBuildOutputs"
+          AfterTargets="Build"
+          Condition="'$(_OhosCodesignEnabled)' == 'true'">
+    <OhosCodesign Directories="$(TargetDir)" />
+  </Target>
+
+  <Target Name="_OhosCodesignPublishOutputs"
+          AfterTargets="Publish"
+          Condition="'$(_OhosCodesignEnabled)' == 'true'">
+    <OhosCodesign Directories="$(PublishDir)" />
   </Target>
 
   <!--

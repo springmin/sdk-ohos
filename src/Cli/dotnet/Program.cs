@@ -29,6 +29,8 @@ public class Program
 
     static Program()
     {
+        OhosEnvironmentDefaults.Apply();
+
         var preTelemetry = DateTime.UtcNow;
         s_sigIntRegistration = PosixSignalRegistration.Create(PosixSignal.SIGINT, Shutdown);
         s_sigQuitRegistration = PosixSignalRegistration.Create(PosixSignal.SIGQUIT, Shutdown);
