@@ -1,0 +1,3 @@
+<Project>
+  <!-- Isolate this standalone tool from the SDK repo's artifacts/ redirect. -->
+</Project>
