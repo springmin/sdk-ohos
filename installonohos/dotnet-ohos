@@ -1,0 +1,96 @@
+#!/bin/sh
+# dotnet wrapper for OpenHarmony sandbox (LEGACY — superseded by embedded fixes)
+#
+# Since 2026-08-26 the SDK/runtime embed all fixes natively (see
+# OHOS-内嵌修复-变更记录.md):
+#   - SIGSYS (get_mempolicy)  -> runtime numasupport.cpp TARGET_OHOS guard
+#   - W^X / ICU               -> baked into SDK runtimeconfig (EnableWriteXorExecute, Invariant)
+#   - /tmp shared memory      -> runtime SharedMemoryManager honors TMPDIR
+#   - codesign of build outputs -> OhosCodesign MSBuild task (AfterTargets Build/Publish)
+#   - child-process env       -> OhosEnvironmentDefaults in Program/ExecuteCore
+#
+# This wrapper is kept only for compatibility with SDKs built before those
+# changes. For current builds, invoke ~/.dotnet/dotnet directly:
+#
+#   export DOTNET_ROOT=~/.dotnet
+#   ~/.dotnet/dotnet build hello.cs    # outputs auto-codesigned
+#   ~/.dotnet/dotnet run hello.cs
+#
+# Usage (legacy): dotnet-ohos <dotnet-args...>
+
+DOTNET_ROOT="${DOTNET_ROOT:-$HOME/.dotnet}"
+TMPDIR="${TMPDIR:-/data/storage/el2/base/tmp}"
+SHIM="$DOTNET_ROOT/libnuma-shim.so"
+RUNDIR="${XDG_DATA_HOME:-$HOME/.local/share}/dotnet/runfile"
+
+SIGN_TOOL="${BINARY_SIGN_TOOL:-}"
+if [ -z "$SIGN_TOOL" ]; then
+    for p in \
+        "${HOME}/.harmonybrew/bin/binary-sign-tool" \
+        "${HOME}/.harmonybrew/Cellar/ohos-sdk/"*/toolchains/lib/binary-sign-tool \
+        "/storage/Users/currentUser/.harmonybrew/bin/binary-sign-tool"
+    do
+        if [ -f "$p" ]; then SIGN_TOOL="$p"; break; fi
+    done
+fi
+
+export DOTNET_ROOT
+export TMPDIR
+export DOTNET_EnableWriteXorExecute=0
+export DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
+export DOTNET_CLI_TELEMETRY_OPTOUT=1
+export DOTNET_NOLOGO=1
+
+if [ -f "$SHIM" ]; then
+    case ":${LD_PRELOAD:-}:" in
+        *":$SHIM:"*) ;;
+        *) LD_PRELOAD="$SHIM${LD_PRELOAD:+:$LD_PRELOAD}" ;;
+    esac
+    export LD_PRELOAD
+fi
+
+# sign every ELF under runfile that lacks a .codesign section
+sign_runfile() {
+    [ -n "$SIGN_TOOL" ] || return 0
+    [ -d "$RUNDIR" ] || return 0
+    # shell glob walk (no pipes/subshells)
+    for f in $(find "$RUNDIR" -maxdepth 5 -type f 2>/dev/null); do
+        case "$f" in
+            *.dll|*.json|*.pdb|*.deps*|*.cache|*.rsp|*.txt|*.g.cs|*.cs) continue ;;
+        esac
+        file "$f" 2>/dev/null | grep -q "ELF" || continue
+        # NOTE: OHOS apphost template already carries a .codesign section,
+        # but its signature is invalid for the modified binary (path replaced).
+        # Re-sign unconditionally — binary-sign-tool overwrites the section.
+        if "$SIGN_TOOL" sign -inFile "$f" -outFile "$f" -selfSign 1 >/dev/null 2>&1; then
+            echo "dotnet-ohos: codesigned ${f#$HOME/}"
+        else
+            echo "dotnet-ohos: SIGN FAILED: $f" >&2
+        fi
+    done
+}
+
+# `run <file.cs>`: build, codesign, then exec the apphost
+if [ "${1:-}" = "run" ] && [ -n "${2:-}" ] && [ -f "${2:-}" ]; then
+    echo "dotnet-ohos: building $2 ..."
+    "$DOTNET_ROOT/dotnet" build "$2" || exit $?
+    sign_runfile
+    BASE="$(basename "$2" .cs)"
+    APPHOST="$(find "$RUNDIR" -maxdepth 6 -type f -name "$BASE" -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)"
+    if [ -n "$APPHOST" ] && [ -x "$APPHOST" ]; then
+        echo "dotnet-ohos: running ${APPHOST#$HOME/}"
+        exec "$APPHOST"
+    fi
+    echo "dotnet-ohos: apphost not found after build" >&2
+    exit 1
+fi
+
+"$DOTNET_ROOT/dotnet" "$@"
+RC=$?
+
+case "${1:-}" in
+    build|publish)
+        sign_runfile
+        ;;
+esac
+exit $RC
