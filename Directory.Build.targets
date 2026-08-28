@@ -5,17 +5,6 @@
 
   <PropertyGroup>
     <!--
-      NativeAotSupported (from the vendored eng/common/native/NativeAotSupported.props) only excludes
-      browser/haiku/illumos/netbsd/solaris, so linux-musl and linux-ohos (musl-based) would
-      incorrectly report as NativeAOT-capable. Their NativeAOT toolchains are not wired up here,
-      so force NativeAotSupported=false for them. Evaluated after the vendored import because this
-      file is imported last.
-    -->
-    <NativeAotSupported Condition="'$(OSName)' == 'linux-musl' or '$(OSName)' == 'linux-ohos'">false</NativeAotSupported>
-  </PropertyGroup>
-
-  <PropertyGroup>
-    <!--
       Disable nullable warnings when targeting anything other than our supported .NET core version(s).
       This condition will be evaluated multiple times in multi-targeted projects hence need to be careful
       to only set in the inner builds, not the outer build where only $(TargetFrameworks) is defined.

@@ -34,18 +34,6 @@
     <PortableTargetRid Condition="'$(PortableTargetRid)' == ''">$(OSName)-$(TargetArchitecture)</PortableTargetRid>
   </PropertyGroup>
 
-  <!--
-    NativeAotSupported (from the vendored eng/common/native/NativeAotSupported.props, imported by
-    src/Cli/dotnet-aot and src/Cli/dn) only excludes browser/haiku/illumos/netbsd/solaris, so
-    linux-musl and linux-ohos (musl-based) would incorrectly report as NativeAOT-capable. Their
-    NativeAOT toolchains are not wired up here. Set it before those projects import the vendored
-    props (whose Condition is '== '''), so the exclusion sticks; Directory.Build.targets re-asserts it
-    as a backstop.
-  -->
-  <PropertyGroup>
-    <NativeAotSupported Condition="'$(OSName)' == 'linux-musl' or '$(OSName)' == 'linux-ohos'">false</NativeAotSupported>
-  </PropertyGroup>
-
   <PropertyGroup>
     <Nullable>enable</Nullable>
   </PropertyGroup>
