@@ -86,7 +86,7 @@ dotnet publish selfsign.csproj -c Release -p:PublishAot=false
 selfsign <input_elf> [output_elf] [--force] [--strip]
 ```
 
-> `selfsign` 是 SDK 内置 `OhosCodesign` MSBuild task（`ElfSelfSigner`）的
+> `selfsign` 是 SDK 内置 `OpenHarmonyCodesign` MSBuild task（`ElfSelfSigner`）的
 > 独立单文件版本，算法与官方 `binary-sign-tool` 字节级一致，可在设备上
 > 独立运行（不依赖 MSBuild）。已在 qemu（aarch64 OHOS 环境）验证签名结果
 > 与官方工具字节级一致。
@@ -109,12 +109,12 @@ SDK/Runtime 已内嵌全部 OHOS 沙箱修复，**不再需要**外部 wrapper /
 
 | 修复 | 内嵌方式 |
 |---|---|
-| SIGSYS（get_mempolicy 被 seccomp 拦截） | runtime `numasupport.cpp` `TARGET_OHOS` 排除（编译期消灭） |
+| SIGSYS（get_mempolicy 被 seccomp 拦截） | runtime `numasupport.cpp` `TARGET_OPENHARMONY` 排除（编译期消灭） |
 | JIT W^X 被沙箱拒绝 | SDK runtimeconfig 烘焙 `EnableWriteXorExecute=false` |
 | 无 ICU | SDK runtimeconfig 烘焙 `Invariant=true` |
 | `/tmp` 只读 | runtime 共享内存改走 `Path.GetTempPath()`（TMPDIR） |
-| 构建产物签名 | `OhosCodesign` MSBuild task（Build/Publish 后自动） |
-| 子进程环境 | `OhosEnvironmentDefaults`（TMPDIR/遥测/nologo） |
+| 构建产物签名 | `OpenHarmonyCodesign` MSBuild task（Build/Publish 后自动） |
+| 子进程环境 | `OpenHarmonyEnvironmentDefaults`（TMPDIR/遥测/nologo） |
 
 详见同目录 [`../../../installonohos/OHOS-内嵌修复-变更记录.md`](../../installonohos/OHOS-内嵌修复-变更记录.md)。
 

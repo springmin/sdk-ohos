@@ -178,12 +178,12 @@ curl http://127.0.0.1:5123/  →  "Hello from ASP.NET Core 11.0.0.0 on OHOS" ✅
 
 | 原外部修复 | 内嵌方式 | 生效范围 |
 |---|---|---|
-| LD_PRELOAD shim 拦截 get_mempolicy | runtime `numasupport.cpp` `TARGET_OHOS` 排除 | 所有进程（编译期消灭 SIGSYS） |
+| LD_PRELOAD shim 拦截 get_mempolicy | runtime `numasupport.cpp` `TARGET_OPENHARMONY` 排除 | 所有进程（编译期消灭 SIGSYS） |
 | wrapper 导出 W^X=0 | SDK redist runtimeconfig 烘焙 `EnableWriteXorExecute=false` + 应用 MSBuild 属性映射 | SDK 自身进程 + linux-ohos 应用 |
 | wrapper 导出 Invariant=1 | SDK redist runtimeconfig 烘焙 `Invariant=true` | SDK 自身进程 |
 | shim /tmp 重定向 | runtime `SharedMemoryManager` 改走 `Path.GetTempPath()`（TMPDIR） | 所有进程 |
-| wrapper `sign_runfile` | `OhosCodesign` MSBuild task（selfsign.rs C# 移植，字节级一致）AfterTargets Build/Publish | linux-ohos 构建产物（apphost/自包含） |
-| wrapper env 导出 | `OhosEnvironmentDefaults.Apply()`（managed Program + AOT ExecuteCore） | 子进程（MSBuild/csc/apphost） |
+| wrapper `sign_runfile` | `OpenHarmonyCodesign` MSBuild task（selfsign.rs C# 移植，字节级一致）AfterTargets Build/Publish | linux-ohos 构建产物（apphost/自包含） |
+| wrapper env 导出 | `OpenHarmonyEnvironmentDefaults.Apply()`（managed Program + AOT ExecuteCore） | 子进程（MSBuild/csc/apphost） |
 
 **新安装流程**（不再需要 `dotnet-ohos` wrapper 与 `libnuma-shim.so`）：
 
@@ -196,5 +196,5 @@ export DOTNET_ROOT=~/.dotnet
 
 构建产物验证：SDK tar.gz 内 `dotnet.runtimeconfig.json`/`MSBuild.runtimeconfig.json`/`NuGet.CommandLine.XPlat.runtimeconfig.json`
 均含 `System.Runtime.EnableWriteXorExecute=false` + `System.Globalization.Invariant=true`；`Microsoft.NET.Build.Tasks.dll`
-含 `OhosCodesign` task（与 rust selfsign 字节级一致）；共享框架 `System.Private.CoreLib.dll`（TMPDIR 修复）与
+含 `OpenHarmonyCodesign` task（与 rust selfsign 字节级一致）；共享框架 `System.Private.CoreLib.dll`（TMPDIR 修复）与
 `libcoreclr.so`（NUMA 修复）哈希与交叉编译产物一致。

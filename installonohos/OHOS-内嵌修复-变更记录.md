@@ -27,7 +27,7 @@
 
 `get_mempolicy` 探测在 `NUMASupportInitialize()` 中，受 `#if defined(TARGET_LINUX) && !defined(TARGET_ANDROID)` 保护。OHOS 目标映射为 `TARGET_LINUX`（musl 路径），因此该保护**不排除 OHOS**，导致 GC 初始化时必然触发 syscall 236。
 
-修改：全部 5 处 guard 增加 `&& !defined(TARGET_OHOS)`（include、`GetNodeNum`、`NUMASupportInitialize`、`GetNumaNodeNumByCpu`、`BindMemoryPolicy`）。`g_numaAvailable` 保持 false，GC NUMA 感知完全关闭，`mbind`/`GetNumaNodeNumByCpu` 的调用点（gcenv.unix.cpp）因 `CanEnableGCNumaAware()` 返回 false 而同样不可达。
+修改：全部 5 处 guard 增加 `&& !defined(TARGET_OPENHARMONY)`（include、`GetNodeNum`、`NUMASupportInitialize`、`GetNumaNodeNumByCpu`、`BindMemoryPolicy`）。`g_numaAvailable` 保持 false，GC NUMA 感知完全关闭，`mbind`/`GetNumaNodeNumByCpu` 的调用点（gcenv.unix.cpp）因 `CanEnableGCNumaAware()` 返回 false 而同样不可达。
 
 **验证**: ohos-arm64 交叉编译 `numasupport.cpp.o` 后 `NUMASupportInitialize` 为空桩（仅 `ret`），零 `svc` 指令，无 mempolicy/mbind 符号。
 
@@ -39,15 +39,15 @@
 
 ### 2.2 SDK 仓库（4 处内嵌）
 
-**C. `src/Tasks/Microsoft.NET.Build.Tasks/OhosCodesign.cs` — 签名内嵌（问题 6）**
+**C. `src/Tasks/Microsoft.NET.Build.Tasks/OpenHarmonyCodesign.cs` — 签名内嵌（问题 6）**
 
-新增 MSBuild task `OhosCodesign`（+ 内部 `ElfSelfSigner`），是 ohos-bst-light `selfsign.rs`（0BSD）的 C# 字节级移植：
+新增 MSBuild task `OpenHarmonyCodesign`（+ 内部 `ElfSelfSigner`），是 ohos-bst-light `selfsign.rs`（0BSD）的 C# 字节级移植：
 - SHA-256（BCL）+ ELF64 段表解析 + `.codesign` 段注入/剥离 + fs-verity 风格描述符 + Merkle 根哈希
 - `TrySignFileInPlace()`: 非 ELF 跳过；ELF64 强制重签（先剥离已有 `.codesign` 再注入），原位写入保留 Unix 权限
 
 **D. `src/Tasks/Microsoft.NET.Build.Tasks/targets/Microsoft.NET.Sdk.targets` — 签名触发**
 
-新增 `_OhosCodesignBuildOutputs`（`AfterTargets="Build"`）与 `_OhosCodesignPublishOutputs`（`AfterTargets="Publish"`），条件 `$(_OhosCodesignEnabled)` = `RuntimeIdentifier` 或 `NETCoreSdkRuntimeIdentifier` 以 `linux-ohos` 开头，对 `$(TargetDir)`/`$(PublishDir)` 全量递归签名。覆盖：自包含应用、file-based 应用（`dotnet run file.cs`，RID 取自 `RuntimeInformation.RuntimeIdentifier`）、portable 构建（RID 空但 SDK RID 为 ohos）。
+新增 `_OpenHarmonyCodesignBuildOutputs`（`AfterTargets="Build"`）与 `_OpenHarmonyCodesignPublishOutputs`（`AfterTargets="Publish"`），条件 `$(_OpenHarmonyCodesignEnabled)` = `RuntimeIdentifier` 或 `NETCoreSdkRuntimeIdentifier` 以 `linux-ohos` 开头，对 `$(TargetDir)`/`$(PublishDir)` 全量递归签名。覆盖：自包含应用、file-based 应用（`dotnet run file.cs`，RID 取自 `RuntimeInformation.RuntimeIdentifier`）、portable 构建（RID 空但 SDK RID 为 ohos）。
 
 **E. redist/runtimeconfig 烘焙（问题 2、3，SDK 自身进程）**
 
@@ -60,7 +60,7 @@
 **F. 应用烘焙 + env 默认值（问题 2、3、子进程）**
 
 - `Microsoft.NET.Sdk.targets` `DefaultRuntimeHostConfigurationOptions` 增加 `EnableWriteXorExecute` MSBuild 属性 → `System.Runtime.EnableWriteXorExecute` 映射（仿 `InvariantGlobalization`）
-- `src/Cli/dotnet/OhosEnvironmentDefaults.cs` 新增 `Apply()`：RID 为 `linux-ohos` 时设置 `TMPDIR=/data/storage/el2/base/tmp`、`DOTNET_EnableWriteXorExecute=0`、`DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1`、遥测 optout、nologo 默认值。接入 managed `Program` 静态构造函数与 NativeAOT `NativeEntryPoint.ExecuteCore`，供子进程（MSBuild、csc、apphost）继承。
+- `src/Cli/dotnet/OpenHarmonyEnvironmentDefaults.cs` 新增 `Apply()`：RID 为 `linux-ohos` 时设置 `TMPDIR=/data/storage/el2/base/tmp`、`DOTNET_EnableWriteXorExecute=0`、`DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1`、遥测 optout、nologo 默认值。接入 managed `Program` 静态构造函数与 NativeAOT `NativeEntryPoint.ExecuteCore`，供子进程（MSBuild、csc、apphost）继承。
 
 ## 3. 修复后安装流程（不再需要 wrapper/shim）
 
@@ -88,7 +88,7 @@ export TMPDIR=/data/storage/el2/base/tmp   # 可选；SDK 会自动设置默认�
 | SDK 三个工程编译（tasks/dotnet/dotnet-aot，net472+net11.0） | 0 错误 0 警告 |
 | ohos 交叉编译 `numasupport.cpp.o`：`NUMASupportInitialize` 空桩、零 syscall | ✅ |
 | C# `ElfSelfSigner` vs rust `selfsign`：全新签名、force 重签 | 字节级一致 |
-| `OhosCodesign` task 经真实 MSBuild：linux-ohos RID 签名全部 ELF、非 ELF 跳过；linux-x64 RID 不触发 | ✅ |
+| `OpenHarmonyCodesign` task 经真实 MSBuild：linux-ohos RID 签名全部 ELF、非 ELF 跳过；linux-x64 RID 不触发 | ✅ |
 | redist runtimeconfig 烘焙（OSName=linux-ohos）→ `EnableWriteXorExecute=false` + `Invariant=true` | ✅ |
 | `EnableWriteXorExecute` 属性映射 → runtimeconfig configProperties | ✅ |
 

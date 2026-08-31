@@ -3,11 +3,11 @@
 #
 # Since 2026-08-26 the SDK/runtime embed all fixes natively (see
 # OHOS-内嵌修复-变更记录.md):
-#   - SIGSYS (get_mempolicy)  -> runtime numasupport.cpp TARGET_OHOS guard
+#   - SIGSYS (get_mempolicy)  -> runtime numasupport.cpp TARGET_OPENHARMONY guard
 #   - W^X / ICU               -> baked into SDK runtimeconfig (EnableWriteXorExecute, Invariant)
 #   - /tmp shared memory      -> runtime SharedMemoryManager honors TMPDIR
-#   - codesign of build outputs -> OhosCodesign MSBuild task (AfterTargets Build/Publish)
-#   - child-process env       -> OhosEnvironmentDefaults in Program/ExecuteCore
+#   - codesign of build outputs -> OpenHarmonyCodesign MSBuild task (AfterTargets Build/Publish)
+#   - child-process env       -> OpenHarmonyEnvironmentDefaults in Program/ExecuteCore
 #
 # This wrapper is kept only for compatibility with SDKs built before those
 # changes. For current builds, invoke ~/.dotnet/dotnet directly:

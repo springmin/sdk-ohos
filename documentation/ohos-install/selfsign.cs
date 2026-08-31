@@ -1,5 +1,5 @@
 // Standalone OpenHarmony ELF self-sign tool
-// Extracted from OhosCodesign.cs (ElfSelfSigner), byte-identical algorithm.
+// Extracted from OpenHarmonyCodesign.cs (ElfSelfSigner), byte-identical algorithm.
 // Usage: selfsign <input_elf> [output_elf] [--force] [--strip]
 using System;
 using System.IO;
