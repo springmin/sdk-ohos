@@ -29,7 +29,7 @@ public class Program
 
     static Program()
     {
-        OhosEnvironmentDefaults.Apply();
+        OpenHarmonyEnvironmentDefaults.Apply();
 
         var preTelemetry = DateTime.UtcNow;
         s_sigIntRegistration = PosixSignalRegistration.Create(PosixSignal.SIGINT, Shutdown);

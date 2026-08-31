@@ -12,7 +12,7 @@ namespace Microsoft.DotNet.Cli;
 /// and these environment defaults cover every child process (MSBuild, csc, apphosts) that
 /// inherits the CLI's environment. Only active when running on a linux-ohos RID.
 /// </summary>
-internal static class OhosEnvironmentDefaults
+internal static class OpenHarmonyEnvironmentDefaults
 {
     public static void Apply()
     {

@@ -875,7 +875,7 @@ Copyright (c) .NET Foundation. All rights reserved.
 
   <!--
     ============================================================
-                                        _OhosCodesignBuildOutputs
+                                        _OpenHarmonyCodesignBuildOutputs
     OpenHarmony only executes ELF binaries carrying a valid .codesign section, and a signed
     binary whose content changed (e.g. the apphost, rewritten on every build) fails with EPERM.
     Re-sign every ELF output under the target/publish directories when building on or for OHOS
@@ -884,20 +884,20 @@ Copyright (c) .NET Foundation. All rights reserved.
     for portable builds executed on an OHOS SDK.
     ============================================================
      -->
-  <UsingTask TaskName="OhosCodesign" AssemblyFile="$(MicrosoftNETBuildTasksAssembly)" />
+  <UsingTask TaskName="OpenHarmonyCodesign" AssemblyFile="$(MicrosoftNETBuildTasksAssembly)" />
   <PropertyGroup>
-    <_OhosCodesignEnabled Condition="$([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('linux-ohos')) or $([System.String]::Copy('$(NETCoreSdkRuntimeIdentifier)').StartsWith('linux-ohos'))">true</_OhosCodesignEnabled>
+    <_OpenHarmonyCodesignEnabled Condition="$([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('linux-ohos')) or $([System.String]::Copy('$(NETCoreSdkRuntimeIdentifier)').StartsWith('linux-ohos'))">true</_OpenHarmonyCodesignEnabled>
   </PropertyGroup>
-  <Target Name="_OhosCodesignBuildOutputs"
+  <Target Name="_OpenHarmonyCodesignBuildOutputs"
           AfterTargets="Build"
-          Condition="'$(_OhosCodesignEnabled)' == 'true'">
-    <OhosCodesign Directories="$(TargetDir)" />
+          Condition="'$(_OpenHarmonyCodesignEnabled)' == 'true'">
+    <OpenHarmonyCodesign Directories="$(TargetDir)" />
   </Target>
 
-  <Target Name="_OhosCodesignPublishOutputs"
+  <Target Name="_OpenHarmonyCodesignPublishOutputs"
           AfterTargets="Publish"
-          Condition="'$(_OhosCodesignEnabled)' == 'true'">
-    <OhosCodesign Directories="$(PublishDir)" />
+          Condition="'$(_OpenHarmonyCodesignEnabled)' == 'true'">
+    <OpenHarmonyCodesign Directories="$(PublishDir)" />
   </Target>
 
   <!--

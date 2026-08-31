@@ -14,7 +14,7 @@ namespace Microsoft.NET.Build.Tasks
     /// modified after signing (e.g. the apphost, which the SDK rewrites on every build) fails with
     /// EPERM. This re-signs unconditionally so every ELF output is executable on OHOS.
     /// </summary>
-    public sealed class OhosCodesign : TaskBase
+    public sealed class OpenHarmonyCodesign : TaskBase
     {
         [Required]
         public string[] Directories { get; set; }
@@ -34,12 +34,12 @@ namespace Microsoft.NET.Build.Tasks
                     {
                         if (ElfSelfSigner.TrySignFileInPlace(path))
                         {
-                            Log.LogMessage(MessageImportance.Low, "OhosCodesign: signed {0}", path);
+                            Log.LogMessage(MessageImportance.Low, "OpenHarmonyCodesign: signed {0}", path);
                         }
                     }
                     catch (Exception ex)
                     {
-                        Log.LogError("OhosCodesign: failed to sign {0}: {1}", path, ex.Message);
+                        Log.LogError("OpenHarmonyCodesign: failed to sign {0}: {1}", path, ex.Message);
                     }
                 }
             }
