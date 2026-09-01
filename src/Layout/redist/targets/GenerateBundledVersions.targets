@@ -493,6 +493,8 @@
         @(Net90ILCompilerSupportedRids);
         linux-riscv64;
         linux-musl-riscv64;
+        ohos-arm64;
+        ohos-x64;
         " />
 
       <Net110ILCompilerSupportedRids Include="
@@ -568,6 +570,8 @@
         android-arm;
         android-arm64;
         android-x64;
+        ohos-arm64;
+        ohos-x64;
         " />
 
       <Net110NativeAOTRuntimePackRids Include="
@@ -594,7 +598,7 @@
       <AspNetCore80RuntimePackRids Include="@(AspNetCore70RuntimePackRids);freebsd-x64;freebsd-arm64" />
       <AspNetCore80RuntimePackRids Remove="win-arm" />
       <AspNetCore90RuntimePackRids Include="@(AspNetCore80RuntimePackRids);linux-riscv64;linux-musl-riscv64;linux-loongarch64;linux-musl-loongarch64;" />
-      <AspNetCore100RuntimePackRids Include="@(AspNetCore90RuntimePackRids)" />
+      <AspNetCore100RuntimePackRids Include="@(AspNetCore90RuntimePackRids);ohos-arm64;ohos-x64" />
       <AspNetCore110RuntimePackRids Include="
         @(AspNetCore100RuntimePackRids);
         ohos-arm64;
