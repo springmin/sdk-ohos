@@ -13,7 +13,7 @@
 
 | 条件 | 说明 |
 |---|---|
-| .NET Runtime 二进制包 | 形如 `dotnet-runtime-11.0.0-dev-linux-ohos-arm64.tar.gz`，**必须放在当前用户可读的位置**（如 `Download/`） |
+| .NET Runtime 二进制包 | 形如 `dotnet-runtime-11.0.0-rc.1.26451.1-ohos-arm64.tar.gz`，**必须放在当前用户可读的位置**（如 `Download/`） |
 | `binary-sign-tool` | OpenHarmony SDK 自带（`toolchains/lib/binary-sign-tool`），脚本会自动在 PATH、`~/.harmonybrew`、OHOS SDK 目录中查找 |
 | `tar` / `file` / `readelf` | 基础工具，脚本启动时会检查 |
 
@@ -25,10 +25,10 @@
 
 ```sh
 # 基本用法
-sh install-dotnet-runtime.sh ~/Download/dotnet-runtime-11.0.0-dev-linux-ohos-arm64.tar.gz
+sh install-dotnet-runtime.sh ~/Download/dotnet-runtime-11.0.0-rc.1.26451.1-ohos-arm64.tar.gz
 
 # 指定安装目录（默认 $HOME/.dotnet）
-sh install-dotnet-runtime.sh ~/Download/dotnet-runtime-11.0.0-dev-linux-ohos-arm64.tar.gz /data/xxx/dotnet
+sh install-dotnet-runtime.sh ~/Download/dotnet-runtime-11.0.0-rc.1.26451.1-ohos-arm64.tar.gz /data/xxx/dotnet
 ```
 
 运行成功后，重新打开终端（或 `source ~/.bashrc`），即可使用：
@@ -56,7 +56,7 @@ rm -rf ~/.dotnet
 # 并从 ~/.bashrc ~/.zshrc ~/.profile 中删除 DOTNET_ROOT / PATH 两行
 
 # 重新安装：直接重跑脚本即可（幂等，可安全重复执行）
-sh install-dotnet-runtime.sh ~/Download/dotnet-runtime-11.0.0-dev-linux-ohos-arm64.tar.gz
+sh install-dotnet-runtime.sh ~/Download/dotnet-runtime-11.0.0-rc.1.26451.1-ohos-arm64.tar.gz
 ```
 
 ## 5. 为什么需要签名（OHOS 特有）

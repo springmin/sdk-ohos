@@ -9,13 +9,13 @@ OHOS 特有的代码签名。
 
 ## 1. 下载产物（GitHub Release）
 
-三个仓库的 Release 提供交叉编译好的 `linux-ohos-arm64` 产物：
+三个仓库的 Release 提供交叉编译好的 `ohos-arm64` 产物：
 
 | 仓库 | Release | 内容 | 下载 |
 |---|---|---|---|
-| [springmin/sdk-ohos](https://github.com/springmin/sdk-ohos/releases) | `v11.0.100-dev-ohos` | **SDK**（含 ASP.NET Core runtime + 全部修复，175MB） | `dotnet-sdk-11.0.100-dev-linux-ohos-arm64.tar.gz` |
-| [springmin/runtime-ohos](https://github.com/springmin/runtime-ohos/releases) | `v11.0.0-dev-ohos` | **Runtime**（仅运行，15MB） | `dotnet-runtime-11.0.0-dev-linux-ohos-arm64.tar.gz` |
-| [springmin/aspnetcore-ohos](https://github.com/springmin/aspnetcore-ohos/releases) | `11.0.0-dev-ohos` | **ASP.NET Core**（单独分发用，19MB） | `aspnetcore-runtime-11.0.0-dev-linux-ohos-arm64.tar.gz` |
+| [springmin/sdk-ohos](https://github.com/springmin/sdk-ohos/releases) | `v11.0.100-rc.1.26451.1-ohos` | **SDK**（含 ASP.NET Core runtime + 全部修复，175MB） | `dotnet-sdk-11.0.100-rc.1.26451.1-ohos-arm64.tar.gz` |
+| [springmin/runtime-ohos](https://github.com/springmin/runtime-ohos/releases) | `v11.0.0-rc.1.26451.1-ohos` | **Runtime**（仅运行，15MB） | `dotnet-runtime-11.0.0-rc.1.26451.1-ohos-arm64.tar.gz` |
+| [springmin/aspnetcore-ohos](https://github.com/springmin/aspnetcore-ohos/releases) | `v11.0.0-rc.1.26451.1-ohos` | **ASP.NET Core**（单独分发用，19MB） | `aspnetcore-runtime-11.0.0-rc.1.26451.1-ohos-arm64.tar.gz` |
 
 > **推荐**：直接安装 **SDK** 即可——它已内嵌 ASP.NET Core runtime，
 > 一个包同时满足编译与运行（含 web 应用）。Runtime 包仅用于只想运行 .NET
@@ -39,8 +39,8 @@ sh install-dotnet-ohos.sh sdk
 sh install-dotnet-ohos.sh runtime
 
 # 4. 或用本地文件 / 自定义 URL
-sh install-dotnet-ohos.sh ~/Download/dotnet-sdk-11.0.100-dev-linux-ohos-arm64.tar.gz
-sh install-dotnet-ohos.sh https://github.com/springmin/sdk-ohos/releases/download/v11.0.100-dev-ohos/dotnet-sdk-11.0.100-dev-linux-ohos-arm64.tar.gz
+sh install-dotnet-ohos.sh ~/Download/dotnet-sdk-11.0.100-rc.1.26451.1-ohos-arm64.tar.gz
+sh install-dotnet-ohos.sh https://github.com/springmin/sdk-ohos/releases/download/v11.0.100-rc.1.26451.1-ohos/dotnet-sdk-11.0.100-rc.1.26451.1-ohos-arm64.tar.gz
 
 # 5. 自定义安装目录
 INSTALL_DIR=/data/xxx/dotnet sh install-dotnet-ohos.sh sdk
@@ -58,7 +58,7 @@ INSTALL_DIR=/data/xxx/dotnet sh install-dotnet-ohos.sh sdk
 ```sh
 export DOTNET_ROOT=$HOME/.dotnet
 mkdir -p "$DOTNET_ROOT"
-tar zxf dotnet-sdk-11.0.100-dev-linux-ohos-arm64.tar.gz -C "$DOTNET_ROOT"
+tar zxf dotnet-sdk-11.0.100-rc.1.26451.1-ohos-arm64.tar.gz -C "$DOTNET_ROOT"
 # 签名（见 §3）
 export PATH=$PATH:$DOTNET_ROOT:$DOTNET_ROOT/tools
 dotnet --list-runtimes
@@ -78,7 +78,7 @@ OpenHarmony 只执行带 `.codesign` 段的 ELF。**Release 产物未预签名**
 ```sh
 # 在设备上构建（需要 .NET SDK）：
 #   复制 selfsign.cs + selfsign.csproj 到设备，然后：
-dotnet publish selfsign.csproj -c Release -r linux-ohos-arm64   # AOT 单文件
+dotnet publish selfsign.csproj -c Release -r ohos-arm64   # AOT 单文件
 # 或普通模式（需 .NET runtime）：
 dotnet publish selfsign.csproj -c Release -p:PublishAot=false
 
@@ -94,9 +94,9 @@ selfsign <input_elf> [output_elf] [--force] [--strip]
 ## 4. 验证
 
 ```sh
-dotnet --list-sdks        # 应显示 11.0.100-dev
-dotnet --list-runtimes    # 应显示 11.0.0-dev（含 Microsoft.AspNetCore.App）
-dotnet --info             # RID: linux-ohos-arm64
+dotnet --list-sdks        # 应显示 11.0.100-rc.1.26451.1
+dotnet --list-runtimes    # 应显示 11.0.0-rc.1.26451.1（含 Microsoft.AspNetCore.App）
+dotnet --info             # RID: ohos-arm64
 
 # 编译并运行一个 ASP.NET Core 应用（SDK 已内嵌 aspnetcore runtime）
 dotnet new web -o hello && cd hello
