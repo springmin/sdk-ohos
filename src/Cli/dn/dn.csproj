@@ -9,7 +9,7 @@
     <RootNamespace>Microsoft.DotNet.Cli</RootNamespace>
     <!--
       dn is a dev-only NativeAOT debug host. NativeAOT is not supported on every platform
-      (e.g. linux-musl, linux-ohos, browser, ...), so only enable PublishAot where
+      (e.g. linux-musl, ohos, browser, ...), so only enable PublishAot where
       NativeAotSupported props allow it; otherwise the sdk.slnx build would attempt to
       AOT-compile dn with a missing ILCompiler toolchain and fail.
     -->

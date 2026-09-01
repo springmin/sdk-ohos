@@ -268,8 +268,8 @@
 
       <Net110AppHostRids Include="
         @(Net100AppHostRids);
-        linux-ohos-arm64;
-        linux-ohos-x64;
+        ohos-arm64;
+        ohos-x64;
         haiku-x64;
         illumos-x64;
         solaris-x64;
@@ -288,8 +288,8 @@
         tvossimulator-x64;
         maccatalyst-x64;
         maccatalyst-arm64;
-        linux-ohos-arm64;
-        linux-ohos-x64;
+        ohos-arm64;
+        ohos-x64;
         haiku-x64;
         illumos-x64;
         solaris-x64;
@@ -422,8 +422,8 @@
 
       <Net110Crossgen2SupportedRids Include="
         @(Net100Crossgen2SupportedRids);
-        linux-ohos-arm64;
-        linux-ohos-x64;
+        ohos-arm64;
+        ohos-x64;
         haiku-x64;
         illumos-x64;
         solaris-x64;
@@ -475,8 +475,8 @@
 
       <Net110ILCompilerSupportedRids Include="
         @(Net100ILCompilerSupportedRids);
-        linux-ohos-arm64;
-        linux-ohos-x64;
+        ohos-arm64;
+        ohos-x64;
         haiku-x64;
         illumos-x64;
         solaris-x64;
@@ -544,8 +544,8 @@
 
       <Net110NativeAOTRuntimePackRids Include="
         @(Net100NativeAOTRuntimePackRids);
-        linux-ohos-arm64;
-        linux-ohos-x64;
+        ohos-arm64;
+        ohos-x64;
         haiku-x64;
         illumos-x64;
         solaris-x64;
@@ -567,8 +567,8 @@
       <AspNetCore100RuntimePackRids Include="@(AspNetCore90RuntimePackRids)" />
       <AspNetCore110RuntimePackRids Include="
         @(AspNetCore100RuntimePackRids);
-        linux-ohos-arm64;
-        linux-ohos-x64;
+        ohos-arm64;
+        ohos-x64;
         " />
       <AspNetCoreRuntimePackRids Include="@(AspNetCore110RuntimePackRids)" />
 

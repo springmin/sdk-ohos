@@ -36,14 +36,14 @@ set -u
 # ------------------------------------------------------------------ config
 GH_USER="springmin"
 RELEASES="
-  sdk|sdk-ohos|v11.0.100-dev-ohos|dotnet-sdk-11.0.100-dev-linux-ohos-arm64.tar.gz
-  runtime|runtime-ohos|v11.0.0-dev-ohos|dotnet-runtime-11.0.0-dev-linux-ohos-arm64.tar.gz
+  sdk|sdk-ohos|v11.0.100-dev-ohos|dotnet-sdk-11.0.100-dev-ohos-arm64.tar.gz
+  runtime|runtime-ohos|v11.0.0-dev-ohos|dotnet-runtime-11.0.0-dev-ohos-arm64.tar.gz
 "
 # aspnetcore runtime is embedded in the SDK since 2026-08-26; kept here for
 # standalone runtime installs that also want ASP.NET Core.
 ASPNETCORE_REPO="aspnetcore-ohos"
 ASPNETCORE_TAG="11.0.0-dev-ohos"
-ASPNETCORE_FILE="aspnetcore-runtime-11.0.0-dev-linux-ohos-arm64.tar.gz"
+ASPNETCORE_FILE="aspnetcore-runtime-11.0.0-dev-ohos-arm64.tar.gz"
 
 INSTALL_DIR="${INSTALL_DIR:-${HOME}/.dotnet}"
 
@@ -95,12 +95,12 @@ resolve_choice() { # "sdk"|"runtime"|local path|url
     arg="$1"
     case "$arg" in
         sdk)
-            repo="sdk-ohos"; tag="v11.0.100-dev-ohos"; file="dotnet-sdk-11.0.100-dev-linux-ohos-arm64.tar.gz"
+            repo="sdk-ohos"; tag="v11.0.100-dev-ohos"; file="dotnet-sdk-11.0.100-dev-ohos-arm64.tar.gz"
             RESOLVED_FILE="$file"
             RESOLVED_URL="https://github.com/${GH_USER}/${repo}/releases/download/${tag}/${file}"
             ;;
         runtime)
-            repo="runtime-ohos"; tag="v11.0.0-dev-ohos"; file="dotnet-runtime-11.0.0-dev-linux-ohos-arm64.tar.gz"
+            repo="runtime-ohos"; tag="v11.0.0-dev-ohos"; file="dotnet-runtime-11.0.0-dev-ohos-arm64.tar.gz"
             RESOLVED_FILE="$file"
             RESOLVED_URL="https://github.com/${GH_USER}/${repo}/releases/download/${tag}/${file}"
             ;;

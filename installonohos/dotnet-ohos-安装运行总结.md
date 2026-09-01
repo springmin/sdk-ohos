@@ -26,7 +26,7 @@
 | JIT W^X | 沙箱拒绝 JIT 的 W^X mprotect → SIGSEGV |
 | 无 libicu | OHOS 无 ICU 库 |
 | `/tmp` 只读 | erofs 挂载；.NET 共享内存硬编码 `/tmp/.dotnet`，TMPDIR 无效 |
-| 离线 | 无 nuget.org 访问（或缺少 linux-ohos-arm64 专用包） |
+| 离线 | 无 nuget.org 访问（或缺少 ohos-arm64 专用包） |
 
 ---
 
@@ -87,10 +87,10 @@
 
 ### 5.3 AOT 验证（失败 → 用户决定跳过）
 
-- 实测 `PublishAot=true` 发布失败：缺 3 个 linux-ohos-arm64 专用 nupkg（都不在 nuget.org、不在设备上）：
-  - `Microsoft.NETCore.App.Runtime.linux-ohos-arm64`
-  - `Microsoft.NETCore.App.Runtime.NativeAOT.linux-ohos-arm64`（25.4MB）
-  - `runtime.linux-ohos-arm64.Microsoft.DotNet.ILCompiler`（43.4MB）
+- 实测 `PublishAot=true` 发布失败：缺 3 个 ohos-arm64 专用 nupkg（都不在 nuget.org、不在设备上）：
+  - `Microsoft.NETCore.App.Runtime.ohos-arm64`
+  - `Microsoft.NETCore.App.Runtime.NativeAOT.ohos-arm64`（25.4MB）
+  - `runtime.ohos-arm64.Microsoft.DotNet.ILCompiler`（43.4MB）
   - 另有 NU1102：`Microsoft.AspNetCore.App.Runtime.linux-arm64`
 - 全设备定向搜索（~/.nuget、Download、springsources/runtime、浏览器目录、local-feed）确认均无
 - 文档确认这些包只在**交叉编译机本地 feed**（`artifacts/ohos-local-feed`），未打进 tarball
@@ -179,10 +179,10 @@ curl http://127.0.0.1:5123/  →  "Hello from ASP.NET Core 11.0.0.0 on OHOS" ✅
 | 原外部修复 | 内嵌方式 | 生效范围 |
 |---|---|---|
 | LD_PRELOAD shim 拦截 get_mempolicy | runtime `numasupport.cpp` `TARGET_OPENHARMONY` 排除 | 所有进程（编译期消灭 SIGSYS） |
-| wrapper 导出 W^X=0 | SDK redist runtimeconfig 烘焙 `EnableWriteXorExecute=false` + 应用 MSBuild 属性映射 | SDK 自身进程 + linux-ohos 应用 |
+| wrapper 导出 W^X=0 | SDK redist runtimeconfig 烘焙 `EnableWriteXorExecute=false` + 应用 MSBuild 属性映射 | SDK 自身进程 + ohos 应用 |
 | wrapper 导出 Invariant=1 | SDK redist runtimeconfig 烘焙 `Invariant=true` | SDK 自身进程 |
 | shim /tmp 重定向 | runtime `SharedMemoryManager` 改走 `Path.GetTempPath()`（TMPDIR） | 所有进程 |
-| wrapper `sign_runfile` | `OpenHarmonyCodesign` MSBuild task（selfsign.rs C# 移植，字节级一致）AfterTargets Build/Publish | linux-ohos 构建产物（apphost/自包含） |
+| wrapper `sign_runfile` | `OpenHarmonyCodesign` MSBuild task（selfsign.rs C# 移植，字节级一致）AfterTargets Build/Publish | ohos 构建产物（apphost/自包含） |
 | wrapper env 导出 | `OpenHarmonyEnvironmentDefaults.Apply()`（managed Program + AOT ExecuteCore） | 子进程（MSBuild/csc/apphost） |
 
 **新安装流程**（不再需要 `dotnet-ohos` wrapper 与 `libnuma-shim.so`）：

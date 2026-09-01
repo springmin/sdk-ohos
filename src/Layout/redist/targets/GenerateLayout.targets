@@ -12,7 +12,7 @@
 
     <!--
       The RID graph is normally copied verbatim from the Microsoft.NETCore.Platforms package. For
-      in-repo/unofficial target platforms (e.g. linux-ohos) whose RIDs are not yet in the shipped
+      in-repo/unofficial target platforms (e.g. ohos) whose RIDs are not yet in the shipped
       graph, allow overriding the graph sources with locally injected files:
         * $(RidGraphOverrideRuntimeJson) -> replaces runtime.json
         * $(RidGraphOverridePortableJson) -> replaces PortableRuntimeIdentifierGraph.json

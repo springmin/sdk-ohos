@@ -47,7 +47,7 @@
 
 **D. `src/Tasks/Microsoft.NET.Build.Tasks/targets/Microsoft.NET.Sdk.targets` — 签名触发**
 
-新增 `_OpenHarmonyCodesignBuildOutputs`（`AfterTargets="Build"`）与 `_OpenHarmonyCodesignPublishOutputs`（`AfterTargets="Publish"`），条件 `$(_OpenHarmonyCodesignEnabled)` = `RuntimeIdentifier` 或 `NETCoreSdkRuntimeIdentifier` 以 `linux-ohos` 开头，对 `$(TargetDir)`/`$(PublishDir)` 全量递归签名。覆盖：自包含应用、file-based 应用（`dotnet run file.cs`，RID 取自 `RuntimeInformation.RuntimeIdentifier`）、portable 构建（RID 空但 SDK RID 为 ohos）。
+新增 `_OpenHarmonyCodesignBuildOutputs`（`AfterTargets="Build"`）与 `_OpenHarmonyCodesignPublishOutputs`（`AfterTargets="Publish"`），条件 `$(_OpenHarmonyCodesignEnabled)` = `RuntimeIdentifier` 或 `NETCoreSdkRuntimeIdentifier` 以 `ohos` 开头，对 `$(TargetDir)`/`$(PublishDir)` 全量递归签名。覆盖：自包含应用、file-based 应用（`dotnet run file.cs`，RID 取自 `RuntimeInformation.RuntimeIdentifier`）、portable 构建（RID 空但 SDK RID 为 ohos）。
 
 **E. redist/runtimeconfig 烘焙（问题 2、3，SDK 自身进程）**
 
@@ -60,7 +60,7 @@
 **F. 应用烘焙 + env 默认值（问题 2、3、子进程）**
 
 - `Microsoft.NET.Sdk.targets` `DefaultRuntimeHostConfigurationOptions` 增加 `EnableWriteXorExecute` MSBuild 属性 → `System.Runtime.EnableWriteXorExecute` 映射（仿 `InvariantGlobalization`）
-- `src/Cli/dotnet/OpenHarmonyEnvironmentDefaults.cs` 新增 `Apply()`：RID 为 `linux-ohos` 时设置 `TMPDIR=/data/storage/el2/base/tmp`、`DOTNET_EnableWriteXorExecute=0`、`DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1`、遥测 optout、nologo 默认值。接入 managed `Program` 静态构造函数与 NativeAOT `NativeEntryPoint.ExecuteCore`，供子进程（MSBuild、csc、apphost）继承。
+- `src/Cli/dotnet/OpenHarmonyEnvironmentDefaults.cs` 新增 `Apply()`：RID 为 `ohos` 时设置 `TMPDIR=/data/storage/el2/base/tmp`、`DOTNET_EnableWriteXorExecute=0`、`DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1`、遥测 optout、nologo 默认值。接入 managed `Program` 静态构造函数与 NativeAOT `NativeEntryPoint.ExecuteCore`，供子进程（MSBuild、csc、apphost）继承。
 
 ## 3. 修复后安装流程（不再需要 wrapper/shim）
 
@@ -88,8 +88,8 @@ export TMPDIR=/data/storage/el2/base/tmp   # 可选；SDK 会自动设置默认�
 | SDK 三个工程编译（tasks/dotnet/dotnet-aot，net472+net11.0） | 0 错误 0 警告 |
 | ohos 交叉编译 `numasupport.cpp.o`：`NUMASupportInitialize` 空桩、零 syscall | ✅ |
 | C# `ElfSelfSigner` vs rust `selfsign`：全新签名、force 重签 | 字节级一致 |
-| `OpenHarmonyCodesign` task 经真实 MSBuild：linux-ohos RID 签名全部 ELF、非 ELF 跳过；linux-x64 RID 不触发 | ✅ |
-| redist runtimeconfig 烘焙（OSName=linux-ohos）→ `EnableWriteXorExecute=false` + `Invariant=true` | ✅ |
+| `OpenHarmonyCodesign` task 经真实 MSBuild：ohos RID 签名全部 ELF、非 ELF 跳过；linux-x64 RID 不触发 | ✅ |
+| redist runtimeconfig 烘焙（OSName=ohos）→ `EnableWriteXorExecute=false` + `Invariant=true` | ✅ |
 | `EnableWriteXorExecute` 属性映射 → runtimeconfig configProperties | ✅ |
 
 ## 5. 遗留
@@ -102,20 +102,20 @@ export TMPDIR=/data/storage/el2/base/tmp   # 可选；SDK 会自动设置默认�
 
 SDK 构建默认 `IncludeAspNetCoreRuntime=false`（runtime 单独分发）。用户要求 aspnetcore 一直内嵌进 SDK 包，已实现：
 
-**构建方式**：`./build.sh -os linux-ohos -arch arm64 -c Release ... -p:IncludeAspNetCoreRuntime=true -p:MicrosoftAspNetCoreAppRuntimePackageVersion=11.0.0-dev`
+**构建方式**：`./build.sh -os ohos -arch arm64 -c Release ... -p:IncludeAspNetCoreRuntime=true -p:MicrosoftAspNetCoreAppRuntimePackageVersion=11.0.0-dev`
 
 **关键处理**（版本对齐）：
-1. 交叉编译的 aspnetcore 包（`Microsoft.AspNetCore.App.Runtime.linux-ohos-arm64.11.0.0-dev.nupkg`）内部
+1. 交叉编译的 aspnetcore 包（`Microsoft.AspNetCore.App.Runtime.ohos-arm64.11.0.0-dev.nupkg`）内部
    `Microsoft.AspNetCore.App.runtimeconfig.json` 硬编码 framework version `11.0.0-rc.1.26410.101`
    （来自 aspnetcore 的 darc `MicrosoftInternalRuntimeAspNetCoreTransportVersion`）→ 与 SDK 内置
    `11.0.0-dev` runtime 错配（dev < rc.1，roll-forward 不能向下，设备上会启动失败）。
 2. **重打包 nupkg**：把 runtimeconfig framework version 改为 `11.0.0-dev`（纯配置改动，无二进制影响）。
-3. **重打包 blob**：`aspnetcore-runtime-11.0.0-dev-linux-ohos-arm64.tar.gz` 内同样修 runtimeconfig，
+3. **重打包 blob**：`aspnetcore-runtime-11.0.0-dev-ohos-arm64.tar.gz` 内同样修 runtimeconfig，
    预置到 `artifacts/obj/redist/Release/net11.0/redist-downloads/`。
 4. SDK 构建覆盖 `MicrosoftAspNetCoreAppRuntimePackageVersion` + `MicrosoftAspNetCoreAppRefPackageVersion`
    为 `11.0.0-dev`，让 SDK 从本地 feed 拉 dev 包并铺到 `shared/Microsoft.AspNetCore.App/11.0.0-dev/`。
 
-**产物验证**（`dotnet-sdk-11.0.100-dev-linux-ohos-arm64.tar.gz`，175MB）：
+**产物验证**（`dotnet-sdk-11.0.100-dev-ohos-arm64.tar.gz`，175MB）：
 - `shared/Microsoft.AspNetCore.App/11.0.0-dev/`：132 个 aspnetcore dll（Kestrel/Mvc/SignalR/Identity 等）
 - aspnetcore runtimeconfig 依赖 `11.0.0-dev` ✅（与内置 runtime 对齐）
 - `shared/Microsoft.NETCore.App/11.0.0-dev/`：base runtime（含 NUMA/TMPDIR 修复）✅

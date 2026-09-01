@@ -10,13 +10,13 @@ namespace Microsoft.DotNet.Cli;
 /// mprotect, ships no ICU, and mounts /tmp read-only; the wrapper script previously exported
 /// these before launching dotnet. Baked runtimeconfig options cover the SDK's own processes,
 /// and these environment defaults cover every child process (MSBuild, csc, apphosts) that
-/// inherits the CLI's environment. Only active when running on a linux-ohos RID.
+/// inherits the CLI's environment. Only active when running on a ohos RID.
 /// </summary>
 internal static class OpenHarmonyEnvironmentDefaults
 {
     public static void Apply()
     {
-        if (!RuntimeInformation.RuntimeIdentifier.StartsWith("linux-ohos", StringComparison.Ordinal))
+        if (!RuntimeInformation.RuntimeIdentifier.StartsWith("ohos", StringComparison.Ordinal))
         {
             return;
         }

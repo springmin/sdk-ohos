@@ -285,35 +285,6 @@
         "unix-riscv64"
       ]
     },
-    "linux-ohos": {
-      "#import": [
-        "linux"
-      ]
-    },
-    "linux-ohos-arm": {
-      "#import": [
-        "linux-ohos",
-        "linux-arm"
-      ]
-    },
-    "linux-ohos-arm64": {
-      "#import": [
-        "linux-ohos",
-        "linux-arm64"
-      ]
-    },
-    "linux-ohos-x64": {
-      "#import": [
-        "linux-ohos",
-        "linux-x64"
-      ]
-    },
-    "linux-ohos-x86": {
-      "#import": [
-        "linux-ohos",
-        "linux-x86"
-      ]
-    },
     "linux-s390x": {
       "#import": [
         "linux",
@@ -499,6 +470,29 @@
     "win-x86": {
       "#import": [
         "win"
+      ]
+    },
+    "ohos": {
+      "#import": [
+        "linux-musl"
+      ]
+    },
+    "ohos-arm": {
+      "#import": [
+        "ohos",
+        "linux-musl-arm"
+      ]
+    },
+    "ohos-arm64": {
+      "#import": [
+        "ohos",
+        "linux-musl-arm64"
+      ]
+    },
+    "ohos-x64": {
+      "#import": [
+        "ohos",
+        "linux-musl-x64"
       ]
     }
   }
