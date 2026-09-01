@@ -34,6 +34,17 @@
     <PortableTargetRid Condition="'$(PortableTargetRid)' == ''">$(OSName)-$(TargetArchitecture)</PortableTargetRid>
   </PropertyGroup>
 
+  <!--
+    NativeAotSupported (from the vendored eng/common/native/NativeAotSupported.props) does not
+    exclude ohos, but the OHOS NativeAOT toolchain is not wired into the SDK build (Layout
+    excludes ohos from _DotnetAotIsNativeBuild/_DotnetAotIsCrossBuild). Without this, dotnet-aot
+    would set RuntimeIdentifier=ohos-arm64 and restore would fail NETSDK1203. linux-musl stays
+    enabled: upstream AOT-builds dotnet-aot on it (official ILCompiler pack exists).
+  -->
+  <PropertyGroup>
+    <NativeAotSupported Condition="'$(OSName)' == 'ohos'">false</NativeAotSupported>
+  </PropertyGroup>
+
   <PropertyGroup>
     <Nullable>enable</Nullable>
   </PropertyGroup>
