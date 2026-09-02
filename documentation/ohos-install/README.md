@@ -49,9 +49,15 @@ INSTALL_DIR=/data/xxx/dotnet sh install-dotnet-ohos.sh sdk
 脚本自动完成：
 1. 从 GitHub Release 下载（或使用本地 tar.gz）
 2. 解压到 `$HOME/.dotnet`（默认）
-3. 为所有 ELF 二进制添加 `.codesign` 签名段
-4. 写入 `DOTNET_ROOT` + `PATH` 到 `~/.bashrc` / `~/.zshrc` / `~/.profile`（已存在则跳过）
-5. `dotnet --list-runtimes` 验证
+3. 部署 **C++ 运行时库**（`libstdc++.so.6` + `libgcc_s.so.1`，从 ILCompiler pack 提取到 `/lib` 或 `$INSTALL_DIR/lib`）——设备端 NativeAOT（`ilc`）必需
+4. 为所有 ELF 二进制添加 `.codesign` 签名段
+5. 写入 `DOTNET_ROOT` + `PATH` 到 `~/.bashrc` / `~/.zshrc` / `~/.profile`（已存在则跳过）
+6. `dotnet --list-runtimes` 验证
+
+> **设备端 NativeAOT 说明**：HarmonyOS 只带 LLVM `libc++_shared.so`，而 ilc（AOT 编译器）
+> 链接 GNU `libstdc++.so.6` + `libgcc_s.so.1`。安装脚本会自动部署这两个库
+> （ILCompiler pack 已携带）。若部署到 `$INSTALL_DIR/lib`（`/lib` 不可写时），
+> 运行 ilc 需 `LD_LIBRARY_PATH=$INSTALL_DIR/lib`。
 
 ### 方式 B：手动安装
 

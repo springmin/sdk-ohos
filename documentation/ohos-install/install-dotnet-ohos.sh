@@ -126,6 +126,40 @@ install_tarball() {
     tar zxf "$tb" -C "$INSTALL_DIR" || die "tar extraction failed: ${tb}"
 }
 
+# ------------------------------------------------------------------ cxx runtime
+# The NativeAOT toolchain (ilc) links GNU libstdc++.so.6 + libgcc_s.so.1 which the
+# device (HarmonyOS) does not ship (it only has LLVM libc++). The ILCompiler pack
+# carries both under its tools/ dir; deploy them to a location the dynamic loader
+# finds (system /lib when writable, else $INSTALL_DIR/lib + LD_LIBRARY_PATH).
+deploy_cxx_runtime() {
+    # find libstdc++/libgcc shipped anywhere in the install (ILCompiler pack tools/)
+    STDCPP=""
+    LIBGCC=""
+    while IFS= read -r f; do
+        case "$f" in
+            *libstdc++.so.6) STDCPP="$f" ;;
+            *libgcc_s.so.1)  LIBGCC="$f" ;;
+        esac
+    done <<EOF
+$(find "$INSTALL_DIR" -name 'libstdc++.so.6' -o -name 'libgcc_s.so.1' 2>/dev/null)
+EOF
+    [ -n "$STDCPP" ] || { info "no libstdc++/libgcc found in install (ILCompiler pack not present)"; return 0; }
+
+    info "deploying C++ runtime for device-side NativeAOT (ilc)"
+    if [ -w /lib ]; then
+        cp -f "$STDCPP" /lib/libstdc++.so.6 && cp -f "$LIBGCC" /lib/libgcc_s.so.1 \
+            && info "  installed libstdc++.so.6 + libgcc_s.so.1 -> /lib" \
+            || warn_echo "  WARN: could not write /lib; falling back to \$INSTALL_DIR/lib"
+    fi
+    if [ ! -f /lib/libstdc++.so.6 ]; then
+        mkdir -p "$INSTALL_DIR/lib"
+        cp -f "$STDCPP" "$INSTALL_DIR/lib/libstdc++.so.6"
+        cp -f "$LIBGCC" "$INSTALL_DIR/lib/libgcc_s.so.1"
+        info "  installed to \$INSTALL_DIR/lib (add to LD_LIBRARY_PATH if ilc still can't load)"
+    fi
+}
+warn_echo() { printf '%s\n' "$*" >&2; }
+
 sign_all() {
     info "signing ELF binaries (.codesign) ..."
     CNTFILE="${TMPDIR:-/tmp}/dotnet-sign-cnt.$$"
@@ -201,6 +235,7 @@ else
 fi
 
 install_tarball "$TARBALL"
+deploy_cxx_runtime
 sign_all
 setup_profile "${HOME}/.bashrc"
 setup_profile "${HOME}/.zshrc"
