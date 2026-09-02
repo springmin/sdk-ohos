@@ -27,9 +27,10 @@
            on, which produces images for the wrong OS when cross-compiling the SDK toolset (e.g.
            building an OpenBSD SDK on a Linux host). crossgen2 only recognizes the base OS name, so
            Linux flavors ('linux-musl', 'linux-bionic') must be normalized to 'linux'. OpenHarmony
-           is kernel-agnostic (not a Linux flavor) but its R2R images are Linux ELF (musl ABI), so
-           it also normalizes to 'linux' -- mirroring the runtime's MSBuild layer which maps
-           -os ohos to TargetOS=linux with __PortableTargetOS=ohos (eng/build.sh). -->
+           is its own TargetOS (kernel-agnostic RID) but its R2R images are Linux ELF (musl ABI) and
+           crossgen2's TargetOS whitelist has no ohos, so it also normalizes to 'linux', matching
+           the runtime's compile-level remap (crossgen-corelib.proj _CrossGenTargetOS, SingleEntry
+           _targetOS). -->
       <_CrossgenTargetOS>$(TargetOS)</_CrossgenTargetOS>
       <_CrossgenTargetOS Condition="$(TargetOS.StartsWith('linux'))">linux</_CrossgenTargetOS>
       <_CrossgenTargetOS Condition="$(TargetOS.StartsWith('ohos'))">linux</_CrossgenTargetOS>
