@@ -1,0 +1,4 @@
+# Host selfsign binary (build artifact) + local publish output
+selfsign
+bin/
+obj/
