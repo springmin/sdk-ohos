@@ -97,6 +97,23 @@ selfsign <input_elf> [output_elf] [--force] [--strip]
 > 独立运行（不依赖 MSBuild）。已在 qemu（aarch64 OHOS 环境）验证签名结果
 > 与官方工具字节级一致。
 
+**预构建版本**（sdk-ohos Release 提供，无需自行编译）：
+
+```sh
+# 宿主（x64 Linux，交叉编译机 / CI）—— 签名 OHOS ELF：
+#   https://github.com/springmin/sdk-ohos/releases/download/v11.0.100-rc.1.26451.1-ohos/selfsign-linux-x64
+# 设备端（ohos-arm64，NativeAOT 单文件）—— 在真机上签名：
+#   https://github.com/springmin/sdk-ohos/releases/download/v11.0.100-rc.1.26451.1-ohos/selfsign-ohos-arm64
+
+# 宿主批量预签名（配合 sign-ohos-release.sh）：
+sh sign-ohos-release.sh <dir-or-tarball> ...   # SELFSIGN=<path> 指定 selfsign
+```
+
+> 两个版本实现同一 `ElfSelfSigner` 算法——输出**字节级一致**、确定性、
+> 无设备依赖。宿主 x64 版本已在交叉编译机验证（签名 aarch64 ELF 正常）；
+> 设备端版本构建于 NativeAOT 交叉编译，真机运行需 `libc++_shared.so` +
+> `libstdc++.so.6` + `libgcc_s.so.1`（后两者随 runtime 的 ILCompiler pack 提供）。
+
 ## 4. 验证
 
 ```sh
