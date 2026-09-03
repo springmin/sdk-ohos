@@ -4625,27 +4625,20 @@
         "win8-x86-aot"
       ]
     },
-    "ohos": {
-      "#import": [
-        "linux-musl"
-      ]
-    },
+    "ohos": {},
     "ohos-arm": {
       "#import": [
-        "ohos",
-        "linux-musl-arm"
+        "ohos"
       ]
     },
     "ohos-arm64": {
       "#import": [
-        "ohos",
-        "linux-musl-arm64"
+        "ohos"
       ]
     },
     "ohos-x64": {
       "#import": [
-        "ohos",
-        "linux-musl-x64"
+        "ohos"
       ]
     }
   }
