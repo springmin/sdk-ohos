@@ -154,3 +154,24 @@ SDK/Runtime 已内嵌全部 OHOS 沙箱修复，**不再需要**外部 wrapper /
 
 **Q: 签名报 `failed=N`**
 个别文件签名失败不会中断（仅警告），但 `failed > 0` 会终止安装。重跑脚本即可。
+
+## RID independence (2026-09-03)
+
+Per review guidance (ohos must not pretend to be a Linux flavor at the RID
+level), the ohos RID entries in `eng/RuntimeIdentifierGraph.ohos.json` and
+`eng/PortableRuntimeIdentifierGraph.ohos.json` no longer `#import linux-musl`:
+
+- `ohos` → `{}` (independent base RID)
+- `ohos-arm` / `ohos-arm64` / `ohos-x64` → `{"#import": ["ohos"]}` only
+
+Consequences:
+- NuGet no longer falls back ohos → linux-musl packs; a missing ohos pack is
+  now NU1101 (explicit) instead of silently resolving a non-OHOS
+  (no `.note.ohos.ident`) artifact that fails at dlopen on device.
+- The compile-level linux remap (configureplatform.cmake) is unchanged.
+- All ohos-arm64 asset packs are published for rc.1.26451.1 (runtime,
+  ILCompiler, NativeAOT, Host, Crossgen2), so independent resolution works.
+
+To rebuild with the independent graph, the bootstrap SDK copies under
+`.dotnet/sdk/*/` (RuntimeIdentifierGraph.json / PortableRuntimeIdentifierGraph.json)
+must carry the same ohos entries — they were regenerated on 2026-09-03.
