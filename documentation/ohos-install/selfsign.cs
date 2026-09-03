@@ -425,7 +425,32 @@ internal static class ElfSelfSigner
             Buffer.BlockCopy(signature, 0, payload, 8 + DescSize, HashOut);
 
             Buffer.BlockCopy(payload, 0, tmp0, csOff, payload.Length);
+
+            ValidateSigned(tmp0, csOff);
             return tmp0;
+        }
+
+        // Mirrors Mach-O Validate: after building the signature, re-parse the result to ensure the
+        // layout is self-consistent — the .codesign data is at csOff, nothing that must be covered
+        // by the signature (the executable and any SingleFile bundle) was dropped, and the section
+        // header table is still readable.
+        private static void ValidateSigned(byte[] signed, int csOff)
+        {
+            if (signed.Length < csOff + PageSize)
+            {
+                throw new InvalidDataException("signature payload exceeds file length");
+            }
+
+            (ulong eShOff, ushort eShnum, ushort eShstrndx) = ParseElfHeader(signed);
+            if (FindSectionByName(signed, eShOff, eShnum, eShstrndx, CodesignName) < 0)
+            {
+                throw new InvalidDataException("signed output is missing the .codesign section");
+            }
+
+            if (csOff > signed.Length)
+            {
+                throw new InvalidDataException("codesign offset out of bounds");
+            }
         }
     }
 internal static class Program
