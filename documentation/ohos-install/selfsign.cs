@@ -269,6 +269,14 @@ internal static class ElfSelfSigner
                 }
             }
 
+            // SingleFile bundles (and other data) may follow the section header table but are not
+            // covered by any section. Preserve everything through the real end of file so the
+            // bundle survives re-signing (otherwise the apphost is truncated to its ELF-only part).
+            if ((ulong)elf.Length > curEnd)
+            {
+                curEnd = (ulong)elf.Length;
+            }
+
             int csOff = (int)AlignUp(curEnd, PageSize);
 
             int shstrStart = (int)shstrOff;
