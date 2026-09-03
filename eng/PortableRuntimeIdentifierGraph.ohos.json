@@ -487,6 +487,23 @@
       "#import": [
         "ohos"
       ]
+    },
+    "openbsd": {
+      "#import": [
+        "unix"
+      ]
+    },
+    "openbsd-arm64": {
+      "#import": [
+        "openbsd",
+        "unix-arm64"
+      ]
+    },
+    "openbsd-x64": {
+      "#import": [
+        "openbsd",
+        "unix-x64"
+      ]
     }
   }
 }
