@@ -316,6 +316,14 @@ namespace Microsoft.NET.Build.Tasks
                 }
             }
 
+            // SingleFile bundles (and other data) may follow the section header table but are not
+            // covered by any section. Preserve everything through the real end of file so the
+            // bundle survives signing (otherwise the apphost is truncated to its ELF-only part).
+            if ((ulong)elf.Length > curEnd)
+            {
+                curEnd = (ulong)elf.Length;
+            }
+
             int csOff = (int)AlignUp(curEnd, PageSize);
 
             int shstrStart = (int)shstrOff;
