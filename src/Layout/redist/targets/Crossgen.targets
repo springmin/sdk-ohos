@@ -28,12 +28,12 @@
            building an OpenBSD SDK on a Linux host). crossgen2 only recognizes the base OS name, so
            Linux flavors ('linux-musl', 'linux-bionic') must be normalized to 'linux'. OpenHarmony
            is its own TargetOS (kernel-agnostic RID) but its R2R images are Linux ELF (musl ABI) and
-           crossgen2's TargetOS whitelist has no ohos, so it also normalizes to 'linux', matching
+           crossgen2's TargetOS whitelist has no openharmony, so it also normalizes to 'linux', matching
            the runtime's compile-level remap (crossgen-corelib.proj _CrossGenTargetOS, SingleEntry
            _targetOS). -->
       <_CrossgenTargetOS>$(TargetOS)</_CrossgenTargetOS>
       <_CrossgenTargetOS Condition="$(TargetOS.StartsWith('linux'))">linux</_CrossgenTargetOS>
-      <_CrossgenTargetOS Condition="$(TargetOS.StartsWith('ohos'))">linux</_CrossgenTargetOS>
+      <_CrossgenTargetOS Condition="$(TargetOS.StartsWith('openharmony'))">linux</_CrossgenTargetOS>
     </PropertyGroup>
 
     <!-- This PropertyGroup contains the paths to the various SDK tooling that should be

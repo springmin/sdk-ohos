@@ -886,7 +886,7 @@ Copyright (c) .NET Foundation. All rights reserved.
      -->
   <UsingTask TaskName="OpenHarmonyCodesign" AssemblyFile="$(MicrosoftNETBuildTasksAssembly)" />
   <PropertyGroup>
-    <_OpenHarmonyCodesignEnabled Condition="$([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('ohos')) or $([System.String]::Copy('$(NETCoreSdkRuntimeIdentifier)').StartsWith('ohos'))">true</_OpenHarmonyCodesignEnabled>
+    <_OpenHarmonyCodesignEnabled Condition="$([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('openharmony')) or $([System.String]::Copy('$(NETCoreSdkRuntimeIdentifier)').StartsWith('openharmony'))">true</_OpenHarmonyCodesignEnabled>
   </PropertyGroup>
   <Target Name="_OpenHarmonyCodesignBuildOutputs"
           AfterTargets="Build"

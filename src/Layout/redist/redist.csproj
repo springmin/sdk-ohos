@@ -130,7 +130,7 @@
     runtimeconfig.json, which GenerateCliRuntimeConfigurationFiles copies to every
     bundled tool, so the SDK runs on OHOS without external environment variables.
   -->
-  <ItemGroup Condition="'$(OSName)' == 'ohos'">
+  <ItemGroup Condition="'$(OSName)' == 'openharmony'">
     <RuntimeHostConfigurationOption Include="System.Runtime.EnableWriteXorExecute" Value="false" />
     <RuntimeHostConfigurationOption Include="System.Globalization.Invariant" Value="true" />
   </ItemGroup>

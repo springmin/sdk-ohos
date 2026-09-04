@@ -84,7 +84,7 @@ OpenHarmony 只执行带 `.codesign` 段的 ELF。**Release 产物未预签名**
 ```sh
 # 在设备上构建（需要 .NET SDK）：
 #   复制 selfsign.cs + selfsign.csproj 到设备，然后：
-dotnet publish selfsign.csproj -c Release -r ohos-arm64   # AOT 单文件
+dotnet publish selfsign.csproj -c Release -r openharmony-arm64   # AOT 单文件
 # 或普通模式（需 .NET runtime）：
 dotnet publish selfsign.csproj -c Release -p:PublishAot=false
 
@@ -119,7 +119,7 @@ sh sign-ohos-release.sh <dir-or-tarball> ...   # SELFSIGN=<path> 指定 selfsign
 ```sh
 dotnet --list-sdks        # 应显示 11.0.100-rc.1.26451.1
 dotnet --list-runtimes    # 应显示 11.0.0-rc.1.26451.1（含 Microsoft.AspNetCore.App）
-dotnet --info             # RID: ohos-arm64
+dotnet --info             # RID: openharmony-arm64
 
 # 编译并运行一个 ASP.NET Core 应用（SDK 已内嵌 aspnetcore runtime）
 dotnet new web -o hello && cd hello
@@ -157,21 +157,21 @@ SDK/Runtime 已内嵌全部 OHOS 沙箱修复，**不再需要**外部 wrapper /
 
 ## RID independence (2026-09-03)
 
-Per review guidance (ohos must not pretend to be a Linux flavor at the RID
-level), the ohos RID entries in `eng/RuntimeIdentifierGraph.ohos.json` and
-`eng/PortableRuntimeIdentifierGraph.ohos.json` no longer `#import linux-musl`:
+Per review guidance (openharmony must not pretend to be a Linux flavor at the RID
+level), the openharmony RID entries in `eng/RuntimeIdentifierGraph.openharmony.json` and
+`eng/PortableRuntimeIdentifierGraph.openharmony.json` no longer `#import linux-musl`:
 
-- `ohos` → `{}` (independent base RID)
-- `ohos-arm` / `ohos-arm64` / `ohos-x64` → `{"#import": ["ohos"]}` only
+- `openharmony` → `{}` (independent base RID)
+- `openharmony-arm` / `openharmony-arm64` / `openharmony-x64` → `{"#import": ["openharmony"]}` only
 
 Consequences:
-- NuGet no longer falls back ohos → linux-musl packs; a missing ohos pack is
+- NuGet no longer falls back openharmony → linux-musl packs; a missing openharmony pack is
   now NU1101 (explicit) instead of silently resolving a non-OHOS
   (no `.note.ohos.ident`) artifact that fails at dlopen on device.
 - The compile-level linux remap (configureplatform.cmake) is unchanged.
-- All ohos-arm64 asset packs are published for rc.1.26451.1 (runtime,
+- All openharmony-arm64 asset packs are published for rc.1.26451.1 (runtime,
   ILCompiler, NativeAOT, Host, Crossgen2), so independent resolution works.
 
 To rebuild with the independent graph, the bootstrap SDK copies under
 `.dotnet/sdk/*/` (RuntimeIdentifierGraph.json / PortableRuntimeIdentifierGraph.json)
-must carry the same ohos entries — they were regenerated on 2026-09-03.
+must carry the same openharmony entries — they were regenerated on 2026-09-03.

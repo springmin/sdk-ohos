@@ -36,13 +36,13 @@
 
   <!--
     NativeAotSupported (from the vendored eng/common/native/NativeAotSupported.props) does not
-    exclude ohos, but the OHOS NativeAOT toolchain is not wired into the SDK build (Layout
-    excludes ohos from _DotnetAotIsNativeBuild/_DotnetAotIsCrossBuild). Without this, dotnet-aot
-    would set RuntimeIdentifier=ohos-arm64 and restore would fail NETSDK1203. linux-musl stays
+    exclude openharmony, but the OHOS NativeAOT toolchain is not wired into the SDK build (Layout
+    excludes openharmony from _DotnetAotIsNativeBuild/_DotnetAotIsCrossBuild). Without this, dotnet-aot
+    would set RuntimeIdentifier=openharmony-arm64 and restore would fail NETSDK1203. linux-musl stays
     enabled: upstream AOT-builds dotnet-aot on it (official ILCompiler pack exists).
   -->
   <PropertyGroup>
-    <NativeAotSupported Condition="'$(OSName)' == 'ohos'">false</NativeAotSupported>
+    <NativeAotSupported Condition="'$(OSName)' == 'openharmony'">false</NativeAotSupported>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -131,7 +131,7 @@
   <PropertyGroup>
     <!-- Runtime and Apphost pack versions are the same for all RIDs. We flow the x64 version above and create aliases without the winx64 here for clarity elsewhere.
          The '== ''' guards let the official (non-source-build) build override just the Host/Runtime pack versions via /p: on the command line for a
-         locally-built runtime (e.g. an unofficial ohos RID whose packs only exist at a dev version), without also retargeting the shared
+         locally-built runtime (e.g. an unofficial openharmony RID whose packs only exist at a dev version), without also retargeting the shared
          Microsoft.NETCore.App.Ref / ILLink / Crossgen2 companion packages that must stay at the flowed version. -->
     <MicrosoftNETCoreAppHostPackageVersion Condition="'$(MicrosoftNETCoreAppHostPackageVersion)' == ''">$(MicrosoftNETCoreAppRefPackageVersion)</MicrosoftNETCoreAppHostPackageVersion>
     <MicrosoftNETCoreAppRuntimePackageVersion Condition="'$(MicrosoftNETCoreAppRuntimePackageVersion)' == ''">$(MicrosoftNETCoreAppRefPackageVersion)</MicrosoftNETCoreAppRuntimePackageVersion>

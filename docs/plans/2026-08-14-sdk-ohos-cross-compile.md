@@ -44,7 +44,7 @@
 | 1 | `src/Layout/Directory.Build.props` | `SharedFrameworkRid` 加 `linux-ohos` 分支（仿 musl）；`UsePortableLinuxSharedFramework` 排除 ohos；`_DotnetAotIsNativeBuild/_IsCrossBuild` 排除 ohos；`SkipBuildingInstallers` 加 ohos | `4012a12b54` |
 | 2 | `src/Layout/redist/targets/GenerateBundledVersions.targets` | `Net110AppHostRids`/`Net110RuntimePackRids`/`Net110Crossgen2SupportedRids`/`Net110ILCompilerSupportedRids` 加 `linux-ohos-*` | `4012a12b54` |
 | 3 | `src/Layout/redist/targets/GenerateLayout.targets` | `PublishRuntimeIdentifierGraphFiles` 支持 RID 图源覆盖（`RidGraphOverrideRuntimeJson`/`RidGraphOverridePortableJson`） | `4012a12b54` |
-| 4 | `eng/RuntimeIdentifierGraph.ohos.json` + `eng/PortableRuntimeIdentifierGraph.ohos.json` | 注入 linux-ohos 的 RID 图（来自 runtime 分支 + 手工注入 portable） | `4012a12b54` |
+| 4 | `eng/RuntimeIdentifierGraph.openharmony.json` + `eng/PortableRuntimeIdentifierGraph.openharmony.json` | 注入 linux-ohos 的 RID 图（来自 runtime 分支 + 手工注入 portable） | `4012a12b54` |
 | 5 | `Directory.Build.props` + `Directory.Build.targets` | `NativeAotSupported` 对 linux-musl/linux-ohos 强制 false；Host/Runtime 版本别名加 `== ''` 守卫（可 `/p:` 覆盖） | `cc48483f09` |
 | 6 | `src/Cli/dotnet-aot/dotnet-aot.csproj` + `src/Cli/dn/dn.csproj` | `PublishAot`/`IsAotCompatible` gate 于 `NativeAotSupported`（防 restore 拉 ILCompiler 失败） | `cc48483f09` |
 | 7 | `test/dotnet-aot.Tests/dotnet-aot.Tests.csproj` | 补 `EXCLUDE_ASPNETCORE` 宏（与 dotnet-aot 一致） | `539a350cc4` |
@@ -142,8 +142,8 @@ cp ~/springmin/sources/runtime/artifacts/packages/Release/Shipping/dotnet-runtim
   /p:MicrosoftNETCoreAppHostPackageVersion=11.0.0-dev \
   /p:MicrosoftNETCoreAppRuntimePackageVersion=11.0.0-dev \
   /p:RestoreAdditionalProjectSources=$PWD/artifacts/ohos-local-feed \
-  /p:RidGraphOverrideRuntimeJson=$PWD/eng/RuntimeIdentifierGraph.ohos.json \
-  /p:RidGraphOverridePortableJson=$PWD/eng/PortableRuntimeIdentifierGraph.ohos.json \
+  /p:RidGraphOverrideRuntimeJson=$PWD/eng/RuntimeIdentifierGraph.openharmony.json \
+  /p:RidGraphOverridePortableJson=$PWD/eng/PortableRuntimeIdentifierGraph.openharmony.json \
   /p:IncludeAspNetCoreRuntime=false
 ```
 
@@ -260,8 +260,8 @@ cp ~/springmin/sources/runtime/artifacts/packages/Release/Shipping/dotnet-runtim
   /p:TargetOS=linux-ohos /p:TargetArchitecture=arm64 \
   /p:MicrosoftNETCoreAppHostPackageVersion=10.0.10-dev \
   /p:RestoreAdditionalProjectSources=$PWD/artifacts/ohos-local-feed-10 \
-  /p:RidGraphOverrideRuntimeJson=$PWD/eng/RuntimeIdentifierGraph.ohos.json \
-  /p:RidGraphOverridePortableJson=$PWD/eng/PortableRuntimeIdentifierGraph.ohos.json \
+  /p:RidGraphOverrideRuntimeJson=$PWD/eng/RuntimeIdentifierGraph.openharmony.json \
+  /p:RidGraphOverridePortableJson=$PWD/eng/PortableRuntimeIdentifierGraph.openharmony.json \
   /p:IncludeAspNetCoreRuntime=false /p:SkipUsingCrossgen=true \
   /p:SkipBuildingInstallers=true /p:AllowMissingPrunePackageData=true
 ```
@@ -315,8 +315,8 @@ dotnet-user-jwts --help → Usage: dotnet user-jwts [options] [command] ✅
   /p:MicrosoftNETCoreAppRuntimePackageVersion=11.0.0-dev \
   /p:MicrosoftAspNetCoreAppRefPackageVersion=11.0.0-dev \
   /p:RestoreAdditionalProjectSources=$PWD/artifacts/ohos-local-feed \
-  /p:RidGraphOverrideRuntimeJson=$PWD/eng/RuntimeIdentifierGraph.ohos.json \
-  /p:RidGraphOverridePortableJson=$PWD/eng/PortableRuntimeIdentifierGraph.ohos.json \
+  /p:RidGraphOverrideRuntimeJson=$PWD/eng/RuntimeIdentifierGraph.openharmony.json \
+  /p:RidGraphOverridePortableJson=$PWD/eng/PortableRuntimeIdentifierGraph.openharmony.json \
   /p:AllowMissingPrunePackageData=true
 ```
 

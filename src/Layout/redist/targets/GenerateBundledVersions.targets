@@ -292,8 +292,8 @@
 
       <Net110AppHostRids Include="
         @(Net100AppHostRids);
-        ohos-arm64;
-        ohos-x64;
+        openharmony-arm64;
+        openharmony-x64;
         haiku-x64;
         illumos-x64;
         solaris-x64;
@@ -312,8 +312,8 @@
         tvossimulator-x64;
         maccatalyst-x64;
         maccatalyst-arm64;
-        ohos-arm64;
-        ohos-x64;
+        openharmony-arm64;
+        openharmony-x64;
         haiku-x64;
         illumos-x64;
         solaris-x64;
@@ -463,8 +463,8 @@
 
       <Net110Crossgen2SupportedRids Include="
         @(Net100Crossgen2SupportedRids);
-        ohos-arm64;
-        ohos-x64;
+        openharmony-arm64;
+        openharmony-x64;
         haiku-x64;
         illumos-x64;
         solaris-x64;
@@ -522,14 +522,14 @@
         @(Net90ILCompilerSupportedRids);
         linux-riscv64;
         linux-musl-riscv64;
-        ohos-arm64;
-        ohos-x64;
+        openharmony-arm64;
+        openharmony-x64;
         " />
 
       <Net110ILCompilerSupportedRids Include="
         @(Net100ILCompilerSupportedRids);
-        ohos-arm64;
-        ohos-x64;
+        openharmony-arm64;
+        openharmony-x64;
         haiku-x64;
         illumos-x64;
         solaris-x64;
@@ -603,14 +603,14 @@
         android-arm;
         android-arm64;
         android-x64;
-        ohos-arm64;
-        ohos-x64;
+        openharmony-arm64;
+        openharmony-x64;
         " />
 
       <Net110NativeAOTRuntimePackRids Include="
         @(Net100NativeAOTRuntimePackRids);
-        ohos-arm64;
-        ohos-x64;
+        openharmony-arm64;
+        openharmony-x64;
         haiku-x64;
         illumos-x64;
         solaris-x64;
@@ -632,7 +632,7 @@
       <AspNetCore80RuntimePackRids Remove="win-arm" />
       <AspNetCore90RuntimePackRids Include="@(AspNetCore80RuntimePackRids);linux-riscv64;linux-musl-riscv64;linux-loongarch64;linux-musl-loongarch64;" />
       <AspNetCore100RuntimePackRids Include="@(AspNetCore90RuntimePackRids)" />
-      <AspNetCore110RuntimePackRids Include="@(AspNetCore100RuntimePackRids);ohos-arm64;ohos-x64" />
+      <AspNetCore110RuntimePackRids Include="@(AspNetCore100RuntimePackRids);openharmony-arm64;openharmony-x64" />
       <AspNetCore110RuntimePackRids
         Condition="'$(BundleRuntimePacks)' == 'true'"
         Include="$(ProductMonikerRid)" />

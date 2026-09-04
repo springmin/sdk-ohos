@@ -19,7 +19,7 @@
     <NativeLib>Shared</NativeLib>
     <!--
       NativeAOT compilation is only wired up on platforms where the NativeAOT toolchain exists
-      (see the vendored NativeAotSupported.props and the Linux-musl/ohos exclusion in
+      (see the vendored NativeAotSupported.props and the Linux-musl/openharmony exclusion in
       Directory.Build.props). On other platforms PublishAot must be off, otherwise restore pulls
       the ILCompiler runtime pack for the target RID and fails (NU1102).
     -->
