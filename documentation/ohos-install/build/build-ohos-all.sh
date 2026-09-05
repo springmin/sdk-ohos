@@ -161,6 +161,87 @@ sign_all() {
   python3 "$SCRIPT_DIR/sign-ohos-pre.py" "$SELFSIGN_BIN" "$@" || die "signing failed"
 }
 
+# singlefilehost links against libruntimeinfo.a; its ninja target is not
+# ordered first on a clean build (link fails with "cannot open libruntimeinfo.a").
+ensure_runtimeinfo() {
+  local nio="$RUNTIME_REPO/artifacts/obj/coreclr/ohos.$ARCH.$CONFIG/debug/runtimeinfo/libruntimeinfo.a"
+  if [ ! -s "$nio" ]; then
+    info "pre-building libruntimeinfo.a (clean-build link order)..."
+    (cd "$RUNTIME_REPO/artifacts/obj/coreclr/ohos.$ARCH.$CONFIG" \
+      && ninja debug/runtimeinfo/libruntimeinfo.a) >>"$LOG" 2>&1 || die "libruntimeinfo.a build failed"
+  fi
+}
+
+# On a clean build the shims (NetFx facade assemblies: System.dll, mscorlib,
+# netstandard, ...) are filtered out of libs.sfx by the unix-vs-net11.0 TFM
+# mismatch and sfx-finish fails ("...were missing"). Compile all shims (their
+# referenced libs are already built at that point) and copy the facades into
+# the shared-framework layout, then retry the libs build once.
+compile_shims_into_layout() {
+  local rsp="$RUNTIME_REPO/.dotnet/sdk/$RIDGRAPH_SDKVER/RuntimeIdentifierGraph.json"
+  local layout="$RUNTIME_REPO/artifacts/bin/microsoft.netcore.app.runtime.$RID/$CONFIG/runtimes/$RID/lib/net11.0"
+  mkdir -p "$layout"
+  info "compiling shims (facade assemblies) and copying into the layout..."
+  for P in $(find "$RUNTIME_REPO/src/libraries/shims" -name "*.csproj" -path "*/src/*" | sort); do
+    (cd "$RUNTIME_REPO" && ./.dotnet/dotnet build "$P" -c "$CONFIG" \
+      -p:TargetOS=ohos -p:TargetArchitecture="$ARCH" -p:PortableOS=ohos -p:UseBootstrapLayout=true \
+      "-p:RuntimeIdentifierGraphPath=$rsp" -p:IncludeSymbols=false \
+      -p:PreReleaseVersionLabel="$LABEL" -p:PreReleaseVersion="$PRE" -p:OfficialBuildId="$BUILDID" \
+      -v:q -nologo) >>"$LOG" 2>&1 || { echo "shim build failed: $P" | tee -a "$LOG"; return 1; }
+  done
+  for D in "$RUNTIME_REPO"/artifacts/bin/*/Release/net11.0-unix; do
+    [ -d "$D" ] || continue
+    for F in "$D"/*.dll; do
+      [ -f "$F" ] || continue
+      case "$(basename "$F")" in System.Private.*|System.Runtime.dll) continue ;; esac
+      cp -f "$F" "$layout/" 2>/dev/null || true
+    done
+  done
+  info "shims compiled and facades copied into $layout"
+}
+
+# runtime clr+libs+packs build with clean-build fixes: pre-build
+# libruntimeinfo.a, and on an sfx-finish "facades missing" failure compile the
+# shims and retry once. Normal (incremental) runs never take the retry path.
+build_clr_libs_packs() {
+  # A clean build hits two self-healing failures (both from ordering, not from
+  # our code): singlefilehost links before libruntimeinfo.a is built, and
+  # sfx-finish runs before the shims (facades) are compiled. Handle each once
+  # and retry; normal incremental runs never take these paths.
+  local attempt=0
+  local fixed=""
+  while :; do
+    if ./build.sh -os ohos -arch "$ARCH" --cross -c "$CONFIG" -lc "$CONFIG" -rc "$CONFIG" \
+        -subset clr+libs+packs \
+        /p:UseBootstrapLayout=true /p:BuildHostTools=true /p:ApiCompatValidateAssemblies=false \
+        /p:RuntimeIdentifierGraphPath="$rsp" /p:IncludeSymbols=false \
+        /p:PreReleaseVersionLabel="$LABEL" /p:PreReleaseVersion="$PRE" /p:OfficialBuildId="$BUILDID" \
+        -cmakeargs "-DOPENSSL_ROOT_DIR=$OPENSSL_DIR -DOPENSSL_INCLUDE_DIR=$OPENSSL_DIR/include \
+          -DOPENSSL_CRYPTO_LIBRARY=$OPENSSL_DIR/lib/libcrypto.a -DOPENSSL_SSL_LIBRARY=$OPENSSL_DIR/lib/libssl.a \
+          -DCMAKE_ICU_DIR=$ICU_DIR" \
+        2>&1 | tee -a "$LOG"; then
+      return 0
+    fi
+    if [ -z "$fixed" ] && grep -qE "cannot open .*libruntimeinfo\.a|libhostpolicy.*No such|libruntimeinfo\.a: No such" "$LOG"; then
+      info "clean build missing libruntimeinfo.a — building and retrying"
+      ensure_runtimeinfo
+      fixed="runtimeinfo"
+      attempt=$((attempt+1))
+      continue
+    fi
+    if [ -z "$fixed" ] || [ "$fixed" = "runtimeinfo" ]; then
+      if grep -qE "sfx-finish\.proj.*were missing" "$LOG"; then
+        info "sfx-finish missing facades on clean build — compiling shims and retrying"
+        compile_shims_into_layout || die "shim compile/copy failed"
+        fixed="shims"
+        attempt=$((attempt+1))
+        continue
+      fi
+    fi
+    die "runtime build (clr+libs+packs) failed"
+  done
+}
+
 # ---- 1. runtime cross build -------------------------------------------------
 RUNTIME_RID_DIR=""       # e.g. artifacts/bin/coreclr/ohos.arm64.Release
 stage1() {
@@ -188,15 +269,7 @@ stage1() {
   # fallback), so an explicit host subset trips NETSDK1084
   # ("no application host available for the specified RuntimeIdentifier").
   # The Host pack is still produced via the packs dependency chain (host.pkg).
-  ./build.sh -os ohos -arch "$ARCH" --cross -c "$CONFIG" -lc "$CONFIG" -rc "$CONFIG" \
-    -subset clr+libs+packs \
-    /p:UseBootstrapLayout=true /p:BuildHostTools=true /p:ApiCompatValidateAssemblies=false \
-    /p:RuntimeIdentifierGraphPath="$rsp" /p:IncludeSymbols=false \
-    /p:PreReleaseVersionLabel="$LABEL" /p:PreReleaseVersion="$PRE" /p:OfficialBuildId="$BUILDID" \
-    -cmakeargs "-DOPENSSL_ROOT_DIR=$OPENSSL_DIR -DOPENSSL_INCLUDE_DIR=$OPENSSL_DIR/include \
-      -DOPENSSL_CRYPTO_LIBRARY=$OPENSSL_DIR/lib/libcrypto.a -DOPENSSL_SSL_LIBRARY=$OPENSSL_DIR/lib/libssl.a \
-      -DCMAKE_ICU_DIR=$ICU_DIR" \
-    2>&1 | tee -a "$LOG" || die "runtime build (clr+libs+packs) failed"
+  build_clr_libs_packs
   # AOT tooling packs via clr.aot+packs + explicit NativeAOT.sfxproj — the
   # fork's authoritative C.7 shape (DotNetBuildAllRuntimePacks=true would also
   # trigger Mono cross-AOT which misfires for ohos).
