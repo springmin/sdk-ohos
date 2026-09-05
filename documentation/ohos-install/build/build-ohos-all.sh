@@ -102,7 +102,7 @@ stage0() {
   info "Stage 0: environment"
   [ -n "$OHOS_NDK_HOME" ] || die "OHOS_NDK_HOME not set"
   for d in "$RUNTIME_REPO" "$SDK_REPO" "$ASCORE_REPO"; do
-    [ -d "$d/.git" ] || die "repo missing: $d"
+    [ -d "$d/.git" ] || [ -f "$d/.git" ] || die "repo missing: $d"  # .git file = git worktree
     git -C "$d" status --porcelain | grep -q . && { echo "warn: dirty tree in $d" | tee -a "$LOG"; }
   done
   [ -f "$OPENSSL_DIR/lib/libcrypto.a" ] || die "OpenSSL missing at $OPENSSL_DIR (cross-compiled for $RID)"
@@ -471,6 +471,7 @@ stage4() {
   ./build.sh -os ohos -arch "$ARCH" -c "$CONFIG" \
     /p:MicrosoftNETCoreAppHostPackageVersion="$rtver" \
     /p:MicrosoftNETCoreAppRuntimePackageVersion="$rtver" \
+    /p:MicrosoftAspNetCoreAppRuntimePackageVersion="$rtver" \
     /p:RestoreAdditionalProjectSources="$FEED" \
     /p:PublicBaseURL=http://localhost:8000/ \
     /p:RidGraphOverrideRuntimeJson="$PWD/eng/RuntimeIdentifierGraph.ohos.json" \
