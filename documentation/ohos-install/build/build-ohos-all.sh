@@ -120,7 +120,7 @@ ensure_stock_crossgen2() {
   # resolution order: repo-bundled -> NuGet cache -> dnceng public feed
   # (this is an internal-dev build: NOT on nuget.org, which returns 404)
   local nupkg=""
-  local bundled="$WORK/third-party/microsoft.netcore.app.crossgen2.linux-x64.$STOCK_CROSSGEN2_VERSION.nupkg"
+  local bundled="$SCRIPT_DIR/third-party/microsoft.netcore.app.crossgen2.linux-x64.$STOCK_CROSSGEN2_VERSION.nupkg"
   [ -f "$bundled" ] && nupkg="$bundled"
   if [ -z "$nupkg" ]; then
     local cache="$HOME/.nuget/packages/microsoft.netcore.app.crossgen2.linux-x64/$STOCK_CROSSGEN2_VERSION"
@@ -132,7 +132,7 @@ ensure_stock_crossgen2() {
     info "downloading official crossgen2 $STOCK_CROSSGEN2_VERSION (dnceng dotnet12 feed)..."
     curl -sL --fail --retry 3 -o "$nupkg" \
       "https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet12/nuget/v3/flat2/microsoft.netcore.app.crossgen2.linux-x64/$STOCK_CROSSGEN2_VERSION/microsoft.netcore.app.crossgen2.linux-x64.$STOCK_CROSSGEN2_VERSION.nupkg" \
-      || die "download official crossgen2 failed (place the nupkg at $WORK/third-party/ to go offline)"
+      || die "download official crossgen2 failed (place the nupkg at $SCRIPT_DIR/third-party/ to go offline)"
   fi
   mkdir -p "$STOCK_CROSSGEN2_DIR"
   python3 -c "import zipfile; zipfile.ZipFile('$nupkg').extractall('$STOCK_CROSSGEN2_DIR')" || die "extract crossgen2 failed"
@@ -158,7 +158,7 @@ ensure_selfsign() {
 # loaded ELF). Moved from install-dotnet-ohos.sh sign_all() to pre-package time.
 sign_all() {
   ensure_selfsign
-  python3 "$WORK/sign-ohos-pre.py" "$SELFSIGN_BIN" "$@" || die "signing failed"
+  python3 "$SCRIPT_DIR/sign-ohos-pre.py" "$SELFSIGN_BIN" "$@" || die "signing failed"
 }
 
 # ---- 1. runtime cross build -------------------------------------------------
@@ -206,6 +206,21 @@ stage1() {
     /p:RuntimeIdentifierGraphPath="$rsp" /p:IncludeSymbols=false \
     /p:PreReleaseVersionLabel="$LABEL" /p:PreReleaseVersion="$PRE" /p:OfficialBuildId="$BUILDID" \
     2>&1 | tee -a "$LOG" || die "runtime build (clr.aot+packs / ILCompiler) failed"
+  local ship="$RUNTIME_REPO/artifacts/packages/$CONFIG/Shipping"
+  [ -d "$ship" ] || die "no Shipping packs at $ship"
+  # Derive the ACTUAL product version from the produced packs (runtime maps
+  # OfficialBuildId to a build number, e.g. 20260903.1 -> ...26453.1). Ref pack
+  # first, then runtime pack name, then the buildid-derived default. Never let
+  # pipefail kill the build. Downstream repos override their runtime refs with
+  # this exact version.
+  RT_VERSION=$(ls "$ship"/Microsoft.NETCore.App.Ref.$VERSION_BAND-rc.*.nupkg 2>/dev/null | grep -v symbols | sed "s/.*Ref\.//; s/\.nupkg//" | sort -V | tail -1 || true)
+  if [ -z "$RT_VERSION" ]; then
+    RT_VERSION=$(ls "$ship"/Microsoft.NETCore.App.Runtime.$RID.$VERSION_BAND-rc.*.nupkg 2>/dev/null | sed "s/.*Runtime\.$RID\.//; s/\.nupkg//" | sort -V | tail -1 || true)
+  fi
+  [ -n "$RT_VERSION" ] || RT_VERSION="$VERSION_BAND-$LABEL.$PRE.$BUILDID"
+  echo "$RT_VERSION" > "$WORK/rt-version.txt"
+  info "runtime product version: $RT_VERSION"
+
   # clr.aot+packs emits the ilc as a CoreCLR SINGLE-FILE (toolAot.targets
   # PublishSingleFile when UseNativeAotForComponents is false) — that shape
   # fails device startup (rounds 14-15). Re-publish ILCompiler_publish with
@@ -226,7 +241,7 @@ stage1() {
   local ilcpk="$ship/runtime.ohos-arm64.Microsoft.DotNet.ILCompiler.$RT_VERSION.nupkg"
   local ilc_ref=$(ls "$ship"/runtime.ohos-arm64.Microsoft.DotNet.ILCompiler.*.nupkg 2>/dev/null | grep -v "$RT_VERSION" | head -1)
   [ -n "$ilc_ref" ] || ilc_ref="$ilcpk"  # same-pack metadata is safe (atomic write)
-  python3 "$WORK/assemble-ilc-pack.py" "$ilcd" "$ilc_ref" "$ilcpk" \
+  python3 "$SCRIPT_DIR/assemble-ilc-pack.py" "$ilcd" "$ilc_ref" "$ilcpk" \
     || die "assemble ilc split pack failed"
   ./build.sh -os ohos -arch "$ARCH" --cross -c "$CONFIG" -lc "$CONFIG" -rc "$CONFIG" \
     /p:UseBootstrapLayout=true \
@@ -236,23 +251,6 @@ stage1() {
     2>&1 | tee -a "$LOG" || die "runtime build (NativeAOT pack) failed"
   pkill -9 -f "MSBuild.*nodem" 2>/dev/null || true
   sleep 2
-  local ship="$RUNTIME_REPO/artifacts/packages/$CONFIG/Shipping"
-  [ -d "$ship" ] || die "no Shipping packs at $ship"
-  # record the ACTUAL product version (runtime maps OfficialBuildId to a build
-  # number, e.g. 20260903.1 -> 11.0.0-rc.1.26453.1) — downstream repos must
-  # override their runtime references with this exact version.
-  # Derive the ACTUAL product version from the produced packs (runtime maps
-  # OfficialBuildId to a build number, e.g. 20260903.1 -> ...26453.1). The Ref
-  # pack may not exist (incremental), so fall back to the runtime pack name,
-  # then to the buildid-derived default. NEVER let the pipefail kill the build.
-  RT_VERSION=$(ls "$ship"/Microsoft.NETCore.App.Ref.$VERSION_BAND-rc.*.nupkg 2>/dev/null | grep -v symbols | sed "s/.*Ref\.//; s/\.nupkg//" | sort -V | tail -1 || true)
-  if [ -z "$RT_VERSION" ]; then
-    RT_VERSION=$(ls "$ship"/Microsoft.NETCore.App.Runtime.$RID.$VERSION_BAND-rc.*.nupkg 2>/dev/null | sed "s/.*Runtime\.$RID\.//; s/\.nupkg//" | sort -V | tail -1 || true)
-  fi
-  [ -n "$RT_VERSION" ] || RT_VERSION="$VERSION_BAND-$LABEL.$PRE.$BUILDID"
-  [ -n "$RT_VERSION" ] || RT_VERSION="$VERSION_BAND-$LABEL.$PRE.$BUILDID"
-  echo "$RT_VERSION" > "$WORK/rt-version.txt"
-  info "runtime product version: $RT_VERSION"
 
   # build.sh returns while msbuild node processes may still finish queued
   # work (they can clobber the layout / emit an empty pack afterwards). Wait for
@@ -264,8 +262,8 @@ stage1() {
   pkill -9 -f "MSBuild.*nodem" 2>/dev/null || true
   sleep 2
   # --- ReadyToRun CoreLib with the OFFICIAL crossgen2 (CI-aligned) ---
-  # The fork crossgen2_inbuild hangs at startup (round-13); the official NuGet
-  # crossgen2 compiles the ohos CoreLib R2R (with PGO) like the official CI.
+  # fork crossgen2_inbuild hangs at startup (round-13); the official NuGet
+  # crossgen2 compiles the ohos CoreLib R2R (PGO when the mibc exists).
   ensure_stock_crossgen2
   local clrbin="$RUNTIME_REPO/artifacts/bin/coreclr/ohos.$ARCH.$CONFIG"
   # Read the CoreLib IL from the compiler obj dir: the bin IL/ copy is clobbered
@@ -289,15 +287,15 @@ stage1() {
   # detect and reassemble from the layout + reference metadata.
   if [ ! -s "$rtpk" ] || python3 -c "import zipfile,sys; sys.exit(0 if len(zipfile.ZipFile('$rtpk').namelist()) else 1)" 2>/dev/null; then
     info "Runtime pack empty/corrupt — reassembling from layout"
-    local refpk="$WORK/reference-runtime-pack.nupkg"
-    python3 "$WORK/pack-runtime.py" "$rtl" "$refpk" "$rtpk" || die "manual runtime pack failed"
+    local refpk="$SCRIPT_DIR/reference-runtime-pack.nupkg"
+    python3 "$SCRIPT_DIR/pack-runtime.py" "$rtl" "$refpk" "$rtpk" || die "manual runtime pack failed"
   fi
   # swap the PureIL CoreLib in the pack for the R2R image (native/ location).
   # The layout can still be settling (msbuild pack leftovers); retry on failure.
   sleep 3
   local rep_ok=""
   for attempt in 1 2 3; do
-    if python3 "$WORK/replace-pack-corelib.py" \
+    if python3 "$SCRIPT_DIR/replace-pack-corelib.py" \
         "$rtpk" "$clrbin/System.Private.CoreLib.dll" "$rtpk" 2>/dev/null; then
       rep_ok=1; break
     fi
