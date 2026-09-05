@@ -155,10 +155,35 @@ EOF
         mkdir -p "$INSTALL_DIR/lib"
         cp -f "$STDCPP" "$INSTALL_DIR/lib/libstdc++.so.6"
         cp -f "$LIBGCC" "$INSTALL_DIR/lib/libgcc_s.so.1"
-        info "  installed to \$INSTALL_DIR/lib (add to LD_LIBRARY_PATH if ilc still can't load)"
+         info "  installed to \$INSTALL_DIR/lib (add to LD_LIBRARY_PATH if ilc still can't load)"
     fi
 }
 warn_echo() { printf '%s\n' "$*" >&2; }
+
+# ------------------------------------------------------------------ hostpolicy
+# CoreCLR-based tools without a runtimeconfig (e.g. the single-file ilc) resolve
+# as self-contained and look for libhostpolicy.so at the DOTNET_ROOT root; the
+# shared-framework layout keeps it under shared/Microsoft.NETCore.App/<ver>/,
+# which the root lookup misses (device FAIL exit 131, round-15). Mirror the
+# Linux SDK behavior by making it reachable from the install root.
+deploy_hostpolicy() {
+    HP=""
+    while IFS= read -r f; do
+        case "$f" in
+            *shared/Microsoft.NETCore.App/*/libhostpolicy.so) HP="$f"; break ;;
+        esac
+    done <<EOF
+$(find "$INSTALL_DIR" -name 'libhostpolicy.so' 2>/dev/null)
+EOF
+    [ -n "$HP" ] || { info "no libhostpolicy.so found (runtime/SDK shared framework absent)"; return 0; }
+    if [ ! -f "$INSTALL_DIR/libhostpolicy.so" ]; then
+        cp -f "$HP" "$INSTALL_DIR/libhostpolicy.so" \
+            && info "deployed libhostpolicy.so -> $INSTALL_DIR/ (DOTNET_ROOT hostpolicy resolution)" \
+            || warn_echo "  WARN: could not deploy libhostpolicy.so"
+    else
+        info "libhostpolicy.so already at $INSTALL_DIR/"
+    fi
+}
 
 sign_all() {
     info "signing ELF binaries (.codesign) ..."
@@ -236,6 +261,7 @@ fi
 
 install_tarball "$TARBALL"
 deploy_cxx_runtime
+deploy_hostpolicy
 sign_all
 setup_profile "${HOME}/.bashrc"
 setup_profile "${HOME}/.zshrc"
