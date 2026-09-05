@@ -504,13 +504,10 @@
     <ItemGroup>
       <WorkloadManifestFilesContent Include="$([MSBuild]::ValueOrDefault('%(BundledManifests.Identity)', '').ToLowerInvariant())" />
       <WorkloadManifestFilesContent Include="%(BuiltinManifests.Identity)" />
+      <WorkloadManifestFilesContent Include="samsung.net.sdk.tizen" />
     </ItemGroup>
 
     <Error Text="No workload manifest content found." Condition="'@(WorkloadManifestFilesContent->Count())' == '0'" />
-
-    <ItemGroup>
-      <WorkloadManifestFilesContent Include="samsung.net.sdk.tizen" />
-    </ItemGroup>
 
     <WriteLinesToFile File="$(OutputPath)KnownWorkloadManifests.txt"
                       Lines="@(WorkloadManifestFilesContent)"

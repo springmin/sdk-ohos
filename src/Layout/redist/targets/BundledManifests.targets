@@ -1,7 +1,7 @@
 <Project>
 
   <ItemGroup>
-    <BundledManifests Include="Microsoft.NET.Sdk.Android" FeatureBand="$(MauiFeatureBand)" Version="$(XamarinAndroidWorkloadManifestVersion)" />
+    <BundledManifests Include="Microsoft.NET.Sdk.Android" FeatureBand="$(MauiFeatureBand)" Version="$(XamarinAndroidWorkloadManifestVersion)" Condition="'$(OSName)' != 'ohos'" />
     <BundledManifests Include="Microsoft.NET.Sdk.iOS" FeatureBand="$(MauiFeatureBand)" Version="$(XamarinIOSWorkloadManifestVersion)" />
     <BundledManifests Include="Microsoft.NET.Sdk.MacCatalyst" FeatureBand="$(MauiFeatureBand)" Version="$(XamarinMacCatalystWorkloadManifestVersion)" />
     <BundledManifests Include="Microsoft.NET.Sdk.macOS" FeatureBand="$(MauiFeatureBand)" Version="$(XamarinMacOSWorkloadManifestVersion)" />
@@ -10,7 +10,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <BuiltinManifests Include="microsoft.net.workload.mono.toolchain.current" />
+    <!-- OpenHarmony has no Mono runtime (runtime Subsets excludes it), so the
+         ohos SDK does not bundle the Mono workload manifests. -->
+    <BuiltinManifests Include="microsoft.net.workload.mono.toolchain.current"
+                      Condition="'$(OSName)' != 'ohos'" />
     <BuiltinManifests Include="microsoft.net.workload.emscripten.current" />
     <BuiltinManifests Include="microsoft.net.workload.emscripten.net6" />
     <BuiltinManifests Include="microsoft.net.workload.emscripten.net7" />
@@ -22,6 +25,14 @@
     <BuiltinManifests Include="microsoft.net.workload.mono.toolchain.net8" />
     <BuiltinManifests Include="microsoft.net.workload.mono.toolchain.net9" />
     <BuiltinManifests Include="microsoft.net.workload.mono.toolchain.net10" />
+    <BuiltinManifests Remove="microsoft.net.workload.mono.toolchain.current;microsoft.net.workload.mono.toolchain.net6;microsoft.net.workload.mono.toolchain.net7;microsoft.net.workload.mono.toolchain.net8;microsoft.net.workload.mono.toolchain.net9;microsoft.net.workload.mono.toolchain.net10"
+                      Condition="'$(OSName)' == 'ohos'" />
+  </ItemGroup>
+
+  <!-- OpenHarmony: no bundled workloads at all. -->
+  <ItemGroup Condition="'$(OSName)' == 'ohos'">
+    <BundledManifests Remove="@(BundledManifests)" />
+    <BuiltinManifests Remove="@(BuiltinManifests)" />
   </ItemGroup>
 
   <!-- Calculate NuGet package IDs for bundled manifests -->
