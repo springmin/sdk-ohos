@@ -318,6 +318,7 @@ ensure_nuget_runtime_pack() {
       cp "$tmp/p.nupkg" "$dir/$id.$ver.nupkg"
       python3 -c "import hashlib,base64,json; h=base64.b64encode(hashlib.sha512(open('$tmp/p.nupkg','rb').read()).digest()).decode(); open('$dir/$id.$ver.nupkg.sha512','w').write(h); open('$dir/.nupkg.metadata','w').write(json.dumps({'version':2,'contentHash':h,'source':'local'}))"
       (cd "$dir" && python3 -c "import zipfile; zipfile.ZipFile('$tmp/p.nupkg').extractall('.')")
+      cp "$dir"/*.nuspec "$dir/$id.nuspec" 2>/dev/null
       rm -rf "$tmp"
       if ls "$dir"/*.nuspec >/dev/null 2>&1; then info "pre-seeded $id $ver"; return 0; fi
     else

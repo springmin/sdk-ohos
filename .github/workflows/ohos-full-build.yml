@@ -106,6 +106,7 @@ jobs:
             python3 -c \
               "import hashlib,base64,json; h=base64.b64encode(hashlib.sha512(open('/tmp/hostpack.nupkg','rb').read()).digest()).decode(); open('$dir/$id.$ver.nupkg.sha512','w').write(h); open('$dir/.nupkg.metadata','w').write(json.dumps({'version':2,'contentHash':h,'source':'github'}))"
             (cd "$dir" && python3 -c "import zipfile; zipfile.ZipFile('/tmp/hostpack.nupkg').extractall('.')")
+            cp "$dir"/*.nuspec "$dir/$id.nuspec" 2>/dev/null
             ls "$dir"/*.nuspec >/dev/null 2>&1 && echo "seeded $v" || echo "FAILED seed $v"
           done
           echo "NUGET_PACKAGES=\${NUGET_PACKAGES:-unset}"
