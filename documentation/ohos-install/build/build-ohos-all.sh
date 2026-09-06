@@ -270,6 +270,8 @@ build_clr_libs_packs() {
     fi
     echo "--- last attempt log tail ---" | tee -a "$LOG"
     tail -40 "$alog" | tee -a "$LOG"
+    echo "--- configure platform lines ---" | tee -a "$LOG"
+    grep -iE "CMAKE_SYSTEM_NAME|The C compiler|CMAKE_CROSSCOMPILING|Targeting|System is|CMAKE_TOOLCHAIN_FILE|CMAKE_SYSTEM_PROCESSOR" "$alog" 2>/dev/null | head -12 | tee -a "$LOG"
     die "runtime build (clr+libs+packs) failed (see log tail above)"
   done
 }
