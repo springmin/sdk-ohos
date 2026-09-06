@@ -241,8 +241,9 @@ build_clr_libs_packs() {
         2>&1 | tee -a "$LOG"; then
       return 0
     fi
-    if [ -z "$fixed" ] && grep -qE "shared framework must be built before the local targeting" "$LOG"; then
-      info "clean build missing bootstrap ref pack — seeding and retrying"
+    if grep -qE "shared framework must be built before the local targeting" "$LOG"; then
+      if [ "$attempt" -ge 4 ]; then die "bootstrap ref Error persists after 4 seeds — check ordering"; fi
+      info "clean build missing bootstrap ref pack — seeding and retrying (attempt $((attempt+1)))"
       seed_bootstrap_ref
       fixed="bootstrap-ref"
       attempt=$((attempt+1))
