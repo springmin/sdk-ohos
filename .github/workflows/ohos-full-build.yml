@@ -109,9 +109,8 @@ jobs:
             ls "$dir"/*.nuspec >/dev/null 2>&1 && echo "seeded $v" || echo "FAILED seed $v"
           done
           echo "NUGET_PACKAGES=\${NUGET_PACKAGES:-unset}"
-          "$GITHUB_WORKSPACE/runtime/.dotnet/dotnet" nuget locals global-packages --list
-          ls -la "$HOME/.nuget/packages/microsoft.netcore.app.runtime.linux-x64/" 2>&1 | head -8
-          ls "$HOME/.nuget/packages/microsoft.netcore.app.runtime.linux-x64/11.0.0-rc.1.26451.109/" 2>&1 | head -6
+          ls "$HOME/.nuget/packages/microsoft.netcore.app.runtime.linux-x64/" 2>&1
+          ls "$HOME/.nuget/packages/microsoft.netcore.app.runtime.linux-x64/11.0.0-rc.1.26451.109/" 2>&1 | head -8
 
       - name: Bootstrap runtime + aspnetcore SDK (RID graphs + shims)
         run: |
