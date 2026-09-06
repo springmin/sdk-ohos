@@ -6,7 +6,7 @@ on:
       buildid:
         description: OfficialBuildId (YYYYMMDD.N)
         required: true
-        default: '20260906.1'
+        default: '20260901.109'
       runtime_ref:
         description: runtime-ohos branch/tag to build
         required: true
