@@ -302,7 +302,7 @@ ensure_nuget_runtime_pack() {
     if curl -fsSL --retry 2 -o "$tmp/p.nupkg" "$url"; then
       mkdir -p "$dir"
       cp "$tmp/p.nupkg" "$dir/$id.$ver.nupkg"
-      python3 -c "import hashlib,base64; open('$dir/$id.$ver.nupkg.sha512','w').write(base64.b64encode(hashlib.sha512(open('$tmp/p.nupkg','rb').read()).digest()).decode())"
+      python3 -c "import hashlib,base64,json; h=base64.b64encode(hashlib.sha512(open('$tmp/p.nupkg','rb').read()).digest()).decode(); open('$dir/$id.$ver.nupkg.sha512','w').write(h); open('$dir/.nupkg.metadata','w').write(json.dumps({'version':2,'contentHash':h,'source':'local'}))"
       (cd "$dir" && python3 -c "import zipfile; zipfile.ZipFile('$tmp/p.nupkg').extractall('.')")
       rm -rf "$tmp"
       if ls "$dir"/*.nuspec >/dev/null 2>&1; then info "pre-seeded $id $ver"; return 0; fi
