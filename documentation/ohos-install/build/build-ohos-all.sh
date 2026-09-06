@@ -313,7 +313,7 @@ stage1() {
   # the corehost (host subset) when needed, then sync apphost/singlefilehost
   # into the bootstrap host dir. Clean hosts (CI) have no corehost output
   # until the host subset runs.
-  local chbin="$RUNTIME_REPO/artifacts/bin/ohos-$ARCH-$CONFIG/corehost"
+  local chbin="$RUNTIME_REPO/artifacts/bin/ohos-$ARCH.$CONFIG/corehost"
   local bhdir="$RUNTIME_REPO/artifacts/bootstrap/ohos-$ARCH/host"
   if [ ! -f "$chbin/apphost" ]; then
     info "corehost apphost missing — building host subset"
