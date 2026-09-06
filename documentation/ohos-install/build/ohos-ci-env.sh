@@ -141,11 +141,12 @@ install_icu() {
   mkdir -p "$icu_dir"
   # ICU_VERSION 75.1 -> source archive icu4c-75_1-src.tgz
   local uscore="${ver/./_}"
+  local tagver="${ver/./-}"
   local src_archive="$icu_dir/icu4c-${uscore}-src.tgz"
   if [ ! -f "$src_archive" ]; then
     log "Downloading ICU $ver..."
     curl -fL --retry 3 -o "$src_archive" \
-      "https://github.com/unicode-org/icu/releases/download/release-${ver}/icu4c-${uscore}-src.tgz"
+      "https://github.com/unicode-org/icu/releases/download/release-${tagver}/icu4c-${uscore}-src.tgz"
   fi
   local root="$icu_dir/icu-src"
   [ -d "$root" ] || { mkdir -p "$root"; tar xzf "$src_archive" -C "$root" --strip-components=1; }
