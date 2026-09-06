@@ -140,7 +140,8 @@ install_icu() {
   local ver="$ICU_VERSION" icu_dir="$PREFIX/icu"
   mkdir -p "$icu_dir"
   # ICU_VERSION 75.1 -> source archive icu4c-75_1-src.tgz
-  local uscore="${ver/./_}" src_archive="$icu_dir/icu4c-${uscore}-src.tgz"
+  local uscore="${ver/./_}"
+  local src_archive="$icu_dir/icu4c-${uscore}-src.tgz"
   if [ ! -f "$src_archive" ]; then
     log "Downloading ICU $ver..."
     curl -fL --retry 3 -o "$src_archive" \
