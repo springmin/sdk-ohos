@@ -46,7 +46,9 @@ jobs:
           ls -la "$OPENSSL_DIR/lib/libcrypto.a" "$OPENSSL_DIR/lib/libssl.a"
           ls "$ICU_DIR/lib/" | grep -cE "\.a$" | xargs echo "ICU static libs:"
           ls "$ICU_DIR/lib/libicuuc.a" 2>/dev/null && echo "ICU OK"
-          grep -E "CMAKE_SYSTEM_NAME" "$OHOS_NDK_HOME/native/build/cmake/ohos.toolchain.cmake" | head -3
+          echo "NDK=$OHOS_NDK_HOME"
+          ls "$OHOS_NDK_HOME/native/build/cmake/" 2>&1 | head -5
+          find "$OHOS_NDK_HOME/native" -maxdepth 3 -name "*toolchain*.cmake" 2>/dev/null | head -5
           echo "$OPENSSL_DIR" "$ICU_DIR" "$OHOS_NDK_HOME" > env-paths.txt
       - name: Upload env check report
         uses: actions/upload-artifact@v4
