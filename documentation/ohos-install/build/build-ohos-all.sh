@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # ============================================================================
-# build-ohos-all.sh — Build the complete OHOS (OpenHarmony) .NET product set
+# build-ohos-all.sh — Build the complete OpenHarmony .NET product set
 # from source in one invocation, mirroring official CI build-leg logic.
 #
-#   runtime (cross, -os ohos) ──packs/feed──▶ aspnetcore (App.Runtime) ──▶ sdk (redist)
+#   runtime (cross, -os openharmony) ──packs/feed──▶ aspnetcore (App.Runtime) ──▶ sdk (redist)
 #
 # Official CI has no single pipeline chaining the three repos; they are wired
 # by darc/feed version flow. This script reproduces that locally: each repo is
@@ -12,28 +12,28 @@
 #
 # CI-alignment notes (2026-09-04 audit, docs/plans round-14c):
 #  - runtime subset clr+libs+host+packs == official runtime.yml AllSubsets_CoreCLR*
-#    cross legs (linux-musl-arm64 etc.); -os ohos + --cross carry the OHOS sysroot.
+#    cross legs (linux-musl-arm64 etc.); -os openharmony + --cross carry the OpenHarmony sysroot.
 #  - ILCompiler packs via clr.aot+packs + explicit NativeAOT.sfxproj == fork plan C.7
 #    (DotNetBuildAllRuntimePacks=true would also trigger Mono cross-AOT).
 #  - ReadyToRun CoreLib uses the OFFICIAL NuGet crossgen2 + pack CoreLib swap:
-#    OHOS-only (fork crossgen2_inbuild hangs; no PGO in ohos). Intentional deviation.
-#  - aspnetcore: os-name=ohos passes through (no whitelist); PublishReadyToRun=false
-#    + NativeAotSupported=false are OHOS kill switches; PublicBaseURL local server
+#    OpenHarmony-only (fork crossgen2_inbuild hangs; no PGO in openharmony). Intentional deviation.
+#  - aspnetcore: os-name=openharmony passes through (no whitelist); PublishReadyToRun=false
+#    + NativeAotSupported=false are OpenHarmony kill switches; PublicBaseURL local server
 #    stands in for ci.dot.net feeds. Version overrides replace darc pins.
 #  - sdk: no -pack (SDK assemblies stay IL; official R2Rs them) and
 #    IncludeAspNetCoreRuntime=false (ASP.NET Core ships in the separate
 #    aspnetcore-ohos release) are intentional deviations — full-support =true
 #    variant is in sdk docs/plans 12.4.
-#  - Pre-package .codesign signing (sign-ohos-pre.py) is OHOS-only (device loads
+#  - Pre-package .codesign signing (sign-ohos-pre.py) is OpenHarmony-only (device loads
 #    only signed ELF); moved from install-dotnet-ohos.sh sign_all().
 #
 # Usage:
-#   sh build-ohos-all.sh [--arch arm64] [--rid ohos-arm64] [--config Release]
+#   sh build-ohos-all.sh [--arch arm64] [--rid openharmony-arm64] [--config Release]
 #                        [--buildid 20260901.1] [--skip-runtime|--skip-aspnetcore|--skip-sdk]
 #                        [--stage-only 1|3]        # run only one stage (1=runtime …)
 #
 # Required env:
-#   OHOS_NDK_HOME     OHOS NDK root (e.g. /home/springmin/hmos-tools/sdk/default/openharmony)
+#   OHOS_NDK_HOME     OpenHarmony NDK root (e.g. /home/springmin/hmos-tools/sdk/default/openharmony)
 #   RUNTIME_REPO SDK_REPO ASCORE_REPO  (defaults to $HOME/sources/{runtime,sdk,aspnetcore-ohos})
 #   OPENSSL_DIR ICU_DIR                (cross-compiled OpenSSL + ICU for the target)
 #
@@ -45,14 +45,14 @@ set -euo pipefail
 
 # ---- config -----------------------------------------------------------------
 ARCH="${ARCH:-arm64}"
-RID="ohos-${ARCH}"
+RID="openharmony-${ARCH}"
 CONFIG="${CONFIG:-Release}"
 LABEL="${LABEL:-rc}"
 PRE="${PRE:-1}"
 BUILDID="${BUILDID:-20260901.109}"
 VERSION_BAND="${VERSION_BAND:-11.0.0}"          # runtime/aspnetcore
 SDK_BAND="${SDK_BAND:-11.0.100}"                # sdk
-RIDGRAPH_SDKVER="${RIDGRAPH_SDKVER:-11.0.100-preview.6.26359.118}"  # bootstrap SDK whose RID graph carries ohos
+RIDGRAPH_SDKVER="${RIDGRAPH_SDKVER:-11.0.100-preview.6.26359.118}"  # bootstrap SDK whose RID graph carries openharmony
 HOME_DIR="${HOME:-/home/springmin}"
 RUNTIME_REPO="${RUNTIME_REPO:-$HOME_DIR/sources/runtime}"
 SDK_REPO="${SDK_REPO:-$HOME_DIR/sources/sdk}"
@@ -70,7 +70,7 @@ ICU_DIR="${ICU_DIR:-/tmp/icu-ohos-install}"
 # Official crossgen2 used to produce the ReadyToRun CoreLib image. Our fork-built
 # crossgen2_inbuild (self-contained, embedded host) hangs at startup on its own
 # EventSource/AdvSimd path (see runtime docs/plans round-13); the OFFICIAL NuGet
-# crossgen2 compiles the ohos CoreLib R2R fine (18.9MB, PGO). Matches how the
+# crossgen2 compiles the openharmony CoreLib R2R fine (18.9MB, PGO). Matches how the
 # official CI's crossgen2 runs against the previously-published host runtime.
 STOCK_CROSSGEN2_VERSION="${STOCK_CROSSGEN2_VERSION:-11.0.0-rc.1.26427.131}"
 STOCK_CROSSGEN2_DIR="$WORK/stock-crossgen2/$STOCK_CROSSGEN2_VERSION"
@@ -79,7 +79,7 @@ RUN_RUNTIME=1; RUN_ASCORE=1; RUN_SDK=1
 STAGE_ONLY=""
 for a in "$@"; do
   case "$a" in
-    --arch=*)   ARCH="${a#*=}"; RID="ohos-$ARCH" ;;
+    --arch=*)   ARCH="${a#*=}"; RID="openharmony-$ARCH" ;;
     --rid=*)    RID="${a#*=}" ;;
     --config=*) CONFIG="${a#*=}" ;;
     --buildid=*) BUILDID="${a#*=}" ;;
@@ -141,7 +141,7 @@ ensure_stock_crossgen2() {
 }
 
 
-# sign every ELF inside a .nupkg (OHOS .codesign) — idempotent (skips signed)
+# sign every ELF inside a .nupkg (OpenHarmony .codesign) — idempotent (skips signed)
 ensure_selfsign() {
   local selfsign="$WORK/selfsign"
   if [ ! -x "$selfsign" ]; then
@@ -164,10 +164,10 @@ sign_all() {
 # singlefilehost links against libruntimeinfo.a; its ninja target is not
 # ordered first on a clean build (link fails with "cannot open libruntimeinfo.a").
 ensure_runtimeinfo() {
-  local nio="$RUNTIME_REPO/artifacts/obj/coreclr/ohos.$ARCH.$CONFIG/debug/runtimeinfo/libruntimeinfo.a"
+  local nio="$RUNTIME_REPO/artifacts/obj/coreclr/openharmony.$ARCH.$CONFIG/debug/runtimeinfo/libruntimeinfo.a"
   if [ ! -s "$nio" ]; then
     info "pre-building libruntimeinfo.a (clean-build link order)..."
-    (cd "$RUNTIME_REPO/artifacts/obj/coreclr/ohos.$ARCH.$CONFIG" \
+    (cd "$RUNTIME_REPO/artifacts/obj/coreclr/openharmony.$ARCH.$CONFIG" \
       && ninja debug/runtimeinfo/libruntimeinfo.a) >>"$LOG" 2>&1 || die "libruntimeinfo.a build failed"
   fi
 }
@@ -184,7 +184,7 @@ compile_shims_into_layout() {
   info "compiling shims (facade assemblies) and copying into the layout..."
   for P in $(find "$RUNTIME_REPO/src/libraries/shims" -name "*.csproj" -path "*/src/*" | sort); do
     (cd "$RUNTIME_REPO" && ./.dotnet/dotnet build "$P" -c "$CONFIG" \
-      -p:TargetOS=ohos -p:TargetArchitecture="$ARCH" -p:PortableOS=ohos -p:UseBootstrapLayout=true \
+      -p:TargetOS=openharmony -p:TargetArchitecture="$ARCH" -p:PortableOS=openharmony -p:UseBootstrapLayout=true \
       "-p:RuntimeIdentifierGraphPath=$rsp" -p:IncludeSymbols=false \
       -p:PreReleaseVersionLabel="$LABEL" -p:PreReleaseVersion="$PRE" -p:OfficialBuildId="$BUILDID" \
       -v:q -nologo) >>"$LOG" 2>&1 || { echo "shim build failed: $P" | tee -a "$LOG"; return 1; }
@@ -211,7 +211,7 @@ build_clr_libs_packs() {
   local attempt=0
   local fixed=""
   while :; do
-    if ./build.sh -os ohos -arch "$ARCH" --cross -c "$CONFIG" -lc "$CONFIG" -rc "$CONFIG" \
+    if ./build.sh -os openharmony -arch "$ARCH" --cross -c "$CONFIG" -lc "$CONFIG" -rc "$CONFIG" \
         -subset clr+libs+packs \
         /p:UseBootstrapLayout=true /p:BuildHostTools=true /p:ApiCompatValidateAssemblies=false \
         /p:RuntimeIdentifierGraphPath="$rsp" /p:IncludeSymbols=false \
@@ -243,28 +243,28 @@ build_clr_libs_packs() {
 }
 
 # ---- 1. runtime cross build -------------------------------------------------
-RUNTIME_RID_DIR=""       # e.g. artifacts/bin/coreclr/ohos.arm64.Release
+RUNTIME_RID_DIR=""       # e.g. artifacts/bin/coreclr/openharmony.arm64.Release
 stage1() {
-  info "Stage 1: runtime cross build (-os ohos -arch $ARCH --cross)"
+  info "Stage 1: runtime cross build (-os openharmony -arch $ARCH --cross)"
   export MSBUILDDISABLENODEREUSE=1
   cd "$RUNTIME_REPO"
   local rsp="$RUNTIME_REPO/.dotnet/sdk/$RIDGRAPH_SDKVER/RuntimeIdentifierGraph.json"
-  [ -f "$rsp" ] || die "RID graph not found at $rsp (bootstrap SDK lacks ohos) — inject eng/ graphs first"
+  [ -f "$rsp" ] || die "RID graph not found at $rsp (bootstrap SDK lacks openharmony) — inject eng/ graphs first"
   # crossgen2_inbuild publish (self-contained) resolves AppHostSourcePath to
-  # artifacts/bootstrap/ohos-arm64/host/apphost when UseBootstrapLayout=true;
+  # artifacts/bootstrap/openharmony-arm64/host/apphost when UseBootstrapLayout=true;
   # if the bootstrap layout is stale/missing the publish dies MSB3030. Sync the
   # compiled corehost apphost/singlefilehost into the bootstrap host dir.
-  local chbin="$RUNTIME_REPO/artifacts/bin/ohos.$ARCH.$CONFIG/corehost"
-  local bhdir="$RUNTIME_REPO/artifacts/bootstrap/ohos-$ARCH/host"
+  local chbin="$RUNTIME_REPO/artifacts/bin/openharmony.$ARCH.$CONFIG/corehost"
+  local bhdir="$RUNTIME_REPO/artifacts/bootstrap/openharmony-$ARCH/host"
   if [ -f "$chbin/apphost" ]; then
     mkdir -p "$bhdir"
     cp -f "$chbin/apphost" "$bhdir/apphost" 2>/dev/null || true
     [ -f "$chbin/singlefilehost" ] && cp -f "$chbin/singlefilehost" "$bhdir/singlefilehost" 2>/dev/null || true
   fi
-  # ohos RID is independent (no linux-musl fallback) so the prebuilt SDK has no
-  # ohos apphost entry; libs/host do not publish apphosts, so host builds disable
+  # openharmony RID is independent (no linux-musl fallback) so the prebuilt SDK has no
+  # openharmony apphost entry; libs/host do not publish apphosts, so host builds disable
   # the SDK apphost resolution (split build, see notes in stage comments).
-  # clr+libs+packs — NOT +host: the independent ohos RID has no apphost entry
+  # clr+libs+packs — NOT +host: the independent openharmony RID has no apphost entry
   # in the prebuilt SDK (RID independence 2026-09-03 removed the linux-musl
   # fallback), so an explicit host subset trips NETSDK1084
   # ("no application host available for the specified RuntimeIdentifier").
@@ -272,8 +272,8 @@ stage1() {
   build_clr_libs_packs
   # AOT tooling packs via clr.aot+packs + explicit NativeAOT.sfxproj — the
   # fork's authoritative C.7 shape (DotNetBuildAllRuntimePacks=true would also
-  # trigger Mono cross-AOT which misfires for ohos).
-  ./build.sh -os ohos -arch "$ARCH" --cross -c "$CONFIG" -lc "$CONFIG" -rc "$CONFIG" \
+  # trigger Mono cross-AOT which misfires for openharmony).
+  ./build.sh -os openharmony -arch "$ARCH" --cross -c "$CONFIG" -lc "$CONFIG" -rc "$CONFIG" \
     /p:UseBootstrapLayout=true /p:ApiCompatValidateAssemblies=false \
     -subset clr.aot+packs \
     /p:RuntimeIdentifierGraphPath="$rsp" /p:IncludeSymbols=false \
@@ -300,10 +300,10 @@ stage1() {
   # PublishSingleFile=false (round-9/16 split layout — device-PASSED) and
   # reassemble the pack from that output.
   local ilcp="$RUNTIME_REPO/src/coreclr/tools/aot/ILCompiler/ILCompiler_publish.csproj"
-  local ilcd="$RUNTIME_REPO/artifacts/bin/coreclr/ohos.$ARCH.$CONFIG/ilc-published"
+  local ilcd="$RUNTIME_REPO/artifacts/bin/coreclr/openharmony.$ARCH.$CONFIG/ilc-published"
   info "re-publishing ilc as CoreCLR split layout (PublishSingleFile=false)..."
   ./.dotnet/dotnet build "$ilcp" -c "$CONFIG" -r "$RID" -t:Publish \
-    -p:TargetOS=ohos -p:TargetArchitecture="$ARCH" -p:PortableOS=ohos \
+    -p:TargetOS=openharmony -p:TargetArchitecture="$ARCH" -p:PortableOS=openharmony \
     -p:UseBootstrap=true -p:PublishSingleFile=false \
     "/p:RuntimeIdentifierGraphPath=$rsp" -p:IncludeSymbols=false -v:q -nologo \
     2>&1 | tee -a "$LOG" || die "ilc split publish failed"
@@ -311,12 +311,12 @@ stage1() {
   # device loads the native .so next to the apphost; add NDK libc++_shared
   local ndk_libcxx="$OHOS_NDK_HOME/native/llvm/lib/aarch64-linux-ohos/libc++_shared.so"
   [ -f "$ilcd/libc++_shared.so" ] || cp -f "$ndk_libcxx" "$ilcd/libc++_shared.so"
-  local ilcpk="$ship/runtime.ohos-arm64.Microsoft.DotNet.ILCompiler.$RT_VERSION.nupkg"
-  local ilc_ref=$(ls "$ship"/runtime.ohos-arm64.Microsoft.DotNet.ILCompiler.*.nupkg 2>/dev/null | grep -v "$RT_VERSION" | head -1)
+  local ilcpk="$ship/runtime.openharmony-arm64.Microsoft.DotNet.ILCompiler.$RT_VERSION.nupkg"
+  local ilc_ref=$(ls "$ship"/runtime.openharmony-arm64.Microsoft.DotNet.ILCompiler.*.nupkg 2>/dev/null | grep -v "$RT_VERSION" | head -1)
   [ -n "$ilc_ref" ] || ilc_ref="$ilcpk"  # same-pack metadata is safe (atomic write)
   python3 "$SCRIPT_DIR/assemble-ilc-pack.py" "$ilcd" "$ilc_ref" "$ilcpk" \
     || die "assemble ilc split pack failed"
-  ./build.sh -os ohos -arch "$ARCH" --cross -c "$CONFIG" -lc "$CONFIG" -rc "$CONFIG" \
+  ./build.sh -os openharmony -arch "$ARCH" --cross -c "$CONFIG" -lc "$CONFIG" -rc "$CONFIG" \
     /p:UseBootstrapLayout=true \
     -projects "$RUNTIME_REPO/src/installer/pkg/sfx/Microsoft.NETCore.App/Microsoft.NETCore.App.Runtime.NativeAOT.sfxproj" \
     /p:RuntimeIdentifierGraphPath="$rsp" /p:IncludeSymbols=false \
@@ -336,12 +336,12 @@ stage1() {
   sleep 2
   # --- ReadyToRun CoreLib with the OFFICIAL crossgen2 (CI-aligned) ---
   # fork crossgen2_inbuild hangs at startup (round-13); the official NuGet
-  # crossgen2 compiles the ohos CoreLib R2R (PGO when the mibc exists).
+  # crossgen2 compiles the openharmony CoreLib R2R (PGO when the mibc exists).
   ensure_stock_crossgen2
-  local clrbin="$RUNTIME_REPO/artifacts/bin/coreclr/ohos.$ARCH.$CONFIG"
+  local clrbin="$RUNTIME_REPO/artifacts/bin/coreclr/openharmony.$ARCH.$CONFIG"
   # Read the CoreLib IL from the compiler obj dir: the bin IL/ copy is clobbered
   # (0-byte) by later build steps, which made crossgen2 die on an empty file.
-  local corelib_il="$RUNTIME_REPO/artifacts/obj/coreclr/System.Private.CoreLib/ohos.$ARCH.$CONFIG/System.Private.CoreLib.dll"
+  local corelib_il="$RUNTIME_REPO/artifacts/obj/coreclr/System.Private.CoreLib/openharmony.$ARCH.$CONFIG/System.Private.CoreLib.dll"
   [ -s "$corelib_il" ] || die "CoreLib IL missing: $corelib_il"
   info "producing ReadyToRun CoreLib (official crossgen2, PGO if mibc present)..."
   local mibc="$clrbin/StandardOptimizationData.mibc"
@@ -356,7 +356,7 @@ stage1() {
   local rtpk="$ship/Microsoft.NETCore.App.Runtime.$RID.$RT_VERSION.nupkg"
   local rtl="$RUNTIME_REPO/artifacts/bin/microsoft.netcore.app.runtime.$RID/$CONFIG"
   cp -f "$clrbin/System.Private.CoreLib.dll" "$rtl/runtimes/$RID/native/System.Private.CoreLib.dll" 2>/dev/null || true
-  # the sfxproj pack step can emit an EMPTY zip (0 files) on a clean ohos build;
+  # the sfxproj pack step can emit an EMPTY zip (0 files) on a clean openharmony build;
   # detect and reassemble from the layout + reference metadata.
   if [ ! -s "$rtpk" ] || python3 -c "import zipfile,sys; sys.exit(0 if len(zipfile.ZipFile('$rtpk').namelist()) else 1)" 2>/dev/null; then
     info "Runtime pack empty/corrupt — reassembling from layout"
@@ -379,7 +379,7 @@ stage1() {
   info "runtime pack CoreLib swapped to R2R ($(stat -c%s "$rtpk") bytes)"
   # refresh the local feed copy
   cp -f "$ship/Microsoft.NETCore.App.Runtime.$RID.$RT_VERSION.nupkg" "$FEED/" 2>/dev/null
-  # --- pre-sign every ohos ELF (runtime/nativeaot/host/ilc packs + tarballs) ---
+  # --- pre-sign every openharmony ELF (runtime/nativeaot/host/ilc packs + tarballs) ---
   # device loads these from NuGet/app publish, so they must carry .codesign now.
   info "pre-signing runtime packs (ELF -> .codesign)..."
   # shellcheck disable=SC2045
@@ -431,7 +431,7 @@ stage3() {
   cd "$ASCORE_REPO"
   local ridgraph="$ASCORE_REPO/.dotnet/sdk/$RIDGRAPH_SDKVER/PortableRuntimeIdentifierGraph.json"
   # aspnetcore's darc-flowed runtime versions (e.g. 11.0.0-rc.1.26451.109 from
-  # official runtime) point at a feed that has no ohos packs — override the
+  # official runtime) point at a feed that has no openharmony packs — override the
   # runtime-driven versions to the locally built one so restore hits our feed.
   local rtver="$RT_VERSION"
   ./eng/build.sh --os-name "$(echo "$RID" | cut -d- -f1)" --arch "$ARCH" -c "$CONFIG" \
@@ -468,13 +468,13 @@ stage4() {
   local rtver="$RT_VERSION"
   # override ONLY Host/Runtime package versions (Ref/ILLink/Crossgen2 keep the
   # darc-flowed official versions — see Directory.Build.props =='' guards)
-  ./build.sh -os ohos -arch "$ARCH" -c "$CONFIG" \
+  ./build.sh -os openharmony -arch "$ARCH" -c "$CONFIG" \
     /p:MicrosoftNETCoreAppHostPackageVersion="$rtver" \
     /p:MicrosoftNETCoreAppRuntimePackageVersion="$rtver" \
     /p:RestoreAdditionalProjectSources="$FEED" \
     /p:PublicBaseURL=http://localhost:8000/ \
-    /p:RidGraphOverrideRuntimeJson="$PWD/eng/RuntimeIdentifierGraph.ohos.json" \
-    /p:RidGraphOverridePortableJson="$PWD/eng/PortableRuntimeIdentifierGraph.ohos.json" \
+    /p:RidGraphOverrideRuntimeJson="$PWD/eng/RuntimeIdentifierGraph.openharmony.json" \
+    /p:RidGraphOverridePortableJson="$PWD/eng/PortableRuntimeIdentifierGraph.openharmony.json" \
     /p:IncludeAspNetCoreRuntime=false \
     /p:PreReleaseVersionLabel="$LABEL" /p:PreReleaseVersion="$PRE" /p:OfficialBuildId="$BUILDID" \
     2>&1 | tee -a "$LOG" || die "sdk build failed"

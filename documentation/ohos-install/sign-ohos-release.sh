@@ -1,7 +1,7 @@
 #!/bin/sh
 # ============================================================================
 # sign-ohos-release.sh
-# Host-side (x64) pre-signer for OHOS release tarballs.
+# Host-side (x64) pre-signer for OpenHarmony release tarballs.
 #
 # HarmonyOS only executes ELF binaries carrying a .codesign section. The
 # signing algorithm (ElfSelfSigner) is pure ELF byte manipulation — no device

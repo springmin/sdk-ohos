@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Assemble the runtime.ohos-arm64.Microsoft.DotNet.ILCompiler nupkg in the
+"""Assemble the runtime.openharmony-arm64.Microsoft.DotNet.ILCompiler nupkg in the
 round-9/16 CoreCLR SPLIT-LAYOUT shape (ilc apphost + ilc.dll + managed deps +
 native .so alongside — the ONLY device-PASSED ilc shape). The clr.aot+packs
 subset produces a CoreCLR single-file ilc (device startup FAIL, rounds 14-15),
@@ -7,7 +7,7 @@ so the script overrides ILCompiler_publish with PublishSingleFile=false and
 reassembles the pack from that output.
 
 Usage: assemble-ilc-pack.py <ilc-published-dir> <reference-pack> <out-nupkg>
-  ilc-published  artifacts/bin/coreclr/ohos.arm64.Release/ilc-published
+  ilc-published  artifacts/bin/coreclr/openharmony.arm64.Release/ilc-published
   reference      existing ILCompiler nupkg (non-tools metadata reused; may be
                  the same path as out — written atomically via temp + move)
   out-nupkg      target (Shipping pack path)

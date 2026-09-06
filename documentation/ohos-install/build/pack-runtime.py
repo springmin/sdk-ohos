@@ -4,7 +4,7 @@ layout when the sfxproj pack step emits an empty zip (0 files). Metadata and
 non-runtimes files are copied from a reference pack of the same version.
 
 Usage: pack-runtime.py <layout-dir> <reference-pack> <out-nupkg>
-  layout-dir   artifacts/bin/microsoft.netcore.app.runtime.ohos-arm64/Release
+  layout-dir   artifacts/bin/microsoft.netcore.app.runtime.openharmony-arm64/Release
                (contains runtimes/<rid>/...)
   reference    a known-good nupkg of the same product (metadata reused)
 """
@@ -24,7 +24,7 @@ with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zo:
         for f in files:
             p = os.path.join(root, f)
             arc = os.path.relpath(p, layout)
-            if arc.startswith("runtimes/ohos-arm64/"):
+            if arc.startswith("runtimes/openharmony-arm64/"):
                 zo.write(p, arc)
                 added += 1
     print(f"layout files added: {added}")

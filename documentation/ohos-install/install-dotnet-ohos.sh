@@ -10,10 +10,10 @@
 # OpenHarmony only executes ELF binaries carrying a .codesign section
 # (unsigned -> EACCES). The runtime/SDK tarballs are NOT pre-signed, so this
 # script signs them with, in order of preference:
-#   1) binary-sign-tool from the OHOS SDK / harmonybrew (if found)
+#   1) binary-sign-tool from the OpenHarmony SDK / harmonybrew (if found)
 #   2) the bundled selfsign.sh (C# AOT self-sign tool, see selfsign.sh)
 #
-# Since 2026-08-26 the SDK embeds all OHOS fixes (W^X, ICU-invariant, NUMA
+# Since 2026-08-26 the SDK embeds all OpenHarmony fixes (W^X, ICU-invariant, NUMA
 # probe skip, TMPDIR shared memory, auto-codesign of build outputs), and the
 # SDK tarball includes the ASP.NET Core runtime. Installing the SDK alone is
 # sufficient for both building and running (including ASP.NET Core apps).
@@ -110,7 +110,7 @@ resolve_choice() { # "sdk"|"runtime"|local path|url
             ;;
         *)
             [ -r "$arg" ] || die "tarball not readable: ${arg}
-  (on OHOS, files inside another app's sandbox — e.g. WeChat appdata — cannot
+  (on OpenHarmony, files inside another app's sandbox — e.g. WeChat appdata — cannot
    be read; move the file to /storage/Users/currentUser/Download first)"
             RESOLVED_FILE="$arg"
             RESOLVED_URL=""
@@ -214,7 +214,7 @@ setup_profile() {
     grep -q 'export DOTNET_ROOT=' "$pf" 2>/dev/null && return 0
     cat >> "$pf" <<EOF
 
-# .NET (OHOS install)
+# .NET (OpenHarmony install)
 export DOTNET_ROOT=\$HOME/.dotnet
 export PATH=\$PATH:\$DOTNET_ROOT:\$DOTNET_ROOT/tools
 EOF
@@ -235,7 +235,7 @@ elif command -v selfsign >/dev/null 2>&1; then
     info "using selfsign (built-in C# AOT signer)"
     SIGN_TOOL=""
 else
-    die "no signing tool available: install the OHOS SDK/harmonybrew (binary-sign-tool) or place selfsign on PATH (see selfsign.cs in this directory)"
+    die "no signing tool available: install the OpenHarmony SDK/harmonybrew (binary-sign-tool) or place selfsign on PATH (see selfsign.cs in this directory)"
 fi
 
 # resolve artifact (default: sdk)

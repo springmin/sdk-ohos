@@ -1,15 +1,15 @@
 # .NET for OpenHarmony — 安装指南
 
 在 OpenHarmony 设备上安装 .NET SDK / Runtime（含 ASP.NET Core），自动完成
-OHOS 特有的代码签名。
+OpenHarmony 特有的代码签名。
 
-**适用于**：2026-08-26 及之后构建的产物（SDK 内嵌全部 OHOS 修复 + ASP.NET Core runtime）。
+**适用于**：2026-08-26 及之后构建的产物（SDK 内嵌全部 OpenHarmony 修复 + ASP.NET Core runtime）。
 
 ---
 
 ## 1. 下载产物（GitHub Release）
 
-三个仓库的 Release 提供交叉编译好的 `ohos-arm64` 产物：
+三个仓库的 Release 提供交叉编译好的 `openharmony-arm64` 产物：
 
 | 仓库 | Release | 内容 | 下载 |
 |---|---|---|---|
@@ -70,13 +70,13 @@ export PATH=$PATH:$DOTNET_ROOT:$DOTNET_ROOT/tools
 dotnet --list-runtimes
 ```
 
-## 3. 代码签名（OHOS 特有）
+## 3. 代码签名（OpenHarmony 特有）
 
 OpenHarmony 只执行带 `.codesign` 段的 ELF。**Release 产物未预签名**，
 解压后必须签名（`execve` 未签名 → `EACCES`）。
 
 脚本按顺序使用签名工具：
-1. `binary-sign-tool`（OHOS SDK / harmonybrew，自动探测）
+1. `binary-sign-tool`（OpenHarmony SDK / harmonybrew，自动探测）
 2. `selfsign`（仓库提供的 C# AOT 单文件签名工具，见下方）
 
 `selfsign` 使用说明（源码见本目录 `selfsign.cs` + `selfsign.csproj`）：
@@ -94,13 +94,13 @@ selfsign <input_elf> [output_elf] [--force] [--strip]
 
 > `selfsign` 是 SDK 内置 `OpenHarmonyCodesign` MSBuild task（`ElfSelfSigner`）的
 > 独立单文件版本，算法与官方 `binary-sign-tool` 字节级一致，可在设备上
-> 独立运行（不依赖 MSBuild）。已在 qemu（aarch64 OHOS 环境）验证签名结果
+> 独立运行（不依赖 MSBuild）。已在 qemu（aarch64 OpenHarmony 环境）验证签名结果
 > 与官方工具字节级一致。
 
 **预构建版本**（sdk-ohos Release 提供，无需自行编译）：
 
 ```sh
-# 宿主（x64 Linux，交叉编译机 / CI）—— 签名 OHOS ELF：
+# 宿主（x64 Linux，交叉编译机 / CI）—— 签名 OpenHarmony ELF：
 #   https://github.com/springmin/sdk-ohos/releases/download/v11.0.100-rc.1.26451.1-ohos/selfsign-linux-x64
 # 设备端（ohos-arm64，NativeAOT 单文件）—— 在真机上签名：
 #   https://github.com/springmin/sdk-ohos/releases/download/v11.0.100-rc.1.26451.1-ohos/selfsign-ohos-arm64
@@ -128,7 +128,7 @@ dotnet run                # 自动 codesign 产物，开箱即用
 
 ## 5. 内嵌修复说明（2026-08-26 起）
 
-SDK/Runtime 已内嵌全部 OHOS 沙箱修复，**不再需要**外部 wrapper / LD_PRELOAD shim：
+SDK/Runtime 已内嵌全部 OpenHarmony 沙箱修复，**不再需要**外部 wrapper / LD_PRELOAD shim：
 
 | 修复 | 内嵌方式 |
 |---|---|
@@ -147,7 +147,7 @@ SDK/Runtime 已内嵌全部 OHOS 沙箱修复，**不再需要**外部 wrapper /
 文件在另一个应用的私有沙箱里。用文件管理器把文件移到 `Download` 后重试。
 
 **Q: 报错 `binary-sign-tool not found` + 无 `selfsign`**
-两种签名工具都缺失。安装 OHOS SDK / harmonybrew，或把 `selfsign` 加入 PATH。
+两种签名工具都缺失。安装 OpenHarmony SDK / harmonybrew，或把 `selfsign` 加入 PATH。
 
 **Q: `dotnet --version` 提示 "No SDKs were found"**
 装的是 Runtime 包。运行/编译应用需安装 SDK 包（`sh install-dotnet-ohos.sh sdk`）。
@@ -166,7 +166,7 @@ level), the openharmony RID entries in `eng/RuntimeIdentifierGraph.openharmony.j
 
 Consequences:
 - NuGet no longer falls back openharmony → linux-musl packs; a missing openharmony pack is
-  now NU1101 (explicit) instead of silently resolving a non-OHOS
+  now NU1101 (explicit) instead of silently resolving a non-OpenHarmony
   (no `.note.ohos.ident`) artifact that fails at dlopen on device.
 - The compile-level linux remap (configureplatform.cmake) is unchanged.
 - All openharmony-arm64 asset packs are published for rc.1.26451.1 (runtime,

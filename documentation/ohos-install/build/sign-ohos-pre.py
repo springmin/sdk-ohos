@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pre-sign every OHOS ELF inside directories / .nupkg / .tar.gz.
+"""Pre-sign every OpenHarmony ELF inside directories / .nupkg / .tar.gz.
 
 Moved from the device-side install-dotnet-ohos.sh sign_all() so artifacts are
 signed on the build host BEFORE packaging/uploading. Device only executes ELF
