@@ -203,11 +203,29 @@ compile_shims_into_layout() {
 # runtime clr+libs+packs build with clean-build fixes: pre-build
 # libruntimeinfo.a, and on an sfx-finish "facades missing" failure compile the
 # shims and retry once. Normal (incremental) runs never take the retry path.
+# seed the bootstrap ref pack from the bootstrap SDK's Ref pack (clean builds:
+# the local targeting-pack Error fires before anything has produced a local
+# ref; the SDK's ref is a version-neutral stand-in — local packs overwrite it)
+seed_bootstrap_ref() {
+  local sdkref=""
+  for v in "$RIDGRAPH_SDKVER" "11.0.100-rc.1.26420.103"; do
+    local p="$RUNTIME_REPO/.dotnet/packs/Microsoft.NETCore.App.Ref/$v"
+    [ -d "$p/ref" ] && [ -f "$p/data/FrameworkList.xml" ] && { sdkref="$p"; break; }
+  done
+  [ -n "$sdkref" ] || die "no SDK Ref pack to seed bootstrap (looked under .dotnet/packs/Microsoft.NETCore.App.Ref)"
+  local bdir="$RUNTIME_REPO/artifacts/bootstrap/ohos-$ARCH/microsoft.netcore.app/ref"
+  mkdir -p "$bdir"
+  cp -rf "$sdkref"/. "$bdir/"
+  [ -f "$bdir/data/FrameworkList.xml" ] || die "bootstrap ref seed missing FrameworkList.xml"
+  info "seeded bootstrap ref pack from SDK Ref ($(basename "$sdkref"))"
+}
+
 build_clr_libs_packs() {
-  # A clean build hits two self-healing failures (both from ordering, not from
-  # our code): singlefilehost links before libruntimeinfo.a is built, and
-  # sfx-finish runs before the shims (facades) are compiled. Handle each once
-  # and retry; normal incremental runs never take these paths.
+  # A clean build hits several self-healing failures (all ordering, not our
+  # code): singlefilehost links before libruntimeinfo.a is built, sfx-finish
+  # runs before the shims (facades) are compiled, and restore needs the
+  # bootstrap ref pack before any local ref exists. Handle each once and
+  # retry; normal incremental runs never take these paths.
   local attempt=0
   local fixed=""
   while :; do
@@ -221,6 +239,13 @@ build_clr_libs_packs() {
           -DCMAKE_ICU_DIR=$ICU_DIR" \
         2>&1 | tee -a "$LOG"; then
       return 0
+    fi
+    if [ -z "$fixed" ] && grep -qE "shared framework must be built before the local targeting" "$LOG"; then
+      info "clean build missing bootstrap ref pack — seeding and retrying"
+      seed_bootstrap_ref
+      fixed="bootstrap-ref"
+      attempt=$((attempt+1))
+      continue
     fi
     if [ -z "$fixed" ] && grep -qE "cannot open .*libruntimeinfo\.a|libhostpolicy.*No such|libruntimeinfo\.a: No such" "$LOG"; then
       info "clean build missing libruntimeinfo.a — building and retrying"
