@@ -357,7 +357,7 @@ stage1() {
   ensure_nuget_runtime_pack "linux-x64" \
     "11.0.0-rc.1.26420.103" \
     "11.0.0-$LABEL.$PRE.26451.$(echo "$BUILDID" | cut -d. -f2)" \
-    "11.0.0-$LABEL.$PRE.26431.109"
+    "11.0.0-$LABEL.$PRE.26431.109" || true
   if [ ! -f "$chbin/apphost" ]; then
     info "corehost apphost missing — building host subset"
     (cd "$RUNTIME_REPO" && ./build.sh -os ohos -arch "$ARCH" --cross -c "$CONFIG" \
