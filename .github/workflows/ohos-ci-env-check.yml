@@ -44,7 +44,6 @@ jobs:
           ls "$OHOS_NDK_HOME/llvm/bin/" | grep -cE "aarch64-unknown-linux-ohos-clang" | xargs echo "NDK ohos clang wrappers:"
           ls -la "$OHOS_NDK_HOME/llvm/bin/aarch64-unknown-linux-ohos-clang"
           ls -la "$OPENSSL_DIR/lib/libcrypto.a" "$OPENSSL_DIR/lib/libssl.a"
-          file "$OPENSSL_DIR/lib/libcrypto.a" | cut -c1-80
           ls "$ICU_DIR/lib/" | grep -cE "\.a$" | xargs echo "ICU static libs:"
           ls "$ICU_DIR/lib/libicuuc.a" 2>/dev/null && echo "ICU OK"
           echo "$OPENSSL_DIR" "$ICU_DIR" "$OHOS_NDK_HOME" > env-paths.txt
