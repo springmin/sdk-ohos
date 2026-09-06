@@ -2,3 +2,4 @@
 selfsign
 bin/
 obj/
+.work/
