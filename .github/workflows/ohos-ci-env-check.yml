@@ -1,0 +1,56 @@
+name: ohos-ci-env-check
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  env-check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      CI: 'true'
+    steps:
+      - name: Checkout sdk-ohos (env script)
+        uses: actions/checkout@v4
+        with:
+          repository: springmin/sdk-ohos
+          ref: feature/ohos-cross-sdk
+          path: sdk
+
+      - name: Install host build deps
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq cmake ninja-build clang lld build-essential \
+            python3 python3-pip curl git llvm make perl >/dev/null
+
+      - name: Cache NDK/OpenSSL/ICU env
+        id: cache-env
+        uses: actions/cache@v4
+        with:
+          path: ~/.ohos-ci-env
+          key: ohos-ci-env-ohos-arm64-${{ hashFiles('sdk/documentation/ohos-install/build/ohos-ci-env.sh') }}
+
+      - name: Prepare NDK + OpenSSL + ICU
+        if: steps.cache-env.outputs.cache-hit != 'true'
+        run: bash sdk/documentation/ohos-install/build/ohos-ci-env.sh --prefix "$HOME/.ohos-ci-env"
+
+      - name: Verify env
+        run: |
+          eval "$(bash sdk/documentation/ohos-install/build/ohos-ci-env.sh --prefix "$HOME/.ohos-ci-env")"
+          echo "OHOS_NDK_HOME=$OHOS_NDK_HOME"
+          ls "$OHOS_NDK_HOME/llvm/bin/" | grep -cE "aarch64-unknown-linux-ohos-clang" | xargs echo "NDK ohos clang wrappers:"
+          ls -la "$OHOS_NDK_HOME/llvm/bin/aarch64-unknown-linux-ohos-clang"
+          ls -la "$OPENSSL_DIR/lib/libcrypto.a" "$OPENSSL_DIR/lib/libssl.a"
+          file "$OPENSSL_DIR/lib/libcrypto.a" | cut -c1-80
+          ls "$ICU_DIR/lib/" | grep -cE "\.a$" | xargs echo "ICU static libs:"
+          ls "$ICU_DIR/lib/libicuuc.a" 2>/dev/null && echo "ICU OK"
+          echo "$OPENSSL_DIR" "$ICU_DIR" "$OHOS_NDK_HOME" > env-paths.txt
+      - name: Upload env check report
+        uses: actions/upload-artifact@v4
+        with:
+          name: env-check-report
+          path: env-paths.txt
+          retention-days: 7
