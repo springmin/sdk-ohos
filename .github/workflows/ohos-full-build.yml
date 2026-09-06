@@ -91,12 +91,17 @@ jobs:
 
       - name: Pre-seed host linux-x64 runtime packs into ~/.nuget
         run: |
-          for v in 11.0.0-rc.1.26431.109 11.0.0-rc.1.26451.109; do
+          for v in 11.0.0-rc.1.26420.103 11.0.0-rc.1.26431.109 11.0.0-rc.1.26451.109; do
             id="microsoft.netcore.app.runtime.linux-x64"
             dir="$HOME/.nuget/packages/$id/$v"
             [ -d "$dir" ] && continue
             mkdir -p "$dir"
-            curl -fsSL --retry 3 -o /tmp/hostpack.nupkg               "https://github.com/springmin/sdk-ohos/releases/download/host-runtime-packs/$id.$v.nupkg"
+            if [ "$v" = "11.0.0-rc.1.26420.103" ]; then
+              src="https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet11/nuget/v3/flat2/$id/$v/$id.$v.nupkg"
+            else
+              src="https://github.com/springmin/sdk-ohos/releases/download/host-runtime-packs/$id.$v.nupkg"
+            fi
+            curl -fsSL --retry 3 -o /tmp/hostpack.nupkg "$src"
             (cd "$dir" && python3 -c "import zipfile; zipfile.ZipFile('/tmp/hostpack.nupkg').extractall('.')")
             ls "$dir"/*.nuspec >/dev/null 2>&1 && echo "seeded $v" || echo "FAILED seed $v"
           done
