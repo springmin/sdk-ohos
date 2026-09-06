@@ -222,6 +222,22 @@ seed_bootstrap_ref() {
 }
 
 build_clr_libs_packs() {
+  # Clean hosts cannot download the host linux-x64 runtime pack for in-build
+  # self-contained tools (ILCompiler_inbuild) from the dnceng feeds
+  # (NETSDK1112); the pre-seeded ~/.nuget cache is not consulted by the
+  # FrameworkReference resolution, so add it as a NuGet.config folder source.
+  python3 - "$RUNTIME_REPO/NuGet.config" <<'PYEOF'
+import sys
+f = sys.argv[1]
+s = open(f).read()
+if 'local-nuget' not in s:
+    marker = '  </packageSources>'
+    add = '    <add key="local-nuget" value="' + __import__('os').path.expanduser('~/.nuget/packages') + '" />\n'
+    assert marker in s, "packageSources close not found"
+    s = s.replace(marker, add + marker, 1)
+    open(f, 'w').write(s)
+    print("added local-nuget folder source to NuGet.config")
+PYEOF
   # A clean build hits several self-healing failures (all ordering, not our
   # code): singlefilehost links before libruntimeinfo.a is built, sfx-finish
   # runs before the shims (facades) are compiled, and restore needs the
