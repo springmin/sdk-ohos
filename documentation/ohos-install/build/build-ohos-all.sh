@@ -334,6 +334,15 @@ stage1() {
   # until the host subset runs.
   local chbin="$RUNTIME_REPO/artifacts/bin/ohos-$ARCH.$CONFIG/corehost"
   local bhdir="$RUNTIME_REPO/artifacts/bootstrap/ohos-$ARCH/host"
+  # In-build tools (crossgen2/ILCompiler/R2R) restore the HOST (linux-x64)
+  # runtime pack at the product version during clr+libs+packs; clean restores
+  # miss it (NETSDK1112). Pre-seed from dnceng — try the known release version
+  # for this branch first, then the buildid-derived fallback.
+  local hostver="11.0.0-$LABEL.$PRE.26451.$(echo "$BUILDID" | cut -d. -f2)"
+  [ "$hostver" = "11.0.0-$LABEL.$PRE.26451." ] && hostver=""
+  for v in "$hostver" "$VERSION_BAND-$LABEL.$PRE.$BUILDID"; do
+    [ -n "$v" ] && ensure_nuget_runtime_pack "linux-x64" "$v" && break
+  done
   if [ ! -f "$chbin/apphost" ]; then
     info "corehost apphost missing — building host subset"
     (cd "$RUNTIME_REPO" && ./build.sh -os ohos -arch "$ARCH" --cross -c "$CONFIG" \
