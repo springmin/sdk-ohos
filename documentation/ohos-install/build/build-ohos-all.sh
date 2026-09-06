@@ -300,6 +300,7 @@ ensure_nuget_runtime_pack() {
     local tmp="$(mktemp -d)"
     if curl -fsSL --retry 2 -o "$tmp/p.nupkg" "$url"; then
       mkdir -p "$dir"
+      cp "$tmp/p.nupkg" "$dir/$id.$ver.nupkg"
       (cd "$dir" && python3 -c "import zipfile; zipfile.ZipFile('$tmp/p.nupkg').extractall('.')")
       rm -rf "$tmp"
       if ls "$dir"/*.nuspec >/dev/null 2>&1; then info "pre-seeded $id $ver"; return 0; fi
