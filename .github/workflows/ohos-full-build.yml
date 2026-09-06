@@ -100,7 +100,12 @@ jobs:
             --install-dir "$GITHUB_WORKSPACE/runtime/.dotnet" --no-path
           bash /tmp/dotnet-install.sh --version 11.0.100-preview.6.26359.118 \
             --install-dir "$GITHUB_WORKSPACE/aspnetcore/.dotnet" --no-path
-          "$GITHUB_WORKSPACE/runtime/.dotnet/dotnet" --list-sdks
+          # ILLink.Tasks (built in-tree) runs with rollForward=Major against
+          # Microsoft.NETCore.App 11.0.0; no 11.0.0 release exists yet, so
+          # alias the SDK runtime (local runs do the same).
+          cp -r "$GITHUB_WORKSPACE/runtime/.dotnet/shared/Microsoft.NETCore.App/11.0.0-rc.1.26420.103" \
+            "$GITHUB_WORKSPACE/runtime/.dotnet/shared/Microsoft.NETCore.App/11.0.0"
+          "$GITHUB_WORKSPACE/runtime/.dotnet/dotnet" --list-runtimes
 
       - name: Build runtime -> aspnetcore -> sdk
         run: |
