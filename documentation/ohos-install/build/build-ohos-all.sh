@@ -249,18 +249,29 @@ stage1() {
   export MSBUILDDISABLENODEREUSE=1
   cd "$RUNTIME_REPO"
   # Bootstrap SDK RID graph must carry the ohos entries (independent RID).
-  # Inject the repo's eng graphs (complete 802-RID files) if the .dotnet
-  # graph is missing or unmodified — covers fresh clones / CI (no .dotnet).
-  local rsp="$RUNTIME_REPO/.dotnet/sdk/$RIDGRAPH_SDKVER/RuntimeIdentifierGraph.json"
+  # Inject the repo's eng graphs (complete 802-RID files) into every installed
+  # SDK whose graph lacks ohos — the runtime build actually uses the
+  # global.json SDK version, which may differ from RIDGRAPH_SDKVER. Covers
+  # fresh clones / CI (no pre-seeded .dotnet).
   local eng_rsp="$SDK_REPO/eng/RuntimeIdentifierGraph.ohos.json"
-  if [ ! -f "$rsp" ]; then
-    [ -f "$eng_rsp" ] || die "no bootstrap SDK at $rsp and no eng graph at $eng_rsp — run the SDK bootstrap first"
-    mkdir -p "$(dirname "$rsp")"
-    cp -f "$eng_rsp" "$rsp"
-    cp -f "$SDK_REPO/eng/PortableRuntimeIdentifierGraph.ohos.json" \
-      "$RUNTIME_REPO/.dotnet/sdk/$RIDGRAPH_SDKVER/PortableRuntimeIdentifierGraph.json"
-    info "injected eng/ ohos RID graphs into bootstrap SDK (.dotnet/sdk/$RIDGRAPH_SDKVER)"
+  local eng_prsp="$SDK_REPO/eng/PortableRuntimeIdentifierGraph.ohos.json"
+  local gjv=""
+  if [ -f "$RUNTIME_REPO/global.json" ]; then
+    gjv=$(python3 -c "import json;print(json.load(open('$RUNTIME_REPO/global.json'))['sdk']['version'])" 2>/dev/null || true)
   fi
+  for v in $RIDGRAPH_SDKVER $gjv; do
+    [ -n "$v" ] || continue
+    local sdkdir="$RUNTIME_REPO/.dotnet/sdk/$v"
+    [ -d "$sdkdir" ] || continue
+    local rsp="$sdkdir/RuntimeIdentifierGraph.json"
+    if [ -f "$rsp" ] && ! python3 -c "import json,sys; sys.exit(0 if 'ohos-arm64' in json.load(open('$rsp'))['runtimes'] else 1)" 2>/dev/null; then
+      [ -f "$eng_rsp" ] || die "no eng graph at $eng_rsp"
+      cp -f "$eng_rsp" "$rsp"
+      [ -f "$eng_prsp" ] && cp -f "$eng_prsp" "$sdkdir/PortableRuntimeIdentifierGraph.json"
+      info "injected eng/ ohos RID graphs into bootstrap SDK $v"
+    fi
+  done
+  local rsp="$RUNTIME_REPO/.dotnet/sdk/$RIDGRAPH_SDKVER/RuntimeIdentifierGraph.json"
   [ -f "$rsp" ] || die "RID graph not found at $rsp (bootstrap SDK lacks ohos) — inject eng/ graphs first"
   # crossgen2_inbuild publish (self-contained) resolves AppHostSourcePath to
   # artifacts/bootstrap/ohos-arm64/host/apphost when UseBootstrapLayout=true;
