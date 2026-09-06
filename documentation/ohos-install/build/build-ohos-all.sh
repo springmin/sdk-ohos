@@ -323,7 +323,10 @@ stage1() {
       /p:RuntimeIdentifierGraphPath="$rsp" \
       /p:PreReleaseVersionLabel="$LABEL" /p:PreReleaseVersion="$PRE" /p:OfficialBuildId="$BUILDID" \
       -cmakeargs "-DCMAKE_SYSTEM_NAME=OHOS -DHAVE_CLOCK_MONOTONIC_COARSE_EXITCODE=0 -DHAVE_CLOCK_REALTIME_EXITCODE=0 -DHAVE_CLOCK_THREAD_CPUTIME_EXITCODE=0 -DHAVE_MMAP_DEV_ZERO_EXITCODE=0 -DHAVE_PROCFS_CTL_EXITCODE=1 -DHAVE_PROCFS_STAT_EXITCODE=0 -DHAVE_PROCFS_STATM_EXITCODE=0 -DHAVE_SCHED_GETCPU_EXITCODE=0 -DHAVE_SCHED_GET_PRIORITY_EXITCODE=0 -DHAVE_WORKING_CLOCK_GETTIME_EXITCODE=0 -DHAVE_WORKING_GETTIMEOFDAY_EXITCODE=0 -DONE_SHARED_MAPPING_PER_FILEREGION_PER_PROCESS_EXITCODE=1 -DREALPATH_SUPPORTS_NONEXISTENT_FILES_EXITCODE=1 -DHAVE_SHM_OPEN_THAT_WORKS_WELL_ENOUGH_WITH_MMAP_EXITCODE=0 -DHAVE_BROKEN_FIFO_KEVENT_EXITCODE=1 -DHAVE_BROKEN_FIFO_SELECT_EXITCODE=1") \
-      >> "$LOG" 2>&1 || { echo "--- host subset log tail ---" | tee -a "$LOG"; tail -40 "$LOG" | tee -a "$LOG"; die "host subset build failed (corehost apphost)"; }
+      >> "$LOG" 2>&1 || true
+    # The host subset may fail later at nupkg packaging (host pack is produced
+    # by the packs subset); what we need is the native corehost output.
+    [ -f "$chbin/apphost" ] || { echo "--- host subset log tail ---" | tee -a "$LOG"; tail -30 "$LOG" | tee -a "$LOG"; die "host subset produced no corehost apphost"; }
   fi
   if [ -f "$chbin/apphost" ]; then
     mkdir -p "$bhdir"
