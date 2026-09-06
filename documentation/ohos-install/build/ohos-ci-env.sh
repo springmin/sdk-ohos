@@ -46,7 +46,7 @@ while [ $# -gt 0 ]; do
 done
 
 mkdir -p "$PREFIX"
-log() { printf '\033[1;34m[env]\033[0m %s\n' "$*"; }
+log() { printf '\033[1;34m[env]\033[0m %s\n' "$*" >&2; }
 
 # ---------------------------------------------------------------------------
 # NDK — OpenHarmony Public SDK (linux). Layout: the SDK tarball extracts to
