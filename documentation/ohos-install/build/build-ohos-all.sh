@@ -268,6 +268,21 @@ build_clr_libs_packs() {
       attempt=$((attempt+1))
       continue
     fi
+    echo "--- NETSDK1112 diag ---" | tee -a "$LOG"
+    find "$RUNTIME_REPO/artifacts/obj" -maxdepth 2 -type d -name "*ILCompiler_inbuild*" 2>/dev/null | tee -a "$LOG"
+    local dg=$(find "$RUNTIME_REPO/artifacts/obj" -path "*ILCompiler_inbuild*" -name "*.dgspec.json" 2>/dev/null | head -1)
+    [ -n "$dg" ] && python3 -c "
+import json,sys
+d = json.load(open('$dg'))
+proj = d.get('project',{})
+print('frameworks:', list(proj.get('frameworks',{}).keys()))
+for tfm, fr in proj.get('frameworks',{}).items():
+    print(tfm, 'runtimeIdentifierGraphPath:', fr.get('runtimeIdentifierGraphPath'))
+    print(tfm, 'frameworks:', json.dumps(fr.get('frameworkReferences',{}))[:200])
+" 2>&1 | tee -a "$LOG"
+    echo "--- nuget linux-x64 cache ---" | tee -a "$LOG"
+    ls "$HOME/.nuget/packages/microsoft.netcore.app.runtime.linux-x64/" 2>/dev/null | tee -a "$LOG"
+    ls "$HOME/.nuget/packages/microsoft.netcore.app.runtime.linux-x64/11.0.0-rc.1.26420.103/" 2>/dev/null | head -6 | tee -a "$LOG"
     echo "--- last attempt log tail ---" | tee -a "$LOG"
     tail -40 "$alog" | tee -a "$LOG"
     echo "--- configure platform lines ---" | tee -a "$LOG"
