@@ -41,14 +41,14 @@ jobs:
         run: |
           eval "$(bash sdk/documentation/ohos-install/build/ohos-ci-env.sh --prefix "$HOME/.ohos-ci-env")"
           echo "OHOS_NDK_HOME=$OHOS_NDK_HOME"
-          ls "$OHOS_NDK_HOME/llvm/bin/" | grep -cE "aarch64-unknown-linux-ohos-clang" | xargs echo "NDK ohos clang wrappers:"
-          ls -la "$OHOS_NDK_HOME/llvm/bin/aarch64-unknown-linux-ohos-clang"
+          ls "$OHOS_NDK_HOME/native/llvm/bin/" | grep -cE "aarch64-unknown-linux-ohos-clang" | xargs echo "NDK ohos clang wrappers:"
+          ls -la "$OHOS_NDK_HOME/native/llvm/bin/aarch64-unknown-linux-ohos-clang"
           ls -la "$OPENSSL_DIR/lib/libcrypto.a" "$OPENSSL_DIR/lib/libssl.a"
           ls "$ICU_DIR/lib/" | grep -cE "\.a$" | xargs echo "ICU static libs:"
           ls "$ICU_DIR/lib/libicuuc.a" 2>/dev/null && echo "ICU OK"
           echo "NDK=$OHOS_NDK_HOME"
           ls "$OHOS_NDK_HOME/native/build/cmake/" 2>&1 | head -5
-          find "$OHOS_NDK_HOME/native" -maxdepth 3 -name "*toolchain*.cmake" 2>/dev/null | head -5
+          grep -E "CMAKE_SYSTEM_NAME|CMAKE_SYSTEM_VERSION" "$OHOS_NDK_HOME/native/build/cmake/ohos.toolchain.cmake" 2>&1 | head -4
           echo "$OPENSSL_DIR" "$ICU_DIR" "$OHOS_NDK_HOME" > env-paths.txt
       - name: Upload env check report
         uses: actions/upload-artifact@v4
