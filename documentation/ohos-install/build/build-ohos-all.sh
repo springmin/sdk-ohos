@@ -289,8 +289,11 @@ ensure_nuget_runtime_pack() {
     local dir="$HOME/.nuget/packages/$id/$ver"
     [ -d "$dir" ] && return 0
     local url=""
+    # GitHub-hosted copy first (CI cannot reliably reach dnceng/nuget.org for
+    # these; see sdk-ohos release 'host-runtime-packs'), then the origin feeds.
     case "$ver" in
       11.0.0-rc.1.26420.103) url="https://api.nuget.org/v3-flatcontainer/$id/$ver/$id.$ver.nupkg" ;;
+      11.0.0-rc.1.26431.109|11.0.0-rc.1.26451.109) url="https://github.com/springmin/sdk-ohos/releases/download/host-runtime-packs/$id.$ver.nupkg" ;;
       *) url="https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet12/nuget/v3/flat2/$id/$ver/$id.$ver.nupkg" ;;
     esac
     info "pre-seeding $id $ver..."
