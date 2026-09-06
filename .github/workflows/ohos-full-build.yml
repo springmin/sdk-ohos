@@ -1,0 +1,129 @@
+name: ohos-full-build
+
+on:
+  workflow_dispatch:
+    inputs:
+      buildid:
+        description: OfficialBuildId (YYYYMMDD.N)
+        required: true
+        default: '20260906.1'
+      runtime_ref:
+        description: runtime-ohos branch/tag to build
+        required: true
+        default: 'feature/ohos-cross-runtime'
+      aspnetcore_ref:
+        description: aspnetcore-ohos branch/tag to build
+        required: true
+        default: 'feature/ohos-cross-compile'
+      sdk_ref:
+        description: sdk-ohos branch/tag to build
+        required: true
+        default: 'feature/ohos-cross-sdk'
+      rid:
+        description: RID to build
+        required: true
+        default: 'ohos-arm64'
+      upload_release:
+        description: Upload artifacts to the three -ohos GitHub releases (needs OHOS_RELEASE_TOKEN)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  full-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 355
+    env:
+      CI: 'true'
+      BUILDID: ${{ inputs.buildid }}
+      RID: ${{ inputs.rid }}
+    steps:
+      - name: Checkout sdk-ohos (scripts + selfsign)
+        uses: actions/checkout@v4
+        with:
+          repository: springmin/sdk-ohos
+          ref: ${{ inputs.sdk_ref }}
+          path: sdk
+
+      - name: Checkout runtime-ohos
+        uses: actions/checkout@v4
+        with:
+          repository: springmin/runtime-ohos
+          ref: ${{ inputs.runtime_ref }}
+          path: runtime
+
+      - name: Checkout aspnetcore-ohos
+        uses: actions/checkout@v4
+        with:
+          repository: springmin/aspnetcore-ohos
+          ref: ${{ inputs.aspnetcore_ref }}
+          path: aspnetcore
+
+      - name: Install host build deps
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq cmake ninja-build clang lld build-essential \
+            python3 python3-pip curl git llvm make perl \
+            libicu-dev libssl-dev zlib1g-dev >/dev/null
+
+      - name: Cache NDK/OpenSSL/ICU env
+        id: cache-env
+        uses: actions/cache@v4
+        with:
+          path: ~/.ohos-ci-env
+          key: ohos-ci-env-${{ inputs.rid }}-${{ hashFiles('sdk/documentation/ohos-install/build/ohos-ci-env.sh') }}
+
+      - name: Prepare NDK + OpenSSL + ICU
+        if: steps.cache-env.outputs.cache-hit != 'true'
+        run: bash sdk/documentation/ohos-install/build/ohos-ci-env.sh --prefix "$HOME/.ohos-ci-env"
+
+      - name: Export env
+        run: |
+          eval "$(bash sdk/documentation/ohos-install/build/ohos-ci-env.sh --prefix "$HOME/.ohos-ci-env")"
+          echo "OHOS_NDK_HOME=$OHOS_NDK_HOME" >> "$GITHUB_ENV"
+          echo "OPENSSL_DIR=$OPENSSL_DIR" >> "$GITHUB_ENV"
+          echo "ICU_DIR=$ICU_DIR" >> "$GITHUB_ENV"
+          echo "RUNTIME_REPO=$GITHUB_WORKSPACE/runtime" >> "$GITHUB_ENV"
+          echo "SDK_REPO=$GITHUB_WORKSPACE/sdk" >> "$GITHUB_ENV"
+          echo "ASCORE_REPO=$GITHUB_WORKSPACE/aspnetcore" >> "$GITHUB_ENV"
+
+      - name: Build runtime -> aspnetcore -> sdk
+        run: |
+          bash sdk/documentation/ohos-install/build/build-ohos-all.sh \
+            --buildid "$BUILDID" --rid "$RID" 2>&1 | tail -400
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ohos-build-${{ inputs.rid }}-${{ inputs.buildid }}
+          path: |
+            runtime/artifacts/packages/Release/Shipping/*
+            aspnetcore/artifacts/packages/Release/Shipping/*
+            sdk/artifacts/packages/Release/Shipping/*
+          retention-days: 30
+
+      - name: Publish to -ohos releases
+        if: inputs.upload_release == 'true'
+        env:
+          OHOS_RELEASE_TOKEN: ${{ secrets.OHOS_RELEASE_TOKEN }}
+        run: |
+          set -euo pipefail
+          RT_VERSION=$(ls runtime/artifacts/packages/Release/Shipping/Microsoft.NETCore.App.Ref.*.nupkg | grep -vE 'symbols|\.dev\.' | sed 's/.*Ref\.//; s/\.nupkg//' | sort -u | tail -1)
+          SDK_TAR=$(ls sdk/artifacts/packages/Release/Shipping/dotnet-sdk-*-ohos-arm64.tar.gz | head -1)
+          SDK_VERSION=$(basename "$SDK_TAR" | sed 's/dotnet-sdk-//; s/-ohos-arm64\.tar\.gz//')
+          echo "Publishing runtime/aspnetcore at $RT_VERSION, sdk redist at $SDK_VERSION"
+          echo "$OHOS_RELEASE_TOKEN" | gh auth login --with-token
+          gh release create "v$RT_VERSION-ohos" --repo springmin/runtime-ohos \
+            --notes "CI build (workflow_dispatch ${{ inputs.buildid }})" || true
+          gh release upload "v$RT_VERSION-ohos" --repo springmin/runtime-ohos --clobber \
+            runtime/artifacts/packages/Release/Shipping/* || true
+          gh release create "v$RT_VERSION-ohos" --repo springmin/aspnetcore-ohos \
+            --notes "CI build (workflow_dispatch ${{ inputs.buildid }})" || true
+          gh release upload "v$RT_VERSION-ohos" --repo springmin/aspnetcore-ohos --clobber \
+            aspnetcore/artifacts/packages/Release/Shipping/* || true
+          gh release create "v$SDK_VERSION-ohos" --repo springmin/sdk-ohos \
+            --notes "CI build (workflow_dispatch ${{ inputs.buildid }})" || true
+          gh release upload "v$SDK_VERSION-ohos" --repo springmin/sdk-ohos --clobber \
+            sdk/artifacts/packages/Release/Shipping/* || true
