@@ -252,21 +252,21 @@ build_clr_libs_packs() {
       attempt=$((attempt+1))
       continue
     fi
-    if [ -z "$fixed" ] && grep -qE "cannot open .*libruntimeinfo\.a|libhostpolicy.*No such|libruntimeinfo\.a: No such" "$alog"; then
-      info "clean build missing libruntimeinfo.a — building and retrying"
+    if grep -qE "cannot open .*libruntimeinfo\.a|libhostpolicy.*No such|libruntimeinfo\.a: No such" "$alog"; then
+      if [ "$attempt" -ge 4 ]; then die "libruntimeinfo.a missing persists after retries"; fi
+      info "clean build missing libruntimeinfo.a — building and retrying (attempt $((attempt+1)))"
       ensure_runtimeinfo
       fixed="runtimeinfo"
       attempt=$((attempt+1))
       continue
     fi
-    if [ -z "$fixed" ] || [ "$fixed" = "runtimeinfo" ]; then
-      if grep -qE "sfx-finish\.proj.*were missing" "$alog"; then
-        info "sfx-finish missing facades on clean build — compiling shims and retrying"
-        compile_shims_into_layout || die "shim compile/copy failed"
-        fixed="shims"
-        attempt=$((attempt+1))
-        continue
-      fi
+    if grep -qE "sfx-finish\.proj.*were missing" "$alog"; then
+      if [ "$attempt" -ge 4 ]; then die "sfx-finish facade gap persists after retries"; fi
+      info "sfx-finish missing facades on clean build — compiling shims and retrying (attempt $((attempt+1)))"
+      compile_shims_into_layout || die "shim compile/copy failed"
+      fixed="shims"
+      attempt=$((attempt+1))
+      continue
     fi
     echo "--- last attempt log tail ---" | tee -a "$LOG"
     tail -40 "$alog" | tee -a "$LOG"
