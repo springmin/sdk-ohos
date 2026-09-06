@@ -9,7 +9,7 @@
 #   ICU      75.1 cross-compiled static libs for aarch64-ohos
 #
 # Output layout (default PREFIX=~/.ohos-ci-env; override with --prefix):
-#   $PREFIX/ndk            -> OHOS_NDK_HOME (native/ contents)
+#   $PREFIX/ohos-sdk       -> OHOS_NDK_HOME (SDK root, contains native/)
 #   $PREFIX/openssl/install-> OPENSSL_DIR (lib/libcrypto.a + headers)
 #   $PREFIX/icu/install    -> ICU_DIR (lib/ + include/)
 #
@@ -57,7 +57,7 @@ log() { printf '\033[1;34m[env]\033[0m %s\n' "$*" >&2; }
 # them natively).
 # ---------------------------------------------------------------------------
 install_ndk() {
-  [ -x "$PREFIX/ndk/llvm/bin/${ARCH}-unknown-linux-ohos-clang" ] && { log "NDK present"; return; }
+  [ -x "$PREFIX/ohos-sdk/native/llvm/bin/${ARCH}-unknown-linux-ohos-clang" ] && { log "NDK present"; return; }
   local sdk_tar="$PREFIX/ohos-sdk-windows_linux-public.tar.gz"
   if [ ! -f "$sdk_tar" ]; then
     log "Downloading OpenHarmony Public SDK (~3GB)..."
@@ -69,17 +69,18 @@ install_ndk() {
   local native_zip="$(find "$tmp" -name "native-linux-x64-*.zip" | head -1)"
   [ -n "$native_zip" ] || { echo "ERROR: native-linux-x64 zip not found" >&2; rm -rf "$tmp"; exit 3; }
   unzip -q "$native_zip" -d "$PREFIX/ndk-tmp"
-  mv "$PREFIX/ndk-tmp/native" "$PREFIX/ndk"
+  mkdir -p "$PREFIX/ohos-sdk"
+mv "$PREFIX/ndk-tmp/native" "$PREFIX/ohos-sdk/native"
   rm -rf "$PREFIX/ndk-tmp" "$tmp"
   [ "$KEEP_SDK_TAR" = 0 ] && rm -f "$sdk_tar"
-  [ -d "$PREFIX/ndk/llvm" ] || { echo "ERROR: NDK llvm missing after extract" >&2; exit 3; }
+  [ -d "$PREFIX/ohos-sdk/native/llvm" ] || { echo "ERROR: NDK llvm missing after extract" >&2; exit 3; }
   ensure_ndk_wrappers
-  log "NDK ready: $PREFIX/ndk"
+  log "NDK ready: $PREFIX/ohos-sdk/native"
 }
 
 # ${trip}-{clang,clang++,gcc,g++,ar,ranlib,nm,as} wrappers -> llvm tools
 ensure_ndk_wrappers() {
-  local llvm="$PREFIX/ndk/llvm/bin" trip="${ARCH}-unknown-linux-ohos"
+  local llvm="$PREFIX/ohos-sdk/native/llvm/bin" trip="${ARCH}-unknown-linux-ohos"
   [ -x "$llvm/$trip-clang" ] && return
   log "Creating ${trip}-* compiler wrappers (generic clang NDK)..."
   ln -sf clang        "$llvm/$trip-clang"
@@ -109,7 +110,7 @@ install_openssl() {
       "https://github.com/openssl/openssl/releases/download/openssl-$ver/openssl-$ver.tar.gz"
     tar xzf "$work/openssl.tar.gz" -C "$work/src"
   fi
-  local ndk="$PREFIX/ndk"
+  local ndk="$PREFIX/ohos-sdk/native"
   local llvm="$ndk/llvm/bin"
   local wrap="$work/wrap"
   mkdir -p "$wrap"
@@ -165,7 +166,7 @@ install_icu() {
 
   # --- target cross build ---
   if [ ! -d "$icu_dir/install/lib" ]; then
-    local ndk="$PREFIX/ndk/llvm/bin" trip="${ARCH}-unknown-linux-ohos"
+    local ndk="$PREFIX/ohos-sdk/native/llvm/bin" trip="${ARCH}-unknown-linux-ohos"
     log "ICU target cross build (${trip})..."
     mkdir -p "$icu_dir/target-build" "$icu_dir/install"
     ( cd "$icu_dir/target-build"
@@ -188,7 +189,7 @@ install_openssl
 install_icu
 
 cat <<EOF
-export OHOS_NDK_HOME="$PREFIX/ndk"
+export OHOS_NDK_HOME="$PREFIX/ohos-sdk"
 export OPENSSL_DIR="$PREFIX/openssl/install"
 export ICU_DIR="$PREFIX/icu/install"
 EOF
