@@ -248,7 +248,19 @@ stage1() {
   info "Stage 1: runtime cross build (-os ohos -arch $ARCH --cross)"
   export MSBUILDDISABLENODEREUSE=1
   cd "$RUNTIME_REPO"
+  # Bootstrap SDK RID graph must carry the ohos entries (independent RID).
+  # Inject the repo's eng graphs (complete 802-RID files) if the .dotnet
+  # graph is missing or unmodified — covers fresh clones / CI (no .dotnet).
   local rsp="$RUNTIME_REPO/.dotnet/sdk/$RIDGRAPH_SDKVER/RuntimeIdentifierGraph.json"
+  local eng_rsp="$SDK_REPO/eng/RuntimeIdentifierGraph.ohos.json"
+  if [ ! -f "$rsp" ]; then
+    [ -f "$eng_rsp" ] || die "no bootstrap SDK at $rsp and no eng graph at $eng_rsp — run the SDK bootstrap first"
+    mkdir -p "$(dirname "$rsp")"
+    cp -f "$eng_rsp" "$rsp"
+    cp -f "$SDK_REPO/eng/PortableRuntimeIdentifierGraph.ohos.json" \
+      "$RUNTIME_REPO/.dotnet/sdk/$RIDGRAPH_SDKVER/PortableRuntimeIdentifierGraph.json"
+    info "injected eng/ ohos RID graphs into bootstrap SDK (.dotnet/sdk/$RIDGRAPH_SDKVER)"
+  fi
   [ -f "$rsp" ] || die "RID graph not found at $rsp (bootstrap SDK lacks ohos) — inject eng/ graphs first"
   # crossgen2_inbuild publish (self-contained) resolves AppHostSourcePath to
   # artifacts/bootstrap/ohos-arm64/host/apphost when UseBootstrapLayout=true;
@@ -430,6 +442,13 @@ stage3() {
   RT_VERSION="${RT_VERSION:-$VERSION_BAND-$LABEL.$PRE.$BUILDID}"
   cd "$ASCORE_REPO"
   local ridgraph="$ASCORE_REPO/.dotnet/sdk/$RIDGRAPH_SDKVER/PortableRuntimeIdentifierGraph.json"
+  if [ ! -f "$ridgraph" ]; then
+    local eng_pgraph="$SDK_REPO/eng/PortableRuntimeIdentifierGraph.ohos.json"
+    [ -f "$eng_pgraph" ] || die "no aspnetcore .dotnet portable graph and no eng graph at $eng_pgraph"
+    mkdir -p "$(dirname "$ridgraph")"
+    cp -f "$eng_pgraph" "$ridgraph"
+    info "injected eng/ portable RID graph into aspnetcore bootstrap SDK"
+  fi
   # aspnetcore's darc-flowed runtime versions (e.g. 11.0.0-rc.1.26451.109 from
   # official runtime) point at a feed that has no ohos packs — override the
   # runtime-driven versions to the locally built one so restore hits our feed.

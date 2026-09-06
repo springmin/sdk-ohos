@@ -89,10 +89,22 @@ jobs:
           echo "SDK_REPO=$GITHUB_WORKSPACE/sdk" >> "$GITHUB_ENV"
           echo "ASCORE_REPO=$GITHUB_WORKSPACE/aspnetcore" >> "$GITHUB_ENV"
 
+      - name: Bootstrap runtime + aspnetcore SDK (RID graphs + shims)
+        run: |
+          curl -sSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh
+          bash /tmp/dotnet-install.sh --version 11.0.100-preview.6.26359.118 \
+            --install-dir "$GITHUB_WORKSPACE/runtime/.dotnet" --no-path
+          bash /tmp/dotnet-install.sh --version 11.0.100-preview.6.26359.118 \
+            --install-dir "$GITHUB_WORKSPACE/aspnetcore/.dotnet" --no-path
+          "$GITHUB_WORKSPACE/runtime/.dotnet/dotnet" --version
+
       - name: Build runtime -> aspnetcore -> sdk
         run: |
           bash sdk/documentation/ohos-install/build/build-ohos-all.sh \
-            --buildid="$BUILDID" --rid="$RID" 2>&1 | tail -400
+            --buildid="$BUILDID" --rid="$RID" > /tmp/build.log 2>&1
+          rc=$?
+          tail -400 /tmp/build.log
+          exit $rc
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
