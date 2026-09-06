@@ -236,7 +236,7 @@ build_clr_libs_packs() {
         /p:UseBootstrapLayout=true /p:BuildHostTools=true /p:ApiCompatValidateAssemblies=false \
         /p:RuntimeIdentifierGraphPath="$rsp" /p:IncludeSymbols=false \
         /p:PreReleaseVersionLabel="$LABEL" /p:PreReleaseVersion="$PRE" /p:OfficialBuildId="$BUILDID" \
-        -cmakeargs "-DOPENSSL_ROOT_DIR=$OPENSSL_DIR -DOPENSSL_INCLUDE_DIR=$OPENSSL_DIR/include \
+        -cmakeargs "-DCMAKE_SYSTEM_NAME=OHOS -DOPENSSL_ROOT_DIR=$OPENSSL_DIR -DOPENSSL_INCLUDE_DIR=$OPENSSL_DIR/include \
           -DOPENSSL_CRYPTO_LIBRARY=$OPENSSL_DIR/lib/libcrypto.a -DOPENSSL_SSL_LIBRARY=$OPENSSL_DIR/lib/libssl.a \
           -DCMAKE_ICU_DIR=$ICU_DIR" \
         > "$alog" 2>&1; then
