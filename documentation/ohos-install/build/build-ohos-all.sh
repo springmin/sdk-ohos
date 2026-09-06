@@ -208,11 +208,12 @@ compile_shims_into_layout() {
 # ref; the SDK's ref is a version-neutral stand-in — local packs overwrite it)
 seed_bootstrap_ref() {
   local sdkref=""
-  for v in "$RIDGRAPH_SDKVER" "11.0.100-rc.1.26420.103"; do
-    local p="$RUNTIME_REPO/.dotnet/packs/Microsoft.NETCore.App.Ref/$v"
+  local packs="$RUNTIME_REPO/.dotnet/packs/Microsoft.NETCore.App.Ref"
+  local p
+  for p in "$packs/$RIDGRAPH_SDKVER" "$packs/11.0.100-rc.1.26420.103" $(ls -d "$packs"/*/ 2>/dev/null); do
     [ -d "$p/ref" ] && [ -f "$p/data/FrameworkList.xml" ] && { sdkref="$p"; break; }
   done
-  [ -n "$sdkref" ] || die "no SDK Ref pack to seed bootstrap (looked under .dotnet/packs/Microsoft.NETCore.App.Ref)"
+  [ -n "$sdkref" ] || die "no SDK Ref pack to seed bootstrap (looked under $packs)"
   local bdir="$RUNTIME_REPO/artifacts/bootstrap/ohos-$ARCH/microsoft.netcore.app/ref"
   mkdir -p "$bdir"
   cp -rf "$sdkref"/. "$bdir/"
