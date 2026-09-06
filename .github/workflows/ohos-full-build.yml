@@ -103,6 +103,7 @@ jobs:
             fi
             curl -fsSL --retry 3 -o /tmp/hostpack.nupkg "$src"
             cp /tmp/hostpack.nupkg "$dir/$id.$ver.nupkg"
+            python3 -c "import hashlib; open('$dir/$id.$ver.nupkg.sha512','w').write(hashlib.sha512(open('/tmp/hostpack.nupkg','rb').read()).digest().hex() if False else __import__('base64').b64encode(hashlib.sha512(open('/tmp/hostpack.nupkg','rb').read()).digest()).decode())"
             (cd "$dir" && python3 -c "import zipfile; zipfile.ZipFile('/tmp/hostpack.nupkg').extractall('.')")
             ls "$dir"/*.nuspec >/dev/null 2>&1 && echo "seeded $v" || echo "FAILED seed $v"
           done
