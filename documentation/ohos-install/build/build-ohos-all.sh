@@ -278,21 +278,34 @@ build_clr_libs_packs() {
 
 # pre-seed a host-RID runtime pack into ~/.nuget (clean hosts cannot restore
 # the host pack for the in-build toolchain from the feed in some cmake/nuget
-# combos — NETSDK1112). Downloads from the dnceng public dotnet12 feed.
+# combos — NETSDK1112). ILCompiler_inbuild is SelfContained at the SDK runtime
+# version (nuget.org), so try that first, then dnceng dotnet12 candidates.
 ensure_nuget_runtime_pack() {
-  local rid="$1" ver="$2"
+  local rid="$1"
   local id="microsoft.netcore.app.runtime.$rid"
-  local dir="$HOME/.nuget/packages/$id/$ver"
-  [ -d "$dir" ] && return 0
-  local url="https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet12/nuget/v3/flat2/$id/$ver/$id.$ver.nupkg"
-  info "pre-seeding $id $ver into ~/.nuget..."
-  local tmp="$(mktemp -d)"
-  curl -fsSL --retry 3 -o "$tmp/p.nupkg" "$url" || { rm -rf "$tmp"; return 1; }
-  mkdir -p "$dir"
-  (cd "$dir" && python3 -c "import zipfile,sys; zipfile.ZipFile('$tmp/p.nupkg').extractall('.')")
-  rm -rf "$tmp"
-  [ -f "$dir/$id.nuspec" ] || return 1
-  info "pre-seeded $id $ver"
+  local ver
+  for ver in "$2" "$3" "$4"; do
+    [ -n "$ver" ] || continue
+    local dir="$HOME/.nuget/packages/$id/$ver"
+    [ -d "$dir" ] && return 0
+    local url=""
+    case "$ver" in
+      11.0.0-rc.1.26420.103) url="https://api.nuget.org/v3-flatcontainer/$id/$ver/$id.$ver.nupkg" ;;
+      *) url="https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet12/nuget/v3/flat2/$id/$ver/$id.$ver.nupkg" ;;
+    esac
+    info "pre-seeding $id $ver..."
+    local tmp="$(mktemp -d)"
+    if curl -fsSL --retry 2 -o "$tmp/p.nupkg" "$url"; then
+      mkdir -p "$dir"
+      (cd "$dir" && python3 -c "import zipfile; zipfile.ZipFile('$tmp/p.nupkg').extractall('.')")
+      rm -rf "$tmp"
+      if [ -f "$dir/$id.nuspec" ]; then info "pre-seeded $id $ver"; return 0; fi
+    else
+      rm -rf "$tmp"
+      info "  (not found: $id $ver)"
+    fi
+  done
+  return 1
 }
 
 # ---- 1. runtime cross build -------------------------------------------------
@@ -335,14 +348,13 @@ stage1() {
   local chbin="$RUNTIME_REPO/artifacts/bin/ohos-$ARCH.$CONFIG/corehost"
   local bhdir="$RUNTIME_REPO/artifacts/bootstrap/ohos-$ARCH/host"
   # In-build tools (crossgen2/ILCompiler/R2R) restore the HOST (linux-x64)
-  # runtime pack at the product version during clr+libs+packs; clean restores
-  # miss it (NETSDK1112). Pre-seed from dnceng — try the known release version
-  # for this branch first, then the buildid-derived fallback.
-  local hostver="11.0.0-$LABEL.$PRE.26451.$(echo "$BUILDID" | cut -d. -f2)"
-  [ "$hostver" = "11.0.0-$LABEL.$PRE.26451." ] && hostver=""
-  for v in "$hostver" "$VERSION_BAND-$LABEL.$PRE.$BUILDID"; do
-    [ -n "$v" ] && ensure_nuget_runtime_pack "linux-x64" "$v" && break
-  done
+  # runtime pack during clr+libs+packs; clean restores miss it (NETSDK1112).
+  # ILCompiler_inbuild is SelfContained at the SDK runtime version; seed the
+  # SDK version plus dnceng candidates (branch product version, darc baseline).
+  ensure_nuget_runtime_pack "linux-x64" \
+    "11.0.0-rc.1.26420.103" \
+    "11.0.0-$LABEL.$PRE.26451.$(echo "$BUILDID" | cut -d. -f2)" \
+    "11.0.0-$LABEL.$PRE.26431.109"
   if [ ! -f "$chbin/apphost" ]; then
     info "corehost apphost missing — building host subset"
     (cd "$RUNTIME_REPO" && ./build.sh -os ohos -arch "$ARCH" --cross -c "$CONFIG" \
@@ -382,7 +394,7 @@ stage1() {
   [ -n "$RT_VERSION" ] || RT_VERSION="$VERSION_BAND-$LABEL.$PRE.$BUILDID"
   echo "$RT_VERSION" > "$WORK/rt-version.txt"
   info "runtime product version: $RT_VERSION"
-  ensure_nuget_runtime_pack "linux-x64" "$RT_VERSION"
+  ensure_nuget_runtime_pack "linux-x64" "$RT_VERSION" "" ""
 
   # AOT tooling packs via clr.aot+packs + explicit NativeAOT.sfxproj — the
   # fork's authoritative C.7 shape (DotNetBuildAllRuntimePacks=true would also
