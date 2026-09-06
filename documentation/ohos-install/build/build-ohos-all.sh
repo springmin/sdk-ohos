@@ -309,14 +309,26 @@ stage1() {
   [ -f "$rsp" ] || die "RID graph not found at $rsp (bootstrap SDK lacks ohos) — inject eng/ graphs first"
   # crossgen2_inbuild publish (self-contained) resolves AppHostSourcePath to
   # artifacts/bootstrap/ohos-arm64/host/apphost when UseBootstrapLayout=true;
-  # if the bootstrap layout is stale/missing the publish dies MSB3030. Sync the
-  # compiled corehost apphost/singlefilehost into the bootstrap host dir.
-  local chbin="$RUNTIME_REPO/artifacts/bin/ohos.$ARCH.$CONFIG/corehost"
+  # if the bootstrap layout is stale/missing the publish dies MSB3030. Build
+  # the corehost (host subset) when needed, then sync apphost/singlefilehost
+  # into the bootstrap host dir. Clean hosts (CI) have no corehost output
+  # until the host subset runs.
+  local chbin="$RUNTIME_REPO/artifacts/bin/ohos-$ARCH-$CONFIG/corehost"
   local bhdir="$RUNTIME_REPO/artifacts/bootstrap/ohos-$ARCH/host"
+  if [ ! -f "$chbin/apphost" ]; then
+    info "corehost apphost missing — building host subset"
+    (cd "$RUNTIME_REPO" && ./build.sh -os ohos -arch "$ARCH" --cross -c "$CONFIG" \
+      -subset host \
+      /p:UseBootstrapLayout=true /p:IncludeSymbols=false \
+      /p:RuntimeIdentifierGraphPath="$rsp" \
+      /p:PreReleaseVersionLabel="$LABEL" /p:PreReleaseVersion="$PRE" /p:OfficialBuildId="$BUILDID") \
+      >> "$LOG" 2>&1 || die "host subset build failed (corehost apphost)"
+  fi
   if [ -f "$chbin/apphost" ]; then
     mkdir -p "$bhdir"
     cp -f "$chbin/apphost" "$bhdir/apphost" 2>/dev/null || true
     [ -f "$chbin/singlefilehost" ] && cp -f "$chbin/singlefilehost" "$bhdir/singlefilehost" 2>/dev/null || true
+    info "corehost apphost synced to bootstrap host dir"
   fi
   # ohos RID is independent (no linux-musl fallback) so the prebuilt SDK has no
   # ohos apphost entry; libs/host do not publish apphosts, so host builds disable
