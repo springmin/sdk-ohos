@@ -236,7 +236,6 @@ build_clr_libs_packs() {
         /p:UseBootstrapLayout=true /p:BuildHostTools=true /p:ApiCompatValidateAssemblies=false \
         /p:RuntimeIdentifierGraphPath="$rsp" /p:IncludeSymbols=false \
         /p:PreReleaseVersionLabel="$LABEL" /p:PreReleaseVersion="$PRE" /p:OfficialBuildId="$BUILDID" \
-        /p:RestoreAdditionalProjectSources="$FEED;https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet12/nuget/v3/index.json" \
         -cmakeargs "-DCMAKE_SYSTEM_NAME=OHOS -DHAVE_CLOCK_MONOTONIC_COARSE_EXITCODE=0 -DHAVE_CLOCK_REALTIME_EXITCODE=0 -DHAVE_CLOCK_THREAD_CPUTIME_EXITCODE=0 -DHAVE_MMAP_DEV_ZERO_EXITCODE=0 -DHAVE_PROCFS_CTL_EXITCODE=1 -DHAVE_PROCFS_STAT_EXITCODE=0 -DHAVE_PROCFS_STATM_EXITCODE=0 -DHAVE_SCHED_GETCPU_EXITCODE=0 -DHAVE_SCHED_GET_PRIORITY_EXITCODE=0 -DHAVE_WORKING_CLOCK_GETTIME_EXITCODE=0 -DHAVE_WORKING_GETTIMEOFDAY_EXITCODE=0 -DONE_SHARED_MAPPING_PER_FILEREGION_PER_PROCESS_EXITCODE=1 -DREALPATH_SUPPORTS_NONEXISTENT_FILES_EXITCODE=1 -DHAVE_SHM_OPEN_THAT_WORKS_WELL_ENOUGH_WITH_MMAP_EXITCODE=0 -DHAVE_BROKEN_FIFO_KEVENT_EXITCODE=1 -DHAVE_BROKEN_FIFO_SELECT_EXITCODE=1 -DOPENSSL_ROOT_DIR=$OPENSSL_DIR -DOPENSSL_INCLUDE_DIR=$OPENSSL_DIR/include \
           -DOPENSSL_CRYPTO_LIBRARY=$OPENSSL_DIR/lib/libcrypto.a -DOPENSSL_SSL_LIBRARY=$OPENSSL_DIR/lib/libssl.a \
           -DCMAKE_ICU_DIR=$ICU_DIR" \
@@ -275,6 +274,25 @@ build_clr_libs_packs() {
     grep -iE "CMAKE_SYSTEM_NAME|The C compiler|CMAKE_CROSSCOMPILING|Targeting|System is|CMAKE_TOOLCHAIN_FILE|CMAKE_SYSTEM_PROCESSOR" "$alog" 2>/dev/null | head -12 | tee -a "$LOG"
     die "runtime build (clr+libs+packs) failed (see log tail above)"
   done
+}
+
+# pre-seed a host-RID runtime pack into ~/.nuget (clean hosts cannot restore
+# the host pack for the in-build toolchain from the feed in some cmake/nuget
+# combos — NETSDK1112). Downloads from the dnceng public dotnet12 feed.
+ensure_nuget_runtime_pack() {
+  local rid="$1" ver="$2"
+  local id="microsoft.netcore.app.runtime.$rid"
+  local dir="$HOME/.nuget/packages/$id/$ver"
+  [ -d "$dir" ] && return 0
+  local url="https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet12/nuget/v3/flat2/$id/$ver/$id.$ver.nupkg"
+  info "pre-seeding $id $ver into ~/.nuget..."
+  local tmp="$(mktemp -d)"
+  curl -fsSL --retry 3 -o "$tmp/p.nupkg" "$url" || { rm -rf "$tmp"; return 1; }
+  mkdir -p "$dir"
+  (cd "$dir" && python3 -c "import zipfile,sys; zipfile.ZipFile('$tmp/p.nupkg').extractall('.')")
+  rm -rf "$tmp"
+  [ -f "$dir/$id.nuspec" ] || return 1
+  info "pre-seeded $id $ver"
 }
 
 # ---- 1. runtime cross build -------------------------------------------------
@@ -344,6 +362,19 @@ stage1() {
   # ("no application host available for the specified RuntimeIdentifier").
   # The Host pack is still produced via the packs dependency chain (host.pkg).
   build_clr_libs_packs
+  # Derive the product version from the packs clr+libs just produced, before
+  # clr.aot: ILCompiler_inbuild restores the HOST (linux-x64) runtime pack at
+  # this version, which must already be in ~/.nuget on clean hosts.
+  local ship="$RUNTIME_REPO/artifacts/packages/$CONFIG/Shipping"
+  RT_VERSION=$(ls "$ship"/Microsoft.NETCore.App.Ref.$VERSION_BAND-rc.*.nupkg 2>/dev/null | grep -v symbols | sed "s/.*Ref\.//; s/\.nupkg//" | sort -V | tail -1 || true)
+  if [ -z "$RT_VERSION" ]; then
+    RT_VERSION=$(ls "$ship"/Microsoft.NETCore.App.Runtime.$RID.$VERSION_BAND-rc.*.nupkg 2>/dev/null | sed "s/.*Runtime\.$RID\.//; s/\.nupkg//" | sort -V | tail -1 || true)
+  fi
+  [ -n "$RT_VERSION" ] || RT_VERSION="$VERSION_BAND-$LABEL.$PRE.$BUILDID"
+  echo "$RT_VERSION" > "$WORK/rt-version.txt"
+  info "runtime product version: $RT_VERSION"
+  ensure_nuget_runtime_pack "linux-x64" "$RT_VERSION"
+
   # AOT tooling packs via clr.aot+packs + explicit NativeAOT.sfxproj — the
   # fork's authoritative C.7 shape (DotNetBuildAllRuntimePacks=true would also
   # trigger Mono cross-AOT which misfires for ohos).
@@ -352,21 +383,7 @@ stage1() {
     -subset clr.aot+packs \
     /p:RuntimeIdentifierGraphPath="$rsp" /p:IncludeSymbols=false \
     /p:PreReleaseVersionLabel="$LABEL" /p:PreReleaseVersion="$PRE" /p:OfficialBuildId="$BUILDID" \
-    /p:RestoreAdditionalProjectSources="$FEED;https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet12/nuget/v3/index.json" \
     2>&1 | tee -a "$LOG" || die "runtime build (clr.aot+packs / ILCompiler) failed"
-  local ship="$RUNTIME_REPO/artifacts/packages/$CONFIG/Shipping"
-  [ -d "$ship" ] || die "no Shipping packs at $ship"
-  # Derive the ACTUAL product version from the produced packs (runtime maps
-  # OfficialBuildId to a build number, e.g. 20260903.1 -> ...26453.1). Ref pack
-  # first, then runtime pack name, then the buildid-derived default. Never let
-  # pipefail kill the build. Downstream repos override their runtime refs with
-  # this exact version.
-  RT_VERSION=$(ls "$ship"/Microsoft.NETCore.App.Ref.$VERSION_BAND-rc.*.nupkg 2>/dev/null | grep -v symbols | sed "s/.*Ref\.//; s/\.nupkg//" | sort -V | tail -1 || true)
-  if [ -z "$RT_VERSION" ]; then
-    RT_VERSION=$(ls "$ship"/Microsoft.NETCore.App.Runtime.$RID.$VERSION_BAND-rc.*.nupkg 2>/dev/null | sed "s/.*Runtime\.$RID\.//; s/\.nupkg//" | sort -V | tail -1 || true)
-  fi
-  [ -n "$RT_VERSION" ] || RT_VERSION="$VERSION_BAND-$LABEL.$PRE.$BUILDID"
-  echo "$RT_VERSION" > "$WORK/rt-version.txt"
   info "runtime product version: $RT_VERSION"
 
   # clr.aot+packs emits the ilc as a CoreCLR SINGLE-FILE (toolAot.targets
