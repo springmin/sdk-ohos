@@ -109,7 +109,9 @@ install_openssl() {
       "https://github.com/openssl/openssl/releases/download/openssl-$ver/openssl-$ver.tar.gz"
     tar xzf "$work/openssl.tar.gz" -C "$work/src"
   fi
-  local ndk="$PREFIX/ndk" llvm="$ndk/llvm/bin" wrap="$work/wrap"
+  local ndk="$PREFIX/ndk"
+  local llvm="$ndk/llvm/bin"
+  local wrap="$work/wrap"
   mkdir -p "$wrap"
   local trip="${ARCH}-unknown-linux-ohos"
   ln -sf "$llvm/$trip-clang"  "$wrap/$trip-gcc"
