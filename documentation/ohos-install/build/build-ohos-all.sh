@@ -302,7 +302,7 @@ ensure_nuget_runtime_pack() {
       mkdir -p "$dir"
       (cd "$dir" && python3 -c "import zipfile; zipfile.ZipFile('$tmp/p.nupkg').extractall('.')")
       rm -rf "$tmp"
-      if [ -f "$dir/$id.nuspec" ]; then info "pre-seeded $id $ver"; return 0; fi
+      if ls "$dir"/*.nuspec >/dev/null 2>&1; then info "pre-seeded $id $ver"; return 0; fi
     else
       rm -rf "$tmp"
       info "  (not found: $id $ver)"

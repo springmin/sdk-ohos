@@ -98,7 +98,7 @@ jobs:
             mkdir -p "$dir"
             curl -fsSL --retry 3 -o /tmp/hostpack.nupkg               "https://github.com/springmin/sdk-ohos/releases/download/host-runtime-packs/$id.$v.nupkg"
             (cd "$dir" && python3 -c "import zipfile; zipfile.ZipFile('/tmp/hostpack.nupkg').extractall('.')")
-            test -f "$dir/$id.nuspec" && echo "seeded $v" || echo "FAILED seed $v"
+            ls "$dir"/*.nuspec >/dev/null 2>&1 && echo "seeded $v" || echo "FAILED seed $v"
           done
 
       - name: Bootstrap runtime + aspnetcore SDK (RID graphs + shims)
