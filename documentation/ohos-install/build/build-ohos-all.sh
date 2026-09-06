@@ -229,6 +229,7 @@ build_clr_libs_packs() {
   # retry; normal incremental runs never take these paths.
   local attempt=0
   local fixed=""
+  local alog="$WORK/build-attempt.log"    # per-attempt output for self-heal detection
   while :; do
     if ./build.sh -os ohos -arch "$ARCH" --cross -c "$CONFIG" -lc "$CONFIG" -rc "$CONFIG" \
         -subset clr+libs+packs \
@@ -238,10 +239,12 @@ build_clr_libs_packs() {
         -cmakeargs "-DOPENSSL_ROOT_DIR=$OPENSSL_DIR -DOPENSSL_INCLUDE_DIR=$OPENSSL_DIR/include \
           -DOPENSSL_CRYPTO_LIBRARY=$OPENSSL_DIR/lib/libcrypto.a -DOPENSSL_SSL_LIBRARY=$OPENSSL_DIR/lib/libssl.a \
           -DCMAKE_ICU_DIR=$ICU_DIR" \
-        2>&1 | tee -a "$LOG"; then
+        > "$alog" 2>&1; then
+      cat "$alog" >> "$LOG"
       return 0
     fi
-    if grep -qE "shared framework must be built before the local targeting" "$LOG"; then
+    cat "$alog" >> "$LOG"
+    if grep -qE "shared framework must be built before the local targeting" "$alog"; then
       if [ "$attempt" -ge 4 ]; then die "bootstrap ref Error persists after 4 seeds — check ordering"; fi
       info "clean build missing bootstrap ref pack — seeding and retrying (attempt $((attempt+1)))"
       seed_bootstrap_ref
@@ -249,7 +252,7 @@ build_clr_libs_packs() {
       attempt=$((attempt+1))
       continue
     fi
-    if [ -z "$fixed" ] && grep -qE "cannot open .*libruntimeinfo\.a|libhostpolicy.*No such|libruntimeinfo\.a: No such" "$LOG"; then
+    if [ -z "$fixed" ] && grep -qE "cannot open .*libruntimeinfo\.a|libhostpolicy.*No such|libruntimeinfo\.a: No such" "$alog"; then
       info "clean build missing libruntimeinfo.a — building and retrying"
       ensure_runtimeinfo
       fixed="runtimeinfo"
@@ -257,7 +260,7 @@ build_clr_libs_packs() {
       continue
     fi
     if [ -z "$fixed" ] || [ "$fixed" = "runtimeinfo" ]; then
-      if grep -qE "sfx-finish\.proj.*were missing" "$LOG"; then
+      if grep -qE "sfx-finish\.proj.*were missing" "$alog"; then
         info "sfx-finish missing facades on clean build — compiling shims and retrying"
         compile_shims_into_layout || die "shim compile/copy failed"
         fixed="shims"
