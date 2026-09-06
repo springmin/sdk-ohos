@@ -268,7 +268,9 @@ build_clr_libs_packs() {
         continue
       fi
     fi
-    die "runtime build (clr+libs+packs) failed"
+    echo "--- last attempt log tail ---" | tee -a "$LOG"
+    tail -40 "$alog" | tee -a "$LOG"
+    die "runtime build (clr+libs+packs) failed (see log tail above)"
   done
 }
 
