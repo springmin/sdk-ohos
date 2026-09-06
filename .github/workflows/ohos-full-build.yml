@@ -92,7 +92,7 @@ jobs:
       - name: Build runtime -> aspnetcore -> sdk
         run: |
           bash sdk/documentation/ohos-install/build/build-ohos-all.sh \
-            --buildid "$BUILDID" --rid "$RID" 2>&1 | tail -400
+            --buildid="$BUILDID" --rid="$RID" 2>&1 | tail -400
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
