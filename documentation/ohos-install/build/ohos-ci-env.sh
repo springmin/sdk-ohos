@@ -49,8 +49,12 @@ mkdir -p "$PREFIX"
 log() { printf '\033[1;34m[env]\033[0m %s\n' "$*"; }
 
 # ---------------------------------------------------------------------------
-# NDK — OpenHarmony Public SDK (linux). The SDK tarball contains native/
-# (llvm + sysroot) which is what OHOS_NDK_HOME must point at.
+# NDK — OpenHarmony Public SDK (linux). Layout: the SDK tarball extracts to
+# <root>/linux/native-linux-x64-<ver>-Release.zip (+ ets/js/previewer/toolchains
+# zips); unzip the native zip -> native/ (llvm + sysroot) = OHOS_NDK_HOME.
+# OpenHarmony's llvm ships a generic `clang`, not ${trip}-clang wrappers, so
+# create the wrappers the runtime build + OpenSSL expect (HarmonyOS NDK has
+# them natively).
 # ---------------------------------------------------------------------------
 install_ndk() {
   [ -x "$PREFIX/ndk/llvm/bin/${ARCH}-unknown-linux-ohos-clang" ] && { log "NDK present"; return; }
@@ -59,20 +63,36 @@ install_ndk() {
     log "Downloading OpenHarmony Public SDK (~3GB)..."
     curl -fL --retry 3 -o "$sdk_tar" "$NDK_URL"
   fi
-  log "Extracting native/ (NDK) from SDK tarball..."
-  # tarball layout: ./linux/ohos-sdk/linux/native/... (Public SDK for linux)
-  tar tzf "$sdk_tar" 2>/dev/null | grep -m1 "native/llvm/bin/.*-clang$" || \
-    { echo "ERROR: cannot locate native/ in SDK tarball" >&2; exit 3; }
+  log "Extracting NDK from SDK tarball..."
+  tar tzf "$sdk_tar" | grep -m1 "linux/native-linux-x64.*\.zip$" >/dev/null || \
+    { echo "ERROR: no native-linux-x64 zip in SDK tarball" >&2; exit 3; }
   local tmp="$(mktemp -d)"
   tar xzf "$sdk_tar" -C "$tmp"
-  local native="$(dirname "$(find "$tmp" -maxdepth 4 -type d -name native | head -1)")"
-  # native dir sits next to its siblings; copy contents
-  mv "$tmp"/*/*/native "$PREFIX/ndk" 2>/dev/null || mv "$(find "$tmp" -maxdepth 4 -type d -name native | head -1)" "$PREFIX/ndk"
-  rm -rf "$tmp"
+  local native_zip="$(find "$tmp" -name "native-linux-x64-*.zip" | head -1)"
+  [ -n "$native_zip" ] || { echo "ERROR: native-linux-x64 zip not found" >&2; rm -rf "$tmp"; exit 3; }
+  unzip -q "$native_zip" -d "$PREFIX/ndk-tmp"
+  mv "$PREFIX/ndk-tmp/native" "$PREFIX/ndk"
+  rm -rf "$PREFIX/ndk-tmp" "$tmp"
   [ "$KEEP_SDK_TAR" = 0 ] && rm -f "$sdk_tar"
-  [ -x "$PREFIX/ndk/llvm/bin/${ARCH}-unknown-linux-ohos-clang" ] || \
-    { echo "ERROR: NDK clang missing after extract" >&2; exit 3; }
+  [ -d "$PREFIX/ndk/llvm" ] || { echo "ERROR: NDK llvm missing after extract" >&2; exit 3; }
+  ensure_ndk_wrappers
   log "NDK ready: $PREFIX/ndk"
+}
+
+# ${trip}-{clang,clang++,gcc,g++,ar,ranlib,nm,as} wrappers -> llvm tools
+ensure_ndk_wrappers() {
+  local llvm="$PREFIX/ndk/llvm/bin" trip="${ARCH}-unknown-linux-ohos"
+  [ -x "$llvm/$trip-clang" ] && return
+  log "Creating ${trip}-* compiler wrappers (generic clang NDK)..."
+  ln -sf clang        "$llvm/$trip-clang"
+  ln -sf clang++      "$llvm/$trip-clang++"
+  ln -sf clang        "$llvm/$trip-gcc"
+  ln -sf clang++      "$llvm/$trip-g++"
+  ln -sf llvm-ar      "$llvm/$trip-ar"
+  ln -sf llvm-ranlib  "$llvm/$trip-ranlib"
+  ln -sf llvm-nm      "$llvm/$trip-nm"
+  ln -sf llvm-as      "$llvm/$trip-as"
+  [ -x "$llvm/$trip-clang" ] || { echo "ERROR: wrapper creation failed" >&2; exit 3; }
 }
 
 # ---------------------------------------------------------------------------
