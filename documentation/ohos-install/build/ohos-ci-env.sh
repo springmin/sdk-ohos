@@ -64,10 +64,8 @@ install_ndk() {
     curl -fL --retry 3 -o "$sdk_tar" "$NDK_URL"
   fi
   log "Extracting NDK from SDK tarball..."
-  tar tzf "$sdk_tar" | grep -m1 "linux/native-linux-x64.*\.zip$" >/dev/null || \
-    { echo "ERROR: no native-linux-x64 zip in SDK tarball" >&2; exit 3; }
   local tmp="$(mktemp -d)"
-  tar xzf "$sdk_tar" -C "$tmp"
+  tar xzf "$sdk_tar" -C "$tmp" || { echo "ERROR: SDK tarball extract failed" >&2; rm -rf "$tmp"; exit 3; }
   local native_zip="$(find "$tmp" -name "native-linux-x64-*.zip" | head -1)"
   [ -n "$native_zip" ] || { echo "ERROR: native-linux-x64 zip not found" >&2; rm -rf "$tmp"; exit 3; }
   unzip -q "$native_zip" -d "$PREFIX/ndk-tmp"
