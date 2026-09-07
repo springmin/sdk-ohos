@@ -107,16 +107,13 @@ jobs:
               *)
                 src="https://github.com/springmin/runtime-ohos/releases/download/v11.0.0-rc.1.26451.109-ohos/$id.$v.nupkg" ;;
             esac
-            mkdir -p "$d"
+            mkdir -p "$d" "/tmp/hostfeed/$id/$v"
             curl -fsSL --retry 3 -o /tmp/hostpack.nupkg "$src" || { echo "FAILED fetch $v"; continue; }
+            cp /tmp/hostpack.nupkg "/tmp/hostfeed/$id/$v/$id.$v.nupkg"
             (cd "$d" && python3 -c "import zipfile; zipfile.ZipFile('/tmp/hostpack.nupkg').extractall('.')")
-            test -d "$d/runtimes" && echo "installed $v to SDK packs" || echo "FAILED install $v"
+            test -d "$d/runtimes" && echo "installed $v to SDK packs + hostfeed" || echo "FAILED install $v"
           done
           ls "$PKROOT" 2>&1 | head -5
-          mkdir -p /tmp/hostfeed/microsoft.netcore.app.runtime.linux-x64
-          for v in 11.0.0-rc.1.26420.103 11.0.0-rc.1.26431.109 11.0.0-rc.1.26451.109; do
-            cp "$PKROOT/$v"/*.nupkg "/tmp/hostfeed/microsoft.netcore.app.runtime.linux-x64/$v/" 2>/dev/null               || { mkdir -p "/tmp/hostfeed/microsoft.netcore.app.runtime.linux-x64/$v"; cp "$PKROOT/$v"/*.nupkg "/tmp/hostfeed/microsoft.netcore.app.runtime.linux-x64/$v/"; }
-          done
           find /tmp/hostfeed -name "*.nupkg" | head -4
 
       - name: Bootstrap runtime + aspnetcore SDK (RID graphs + shims)
