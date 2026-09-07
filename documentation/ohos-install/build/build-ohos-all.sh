@@ -343,6 +343,8 @@ PYEOF
       continue
     fi
     echo "--- NETSDK1112 diag ---" | tee -a "$LOG"
+    echo "--- NETSDK1112 error lines ---" | tee -a "$LOG"
+    grep -E "NETSDK1112|error NETSDK1112" "$alog" 2>/dev/null | head -3 | tee -a "$LOG"
     echo "--- NuGet download attempts (linux-x64 runtime pack version) ---" | tee -a "$LOG"
     grep -oE "(GET|Restoring|Downloading).*linux-x64[^ ]*|runtime\.linux-x64[^ ]*2645[0-9]+[^ ]*|2645[0-9]+\.[0-9]+" "$alog" 2>/dev/null | sort -u | head -8 | tee -a "$LOG"
     find "$RUNTIME_REPO/artifacts/obj" -maxdepth 2 -type d -name "*ILCompiler_inbuild*" 2>/dev/null | tee -a "$LOG"
