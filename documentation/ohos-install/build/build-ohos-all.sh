@@ -222,22 +222,6 @@ seed_bootstrap_ref() {
 }
 
 build_clr_libs_packs() {
-  # Clean hosts cannot download the host linux-x64 runtime pack for in-build
-  # self-contained tools (ILCompiler_inbuild) from the dnceng feeds
-  # (NETSDK1112); the pre-seeded ~/.nuget cache is not consulted by the
-  # FrameworkReference resolution, so add it as a NuGet.config folder source.
-  python3 - "$RUNTIME_REPO/NuGet.config" <<'PYEOF'
-import sys
-f = sys.argv[1]
-s = open(f).read()
-if 'local-nuget' not in s:
-    marker = '  </packageSources>'
-    add = '    <add key="local-nuget" value="/tmp/hostfeed" />\n'
-    assert marker in s, "packageSources close not found"
-    s = s.replace(marker, add + marker, 1)
-    open(f, 'w').write(s)
-    print("added local-nuget folder source to NuGet.config")
-PYEOF
   # A clean build hits several self-healing failures (all ordering, not our
   # code): singlefilehost links before libruntimeinfo.a is built, sfx-finish
   # runs before the shims (facades) are compiled, and restore needs the
@@ -252,7 +236,6 @@ PYEOF
         /p:UseBootstrapLayout=true /p:BuildHostTools=true /p:ApiCompatValidateAssemblies=false \
         /p:RuntimeIdentifierGraphPath="$rsp" /p:IncludeSymbols=false \
         /p:PreReleaseVersionLabel="$LABEL" /p:PreReleaseVersion="$PRE" /p:OfficialBuildId="$BUILDID" \
-        "/p:RestoreAdditionalProjectSources=/tmp/hostfeed" \
         /p:RuntimeFrameworkVersion="11.0.0-$LABEL.$PRE.26451.$(echo "$BUILDID" | cut -d. -f2)" \
         -cmakeargs "-DCMAKE_SYSTEM_NAME=OHOS -DHAVE_CLOCK_MONOTONIC_COARSE_EXITCODE=0 -DHAVE_CLOCK_REALTIME_EXITCODE=0 -DHAVE_CLOCK_THREAD_CPUTIME_EXITCODE=0 -DHAVE_MMAP_DEV_ZERO_EXITCODE=0 -DHAVE_PROCFS_CTL_EXITCODE=1 -DHAVE_PROCFS_STAT_EXITCODE=0 -DHAVE_PROCFS_STATM_EXITCODE=0 -DHAVE_SCHED_GETCPU_EXITCODE=0 -DHAVE_SCHED_GET_PRIORITY_EXITCODE=0 -DHAVE_WORKING_CLOCK_GETTIME_EXITCODE=0 -DHAVE_WORKING_GETTIMEOFDAY_EXITCODE=0 -DONE_SHARED_MAPPING_PER_FILEREGION_PER_PROCESS_EXITCODE=1 -DREALPATH_SUPPORTS_NONEXISTENT_FILES_EXITCODE=1 -DHAVE_SHM_OPEN_THAT_WORKS_WELL_ENOUGH_WITH_MMAP_EXITCODE=0 -DHAVE_BROKEN_FIFO_KEVENT_EXITCODE=1 -DHAVE_BROKEN_FIFO_SELECT_EXITCODE=1 -DOPENSSL_ROOT_DIR=$OPENSSL_DIR -DOPENSSL_INCLUDE_DIR=$OPENSSL_DIR/include \
           -DOPENSSL_CRYPTO_LIBRARY=$OPENSSL_DIR/lib/libcrypto.a -DOPENSSL_SSL_LIBRARY=$OPENSSL_DIR/lib/libssl.a \
