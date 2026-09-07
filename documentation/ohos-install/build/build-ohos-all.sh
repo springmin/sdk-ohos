@@ -235,13 +235,13 @@ build_clr_libs_packs() {
   # /tmp/hostfeed folder feed (created by the workflow) must be a NuGet.config
   # source for crossgen2_inbuild/ILCompiler_inbuild to resolve the host
   # linux-x64 runtime pack (NETSDK1112 on clean hosts).
-  python3 - "$RUNTIME_REPO/NuGet.config" <<'PYEOF'
+  python3 - "$RUNTIME_REPO/NuGet.config" "$FEED" <<'PYEOF'
 import sys
 f = sys.argv[1]
 s = open(f).read()
 if 'local-hostfeed' not in s:
     marker = '  </packageSources>'
-    add = '    <add key="local-hostfeed" value="/tmp/hostfeed" />\n'
+    add = '    <add key="local-hostfeed" value="/tmp/hostfeed" />\n    <add key="local-feed" value="' + sys.argv[2] + '" />\n'
     assert marker in s, "packageSources close not found"
     s = s.replace(marker, add + marker, 1)
     open(f, 'w').write(s)
