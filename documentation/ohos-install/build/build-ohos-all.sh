@@ -222,6 +222,14 @@ seed_bootstrap_ref() {
 }
 
 build_clr_libs_packs() {
+  # Mirror the host linux-x64 runtime packs into the local NuGet feed (flat)
+  # so the in-build tool restore (RestoreAdditionalProjectSources=$FEED) and
+  # SDK runtime-pack download can resolve them regardless of version source.
+  if [ -d /tmp/hostfeed ]; then
+    mkdir -p "$FEED"
+    find /tmp/hostfeed -name "*.nupkg" -exec cp -n {} "$FEED/" \;
+    info "host packs mirrored into FEED ($(ls "$FEED" | grep -c linux-x64) linux-x64 nupkgs)"
+  fi
   # SDK's FrameworkReference resolution (in-build self-contained host tools)
   # reads NuGet.config sources, not RestoreAdditionalProjectSources; the
   # /tmp/hostfeed folder feed (created by the workflow) must be a NuGet.config
