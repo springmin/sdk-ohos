@@ -89,29 +89,23 @@ jobs:
           echo "SDK_REPO=$GITHUB_WORKSPACE/sdk" >> "$GITHUB_ENV"
           echo "ASCORE_REPO=$GITHUB_WORKSPACE/aspnetcore" >> "$GITHUB_ENV"
 
-      - name: Pre-seed host linux-x64 runtime packs into ~/.nuget
+      - name: Pre-seed host linux-x64 runtime packs (folder feed /tmp/hostfeed)
         run: |
+          mkdir -p /tmp/hostfeed
           for v in 11.0.0-rc.1.26420.103 11.0.0-rc.1.26431.109 11.0.0-rc.1.26451.109; do
             id="microsoft.netcore.app.runtime.linux-x64"
-            dir="$HOME/.nuget/packages/$id/$v"
-            [ -d "$dir" ] && continue
-            mkdir -p "$dir"
-            if [ "$v" = "11.0.0-rc.1.26420.103" ]; then
-              src="https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet11/nuget/v3/flat2/$id/$v/$id.$v.nupkg"
-            else
-              src="https://github.com/springmin/sdk-ohos/releases/download/host-runtime-packs/$id.$v.nupkg"
-            fi
-            curl -fsSL --retry 3 -o /tmp/hostpack.nupkg "$src"
-            cp /tmp/hostpack.nupkg "$dir/$id.$ver.nupkg"
-            python3 -c \
-              "import hashlib,base64,json; h=base64.b64encode(hashlib.sha512(open('/tmp/hostpack.nupkg','rb').read()).digest()).decode(); open('$dir/$id.$ver.nupkg.sha512','w').write(h); open('$dir/.nupkg.metadata','w').write(json.dumps({'version':2,'contentHash':h,'source':'github'}))"
-            (cd "$dir" && python3 -c "import zipfile; zipfile.ZipFile('/tmp/hostpack.nupkg').extractall('.')")
-            cp "$dir"/*.nuspec "$dir/$id.nuspec" 2>/dev/null
-            ls "$dir"/*.nuspec >/dev/null 2>&1 && echo "seeded $v" || echo "FAILED seed $v"
+            d="/tmp/hostfeed/$id/$v"
+            [ -f "$d/$id.$v.nupkg" ] && continue
+            mkdir -p "$d"
+            case "$v" in
+              11.0.0-rc.1.26420.103)
+                src="https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet11/nuget/v3/flat2/$id/$v/$id.$v.nupkg" ;;
+              *)
+                src="https://github.com/springmin/runtime-ohos/releases/download/v11.0.0-rc.1.26451.109-ohos/$id.$v.nupkg" ;;
+            esac
+            curl -fsSL --retry 3 -o "$d/$id.$v.nupkg" "$src" && echo "fetched $v" || echo "FAILED $v"
           done
-          echo "NUGET_PACKAGES=\${NUGET_PACKAGES:-unset}"
-          ls "$HOME/.nuget/packages/microsoft.netcore.app.runtime.linux-x64/" 2>&1
-          ls "$HOME/.nuget/packages/microsoft.netcore.app.runtime.linux-x64/11.0.0-rc.1.26451.109/" 2>&1 | head -8
+          ls -R /tmp/hostfeed 2>&1 | head -12
 
       - name: Bootstrap runtime + aspnetcore SDK (RID graphs + shims)
         run: |
