@@ -332,13 +332,6 @@ PYEOF
       attempt=$((attempt+1))
       continue
     fi
-    if grep -qE "ExceptionPolyfills\.cs.*(CS0518|error CS0518)" "$alog"; then
-      if [ "$attempt" -ge 3 ]; then die "CS0518 (netstandard2.1 libs) persists after retries"; fi
-      info "CS0518 in netstandard2.1 libs — retrying build (attempt $((attempt+1)))"
-      fixed="cs0518-retry"
-      attempt=$((attempt+1))
-      continue
-    fi
     if grep -qE "sfx-finish\.proj.*were missing" "$alog"; then
       if [ "$attempt" -ge 4 ]; then die "sfx-finish facade gap persists after retries"; fi
       info "sfx-finish missing facades on clean build — compiling shims and retrying (attempt $((attempt+1)))"
