@@ -151,6 +151,10 @@ jobs:
             --install-dir "$GITHUB_WORKSPACE/runtime/.dotnet" --no-path
           bash /tmp/dotnet-install.sh --version 11.0.100-preview.6.26359.118 \
             --install-dir "$GITHUB_WORKSPACE/aspnetcore/.dotnet" --no-path
+          # aspnetcore global.json SDK (arcade would download it mid-build, too
+          # late for the RID graph injection before the build)
+          bash /tmp/dotnet-install.sh --version 11.0.100-rc.1.26420.103 \
+            --install-dir "$GITHUB_WORKSPACE/aspnetcore/.dotnet" --no-path
           # ILLink.Tasks (built in-tree) runs with rollForward=Major against
           # Microsoft.NETCore.App 11.0.0; no 11.0.0 release exists yet, so
           # alias the SDK runtime (local runs do the same).
