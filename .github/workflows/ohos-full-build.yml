@@ -158,6 +158,19 @@ jobs:
             "$GITHUB_WORKSPACE/runtime/.dotnet/shared/Microsoft.NETCore.App/11.0.0"
           "$GITHUB_WORKSPACE/runtime/.dotnet/dotnet" --list-runtimes
 
+      - name: Install fork Ref pack (26451.109, has CompositeMLKem etc.)
+        run: |
+          PKROOT="$GITHUB_WORKSPACE/runtime/.dotnet/packs/Microsoft.NETCore.App.Ref"
+          mkdir -p "$PKROOT"
+          d="$PKROOT/11.0.0-rc.1.26451.109"
+          if [ ! -f "$d/data/FrameworkList.xml" ]; then
+            mkdir -p "$d"
+            curl -fsSL --retry 3 -o /tmp/ref.nupkg "https://github.com/springmin/runtime-ohos/releases/download/v11.0.0-rc.1.26451.109-ohos/Microsoft.NETCore.App.Ref.11.0.0-rc.1.26451.109.nupkg"
+            (cd "$d" && python3 -c "import zipfile; zipfile.ZipFile('/tmp/ref.nupkg').extractall('.')")
+            test -f "$d/data/FrameworkList.xml" && echo "installed fork Ref 26451.109" || echo "FAILED Ref install"
+          fi
+          ls "$PKROOT" 2>&1 | head -4
+
       - name: Build runtime -> aspnetcore -> sdk
         run: |
           set +e

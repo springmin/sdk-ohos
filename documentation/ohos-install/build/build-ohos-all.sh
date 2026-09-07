@@ -210,7 +210,7 @@ seed_bootstrap_ref() {
   local sdkref=""
   local packs="$RUNTIME_REPO/.dotnet/packs/Microsoft.NETCore.App.Ref"
   local p
-  for p in "$packs/11.0.100-rc.1.26420.103" "$packs/$RIDGRAPH_SDKVER" $(ls -d "$packs"/*/ 2>/dev/null); do
+  for p in "$packs/11.0.0-rc.1.26451.109" "$packs/11.0.100-rc.1.26420.103" "$packs/$RIDGRAPH_SDKVER" $(ls -d "$packs"/*/ 2>/dev/null); do
     [ -d "$p/ref" ] && [ -f "$p/data/FrameworkList.xml" ] && { sdkref="$p"; break; }
   done
   [ -n "$sdkref" ] || die "no SDK Ref pack to seed bootstrap (looked under $packs)"
