@@ -253,6 +253,29 @@ with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as zout:
   fi
   RESTORE_SOURCES="https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet-public/nuget/v3/index.json;https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet-tools/nuget/v3/index.json;https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet-eng/nuget/v3/index.json;https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet-libraries/nuget/v3/index.json;https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet-libraries-transport/nuget/v3/index.json;https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet10/nuget/v3/index.json;https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet10-transport/nuget/v3/index.json;https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet11/nuget/v3/index.json;https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet11-transport/nuget/v3/index.json;https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet12/nuget/v3/index.json;https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet12-transport/nuget/v3/index.json;https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet-diagnostics-tests/nuget/v3/index.json;https://api.nuget.org/v3/index.json;$FEED;/tmp/hostfeed"
   info "RESTORE_SOURCES len: ${#RESTORE_SOURCES}"
+  # Seed every hostfeed version into the NuGet global cache too (the SDK
+  # runtime-pack check looks at ~/.nuget for the resolved version).
+  if [ -d /tmp/hostfeed ]; then
+    for nupkg in $(find /tmp/hostfeed -name "*.nupkg"); do
+      id=$(basename "$(dirname "$(dirname "$nupkg")")")
+      ver=$(basename "$(dirname "$nupkg")")
+      dir="$HOME/.nuget/packages/$id/$ver"
+      if [ ! -d "$dir" ]; then
+        mkdir -p "$dir"
+        cp "$nupkg" "$dir/$(basename "$nupkg")"
+        python3 -c "
+import hashlib,base64,json,zipfile,glob
+p='$dir/' + '$(basename "$nupkg")'
+h=base64.b64encode(hashlib.sha512(open(p,'rb').read()).digest()).decode()
+open('$dir/' + '$(basename "$nupkg")' + '.sha512','w').write(h)
+open('$dir/.nupkg.metadata','w').write(json.dumps({'version':2,'contentHash':h,'source':'local'}))
+zipfile.ZipFile(p).extractall('$dir')
+for n in glob.glob('$dir/*.nuspec'):
+    import shutil; shutil.copy(n, '$dir/$id.nuspec'); break
+" && info "seeded $id $ver into ~/.nuget"
+      fi
+    done
+  fi
   # SDK's FrameworkReference resolution (in-build self-contained host tools)
   # reads NuGet.config sources, not RestoreAdditionalProjectSources; the
   # /tmp/hostfeed folder feed (created by the workflow) must be a NuGet.config
