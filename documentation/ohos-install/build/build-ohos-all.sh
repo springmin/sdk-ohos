@@ -230,6 +230,27 @@ build_clr_libs_packs() {
     find /tmp/hostfeed -name "*.nupkg" -exec cp -n {} "$FEED/" \;
     info "host packs mirrored into FEED ($(ls "$FEED" | grep -c linux-x64) linux-x64 nupkgs)"
   fi
+  # The in-build tools resolve the host runtime pack at ProductVersion
+  # (11.0.0 base, no suffix) per targetingpacks KnownRuntimePack; re-version
+  # the seeded 26451.109 pack to 11.0.0 in both the folder feed and the flat
+  # feed (docs/plans problem-4 pattern: repackage to the requested version).
+  if [ -f /tmp/hostfeed/microsoft.netcore.app.runtime.linux-x64/11.0.0-rc.1.26451.109/microsoft.netcore.app.runtime.linux-x64.11.0.0-rc.1.26451.109.nupkg ]; then
+    for dest in /tmp/hostfeed "$FEED"; do
+      mkdir -p "$dest/microsoft.netcore.app.runtime.linux-x64/11.0.0"
+      python3 -c "
+import zipfile, io
+src = '/tmp/hostfeed/microsoft.netcore.app.runtime.linux-x64/11.0.0-rc.1.26451.109/microsoft.netcore.app.runtime.linux-x64.11.0.0-rc.1.26451.109.nupkg'
+out = '$dest/microsoft.netcore.app.runtime.linux-x64/11.0.0/microsoft.netcore.app.runtime.linux-x64.11.0.0.nupkg'
+zin = zipfile.ZipFile(src)
+with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as zout:
+    for n in zin.namelist():
+        d = zin.read(n)
+        if n.endswith('.nuspec') or n.endswith('.nupkg.metadata'):
+            d = d.decode().replace('11.0.0-rc.1.26451.109', '11.0.0').encode()
+        zout.writestr(n, d)
+" && info "re-versioned host pack to 11.0.0 in $dest"
+    done
+  fi
   # SDK's FrameworkReference resolution (in-build self-contained host tools)
   # reads NuGet.config sources, not RestoreAdditionalProjectSources; the
   # /tmp/hostfeed folder feed (created by the workflow) must be a NuGet.config
