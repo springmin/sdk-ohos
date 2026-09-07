@@ -348,6 +348,8 @@ PYEOF
       continue
     fi
     echo "--- NETSDK1112 diag ---" | tee -a "$LOG"
+    echo "--- CS0518 csc context ---" | tee -a "$LOG"
+    grep -B2 -A2 "ExceptionPolyfills" "$alog" 2>/dev/null | grep -iE "csc|/r:|netstandard|CoreLib|Reference" | head -6 | tee -a "$LOG" || true
     echo "--- NETSDK1112 error lines ---" | tee -a "$LOG"
     grep -E "NETSDK1112|error NETSDK1112" "$alog" 2>/dev/null | head -3 | tee -a "$LOG" || true
     echo "--- NuGet download attempts (linux-x64 runtime pack version) ---" | tee -a "$LOG"
