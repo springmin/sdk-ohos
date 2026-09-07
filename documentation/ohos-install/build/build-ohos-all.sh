@@ -332,14 +332,6 @@ PYEOF
       attempt=$((attempt+1))
       continue
     fi
-    if grep -qE "ExceptionPolyfills\.cs.*(CS0518|error)|CS0518: Predefined type.*System\.Object" "$alog"; then
-      if [ "$attempt" -ge 4 ]; then die "netstandard shims gap persists after retries"; fi
-      info "libs missing netstandard shims (CS0518) — compiling shims and retrying (attempt $((attempt+1)))"
-      compile_shims_into_layout || die "shim compile/copy failed (CS0518)"
-      fixed="shims-cs0518"
-      attempt=$((attempt+1))
-      continue
-    fi
     if grep -qE "sfx-finish\.proj.*were missing" "$alog"; then
       if [ "$attempt" -ge 4 ]; then die "sfx-finish facade gap persists after retries"; fi
       info "sfx-finish missing facades on clean build — compiling shims and retrying (attempt $((attempt+1)))"

@@ -116,6 +116,19 @@ jobs:
           ls "$PKROOT" 2>&1 | head -5
           find /tmp/hostfeed -name "*.nupkg" | head -4
 
+      - name: Pre-seed NETStandard.Library (netstandard2.x libs compile)
+        run: |
+          for v in 1.6.1 2.0.3; do
+            id="netstandard.library"
+            dir="$HOME/.nuget/packages/$id/$v"
+            [ -d "$dir" ] && continue
+            mkdir -p "$dir"
+            curl -fsSL --retry 3 -o /tmp/ns.nupkg "https://api.nuget.org/v3-flatcontainer/$id/$v/$id.$v.nupkg" || { echo "FAILED $id $v"; continue; }
+            cp /tmp/ns.nupkg "$dir/$id.$v.nupkg"
+            python3 -c "import hashlib,base64,json,zipfile,glob,shutil; p='$dir/$id.$v.nupkg'; h=base64.b64encode(hashlib.sha512(open(p,'rb').read()).digest()).decode(); open('$dir/$id.$v.nupkg.sha512','w').write(h); open('$dir/.nupkg.metadata','w').write(json.dumps({'version':2,'contentHash':h,'source':'nuget.org'})); zipfile.ZipFile(p).extractall('$dir'); [shutil.copy(n,'$dir/$id.nuspec') for n in glob.glob('$dir/*.nuspec')]"
+            echo "seeded $id $v"
+          done
+
       - name: Bootstrap runtime + aspnetcore SDK (RID graphs + shims)
         run: |
           curl -sSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh
