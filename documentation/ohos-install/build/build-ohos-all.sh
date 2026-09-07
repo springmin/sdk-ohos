@@ -343,7 +343,7 @@ PYEOF
     echo "--- NETSDK1112 diag ---" | tee -a "$LOG"
     echo "--- manual Bcl.Numerics netstandard2.1 diag ---" | tee -a "$LOG"
     if grep -q "Bcl.Numerics" "$alog" 2>/dev/null; then
-      (cd "$RUNTIME_REPO" && ./.dotnet/dotnet build src/libraries/Microsoft.Bcl.Numerics/src/Microsoft.Bcl.Numerics.csproj -f netstandard2.1         -p:TargetOS=ohos -p:TargetArchitecture=arm64 -p:UseBootstrapLayout=true -v:diag 2>&1 |         grep -iE "References=|/r:|netstandard.dll|System.Runtime.dll|ResolveFrameworkReferences|CS0518|netstandard.library" | head -12) | tee -a "$LOG"
+      (cd "$RUNTIME_REPO" && ./.dotnet/dotnet build src/libraries/Microsoft.Bcl.Numerics/src/Microsoft.Bcl.Numerics.csproj -f netstandard2.1         -p:TargetOS=ohos -p:TargetArchitecture=arm64 -p:UseBootstrapLayout=true -v:diag 2>&1 |         grep -iE "References=|/r:|netstandard.dll|System.Runtime.dll|ResolveFrameworkReferences|CS0518|netstandard.library" | head -12) 2>/dev/null | tee -a "$LOG" || true
     fi
     echo "--- CS0518 csc context ---" | tee -a "$LOG"
     grep -B2 -A2 "ExceptionPolyfills" "$alog" 2>/dev/null | grep -iE "csc|/r:|netstandard|CoreLib|Reference" | head -6 | tee -a "$LOG" || true
