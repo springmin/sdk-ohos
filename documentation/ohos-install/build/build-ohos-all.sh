@@ -342,10 +342,10 @@ PYEOF
     fi
     echo "--- NETSDK1112 diag ---" | tee -a "$LOG"
     echo "--- NETSDK1112 error lines ---" | tee -a "$LOG"
-    grep -E "NETSDK1112|error NETSDK1112" "$alog" 2>/dev/null | head -3 | tee -a "$LOG"
+    grep -E "NETSDK1112|error NETSDK1112" "$alog" 2>/dev/null | head -3 | tee -a "$LOG" || true
     echo "--- NuGet download attempts (linux-x64 runtime pack version) ---" | tee -a "$LOG"
-    grep -oE "(GET|Restoring|Downloading).*linux-x64[^ ]*|runtime\.linux-x64[^ ]*2645[0-9]+[^ ]*|2645[0-9]+\.[0-9]+" "$alog" 2>/dev/null | sort -u | head -8 | tee -a "$LOG"
-    find "$RUNTIME_REPO/artifacts/obj" -maxdepth 2 -type d -name "*ILCompiler_inbuild*" 2>/dev/null | tee -a "$LOG"
+    grep -oE "(GET|Restoring|Downloading).*linux-x64[^ ]*|runtime\.linux-x64[^ ]*2645[0-9]+[^ ]*|2645[0-9]+\.[0-9]+" "$alog" 2>/dev/null | sort -u | head -8 | tee -a "$LOG" || true
+    find "$RUNTIME_REPO/artifacts/obj" -maxdepth 2 -type d -name "*ILCompiler_inbuild*" 2>/dev/null | tee -a "$LOG" || true
     local dg=$(find "$RUNTIME_REPO/artifacts/obj" -path "*ILCompiler_inbuild*" -name "*.dgspec.json" 2>/dev/null | head -1)
     [ -n "$dg" ] && python3 -c "
 import json,sys
@@ -357,7 +357,7 @@ for tfm, fr in proj.get('frameworks',{}).items():
     print(tfm, 'frameworks:', json.dumps(fr.get('frameworkReferences',{}))[:200])
 " 2>&1 | tee -a "$LOG"
     echo "--- nuget linux-x64 cache ---" | tee -a "$LOG"
-    ls "$HOME/.nuget/packages/microsoft.netcore.app.runtime.linux-x64/" 2>/dev/null | tee -a "$LOG"
+    ls "$HOME/.nuget/packages/microsoft.netcore.app.runtime.linux-x64/" 2>/dev/null | tee -a "$LOG" || true
     ls "$HOME/.nuget/packages/microsoft.netcore.app.runtime.linux-x64/11.0.0-rc.1.26420.103/" 2>/dev/null | head -6 | tee -a "$LOG"
     echo "--- last attempt log tail ---" | tee -a "$LOG"
     tail -40 "$alog" | tee -a "$LOG"
