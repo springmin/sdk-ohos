@@ -251,8 +251,6 @@ with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as zout:
 " && info "re-versioned host pack to 11.0.0 in $dest"
     done
   fi
-  RESTORE_SOURCES="https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet-public/nuget/v3/index.json;https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet-tools/nuget/v3/index.json;https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet-eng/nuget/v3/index.json;https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet-libraries/nuget/v3/index.json;https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet-libraries-transport/nuget/v3/index.json;https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet10/nuget/v3/index.json;https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet10-transport/nuget/v3/index.json;https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet11/nuget/v3/index.json;https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet11-transport/nuget/v3/index.json;https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet12/nuget/v3/index.json;https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet12-transport/nuget/v3/index.json;https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet-diagnostics-tests/nuget/v3/index.json;https://api.nuget.org/v3/index.json;$FEED;/tmp/hostfeed"
-  info "RESTORE_SOURCES len: ${#RESTORE_SOURCES}"
   # Seed every hostfeed version into the NuGet global cache too (the SDK
   # runtime-pack check looks at ~/.nuget for the resolved version).
   if [ -d /tmp/hostfeed ]; then
@@ -309,7 +307,7 @@ PYEOF
         /p:UseBootstrapLayout=true /p:BuildHostTools=true /p:ApiCompatValidateAssemblies=false \
         /p:RuntimeIdentifierGraphPath="$rsp" /p:IncludeSymbols=false \
         /p:PreReleaseVersionLabel="$LABEL" /p:PreReleaseVersion="$PRE" /p:OfficialBuildId="$BUILDID" \
-        "/p:RestoreSources=$RESTORE_SOURCES" \
+        "/p:RestoreAdditionalProjectSources=$FEED" \
         -cmakeargs "-DCMAKE_SYSTEM_NAME=OHOS -DHAVE_CLOCK_MONOTONIC_COARSE_EXITCODE=0 -DHAVE_CLOCK_REALTIME_EXITCODE=0 -DHAVE_CLOCK_THREAD_CPUTIME_EXITCODE=0 -DHAVE_MMAP_DEV_ZERO_EXITCODE=0 -DHAVE_PROCFS_CTL_EXITCODE=1 -DHAVE_PROCFS_STAT_EXITCODE=0 -DHAVE_PROCFS_STATM_EXITCODE=0 -DHAVE_SCHED_GETCPU_EXITCODE=0 -DHAVE_SCHED_GET_PRIORITY_EXITCODE=0 -DHAVE_WORKING_CLOCK_GETTIME_EXITCODE=0 -DHAVE_WORKING_GETTIMEOFDAY_EXITCODE=0 -DONE_SHARED_MAPPING_PER_FILEREGION_PER_PROCESS_EXITCODE=1 -DREALPATH_SUPPORTS_NONEXISTENT_FILES_EXITCODE=1 -DHAVE_SHM_OPEN_THAT_WORKS_WELL_ENOUGH_WITH_MMAP_EXITCODE=0 -DHAVE_BROKEN_FIFO_KEVENT_EXITCODE=1 -DHAVE_BROKEN_FIFO_SELECT_EXITCODE=1 -DOPENSSL_ROOT_DIR=$OPENSSL_DIR -DOPENSSL_INCLUDE_DIR=$OPENSSL_DIR/include \
           -DOPENSSL_CRYPTO_LIBRARY=$OPENSSL_DIR/lib/libcrypto.a -DOPENSSL_SSL_LIBRARY=$OPENSSL_DIR/lib/libssl.a \
           -DCMAKE_ICU_DIR=$ICU_DIR" \
