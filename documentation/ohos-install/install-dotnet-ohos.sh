@@ -51,7 +51,25 @@ info() { printf '==> %s\n' "$*"; }
 die()  { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
 # ------------------------------------------------------------- find tools
-find_sign_tool() {
+# Signing preference (since 2026-09-06): selfsign FIRST (deployed next to
+# dotnet/dnx at $INSTALL_DIR/selfsign, or found on PATH); binary-sign-tool is
+# the fallback when selfsign is unavailable.
+SELFSIGN=""
+SIGN_TOOL=""
+
+find_selfsign() {
+    # 1) selfsign deployed parallel to dotnet/dnx in the install root
+    if [ -x "${INSTALL_DIR}/selfsign" ]; then
+        printf '%s\n' "${INSTALL_DIR}/selfsign"; return 0
+    fi
+    # 2) selfsign on PATH
+    if command -v selfsign >/dev/null 2>&1; then
+        command -v selfsign; return 0
+    fi
+    return 1
+}
+
+find_binary_sign_tool() {
     if command -v binary-sign-tool >/dev/null 2>&1; then
         command -v binary-sign-tool; return 0
     fi
@@ -66,12 +84,14 @@ find_sign_tool() {
     return 1
 }
 
-sign_elf() { # f -> signs one ELF in place
+has_codesign() { readelf -S "$1" 2>/dev/null | grep -q ".codesign"; }
+
+sign_elf() { # f -> signs one ELF in place (selfsign preferred, then binary-sign-tool)
     f="$1"
-    if [ -n "$SIGN_TOOL" ]; then
-        "$SIGN_TOOL" sign -inFile "$f" -outFile "$f" -selfSign 1 >/dev/null 2>&1
+    if [ -n "$SELFSIGN" ]; then
+        "$SELFSIGN" "$f" >/dev/null 2>&1
     else
-        selfsign "$f" >/dev/null 2>&1
+        "$SIGN_TOOL" sign -inFile "$f" -outFile "$f" -selfSign 1 >/dev/null 2>&1
     fi
 }
 
@@ -84,9 +104,9 @@ download() { # url -> file
     elif command -v wget >/dev/null 2>&1; then
         wget -O "$out" "$url" || return 1
     else
-        die "need curl or wget to download"
+        printf 'ERROR: need curl or wget to download\n' >&2; return 1
     fi
-    [ -s "$out" ] || die "download produced empty file: ${out}"
+    [ -s "$out" ] || { printf 'ERROR: download produced empty file: %s\n' "$out" >&2; return 1; }
 }
 
 # ------------------------------------------------------- resolve artifact
@@ -124,6 +144,50 @@ install_tarball() {
     info "extracting $(basename "$tb") -> ${INSTALL_DIR}"
     mkdir -p "$INSTALL_DIR" || die "cannot create ${INSTALL_DIR}"
     tar zxf "$tb" -C "$INSTALL_DIR" || die "tar extraction failed: ${tb}"
+}
+
+# ------------------------------------------------------------------ selfsign
+# Deploy the device-side selfsign (NativeAOT single-file, C# AOT) next to
+# dotnet/dnx in the install root so it is the preferred signer:
+#   - $INSTALL_DIR is on PATH (setup_profile) -> `selfsign` resolves directly
+#   - sign_all() picks it up automatically (it is an ELF under $INSTALL_DIR)
+# Falls back gracefully: offline installs or missing release assets simply
+# leave selfsign absent and binary-sign-tool is used instead.
+# The selfsign asset lives in the sdk-ohos release, same tag as the SDK.
+SDK_TAG="$(printf '%s\n' "$RELEASES" | sed -n 's/^ *sdk|sdk-ohos|\([^|]*\)|.*/\1/p' | head -n 1)"
+SELFSIGN_URL="https://github.com/springmin/sdk-ohos/releases/download/${SDK_TAG}/selfsign-ohos-arm64"
+deploy_selfsign() {
+    [ -x "${INSTALL_DIR}/selfsign" ] && { info "selfsign already at ${INSTALL_DIR}/selfsign"; return 0; }
+    TMP="${TMPDIR:-/tmp}/selfsign-ohos-$$"
+    if ! download "$SELFSIGN_URL" "$TMP" 2>/dev/null; then
+        rm -f "$TMP"
+        warn_echo "  WARN: selfsign download failed (offline?); will use binary-sign-tool if present"
+        return 1
+    fi
+    if ! file "$TMP" 2>/dev/null | grep -q "ELF"; then
+        rm -f "$TMP"
+        warn_echo "  WARN: downloaded selfsign is not an ELF (release asset missing?); using binary-sign-tool if present"
+        return 1
+    fi
+    mv -f "$TMP" "${INSTALL_DIR}/selfsign" || { rm -f "$TMP"; return 1; }
+    chmod +x "${INSTALL_DIR}/selfsign"
+    info "deployed selfsign -> ${INSTALL_DIR}/selfsign (preferred signer, parallel to dotnet/dnx)"
+    # The just-deployed selfsign must itself carry .codesign before it can exec
+    # (unsigned ELF -> EACCES). Prefer a pre-signed release asset; otherwise
+    # bootstrap it with binary-sign-tool. If neither holds, remove it so
+    # sign_all() does not try to sign the whole tree with an un-runnable
+    # selfsign (that would fail every file and abort the install).
+    if ! has_codesign "${INSTALL_DIR}/selfsign"; then
+        if [ -n "$SIGN_TOOL" ]; then
+            "$SIGN_TOOL" sign -inFile "${INSTALL_DIR}/selfsign" -outFile "${INSTALL_DIR}/selfsign" -selfSign 1 >/dev/null 2>&1 \
+                && info "  bootstrapped .codesign on selfsign via binary-sign-tool" \
+                || warn_echo "  WARN: could not bootstrap selfsign signature with binary-sign-tool"
+        fi
+        if ! has_codesign "${INSTALL_DIR}/selfsign"; then
+            warn_echo "  WARN: deployed selfsign is unsigned and cannot be bootstrapped; removing it and falling back to binary-sign-tool"
+            rm -f "${INSTALL_DIR}/selfsign"
+        fi
+    fi
 }
 
 # ------------------------------------------------------------------ cxx runtime
@@ -192,7 +256,7 @@ sign_all() {
     find "$INSTALL_DIR" -type f 2>/dev/null | while IFS= read -r f; do
         file "$f" 2>/dev/null | grep -q "ELF" || continue
         read -r s k d < "$CNTFILE"
-        if readelf -S "$f" 2>/dev/null | grep -q ".codesign"; then
+        if has_codesign "$f"; then
             printf '%d %d %d\n' "$s" "$((k + 1))" "$d" > "$CNTFILE"; continue
         fi
         if sign_elf "$f" >/dev/null 2>&1; then
@@ -227,17 +291,6 @@ for tool in tar file readelf; do
     command -v "$tool" >/dev/null 2>&1 || die "required tool not found: $tool"
 done
 
-# sign tool: prefer binary-sign-tool, fall back to selfsign (C# AOT)
-SIGN_TOOL="$(find_sign_tool || true)"
-if [ -n "$SIGN_TOOL" ]; then
-    info "using sign tool: ${SIGN_TOOL}"
-elif command -v selfsign >/dev/null 2>&1; then
-    info "using selfsign (built-in C# AOT signer)"
-    SIGN_TOOL=""
-else
-    die "no signing tool available: install the OHOS SDK/harmonybrew (binary-sign-tool) or place selfsign on PATH (see selfsign.cs in this directory)"
-fi
-
 # resolve artifact (default: sdk)
 ARG="${1:-sdk}"
 case "$ARG" in
@@ -262,6 +315,31 @@ fi
 install_tarball "$TARBALL"
 deploy_cxx_runtime
 deploy_hostpolicy
+
+# NativeAOT tools (selfsign) link GNU libstdc++/libgcc which, when /lib is not
+# writable, live in $INSTALL_DIR/lib (see deploy_cxx_runtime). Make them
+# findable for the signing pass below.
+if [ -d "${INSTALL_DIR}/lib" ]; then
+    export LD_LIBRARY_PATH="${INSTALL_DIR}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+fi
+
+# sign tools: selfsign preferred, binary-sign-tool fallback.
+# Probe binary-sign-tool first so deploy_selfsign can bootstrap with it;
+# SELFSIGN is resolved after deployment (deployed copy wins over PATH).
+SIGN_TOOL="$(find_binary_sign_tool || true)"
+if [ -n "$SIGN_TOOL" ]; then
+    info "found binary-sign-tool: ${SIGN_TOOL} (fallback signer)"
+fi
+deploy_selfsign
+SELFSIGN="$(find_selfsign || true)"
+if [ -n "$SELFSIGN" ]; then
+    info "using selfsign: ${SELFSIGN} (preferred signer)"
+elif [ -n "$SIGN_TOOL" ]; then
+    info "using binary-sign-tool: ${SIGN_TOOL}"
+else
+    die "no signing tool available: selfsign download failed and binary-sign-tool not found. Install harmonybrew/OHOS SDK or place selfsign on PATH (see selfsign.cs in this directory)"
+fi
+
 sign_all
 setup_profile "${HOME}/.bashrc"
 setup_profile "${HOME}/.zshrc"
