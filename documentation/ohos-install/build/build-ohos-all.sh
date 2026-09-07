@@ -646,14 +646,16 @@ stage3() {
   [ -f "$WORK/rt-version.txt" ] && RT_VERSION=$(cat "$WORK/rt-version.txt")
   RT_VERSION="${RT_VERSION:-$VERSION_BAND-$LABEL.$PRE.$BUILDID}"
   cd "$ASCORE_REPO"
-  local ridgraph="$ASCORE_REPO/.dotnet/sdk/$RIDGRAPH_SDKVER/PortableRuntimeIdentifierGraph.json"
-  if [ ! -f "$ridgraph" ]; then
-    local eng_pgraph="$SDK_REPO/eng/PortableRuntimeIdentifierGraph.ohos.json"
-    [ -f "$eng_pgraph" ] || die "no aspnetcore .dotnet portable graph and no eng graph at $eng_pgraph"
-    mkdir -p "$(dirname "$ridgraph")"
-    cp -f "$eng_pgraph" "$ridgraph"
-    info "injected eng/ portable RID graph into aspnetcore bootstrap SDK"
-  fi
+  local eng_pgraph="$SDK_REPO/eng/PortableRuntimeIdentifierGraph.ohos.json"
+  [ -f "$eng_pgraph" ] || die "no eng portable graph at $eng_pgraph"
+  for sd in "$ASCORE_REPO"/.dotnet/sdk/*/; do
+    local ridgraph="$sd/PortableRuntimeIdentifierGraph.json"
+    if [ ! -f "$ridgraph" ] || ! python3 -c "import json,sys; sys.exit(0 if 'ohos-arm64' in json.load(open('$ridgraph'))['runtimes'] else 1)" 2>/dev/null; then
+      mkdir -p "$(dirname "$ridgraph")"
+      cp -f "$eng_pgraph" "$ridgraph"
+      info "injected eng/ portable RID graph into aspnetcore SDK $(basename "$sd")"
+    fi
+  done
   # NETSDK1083 (ohos-arm64 not recognized) — the aspnetcore bootstrap SDK's
   # RuntimeIdentifierGraph.json also needs the ohos entries. Inject into every
   # installed SDK (the build uses global.json's, which may not be RIDGRAPH_SDKVER).
