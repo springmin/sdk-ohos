@@ -239,6 +239,8 @@ if 'local-hostfeed' not in s:
     open(f, 'w').write(s)
     print("added local-hostfeed folder source to NuGet.config")
 PYEOF
+  RESTORE_SOURCES="$(grep -oE 'value="[^"]*"' "$RUNTIME_REPO/NuGet.config" | sed 's/value="//; s/"//' | grep -E '^http|^/' | tr '\n' ';')/tmp/hostfeed"
+  info "restore sources set (NuGet.config + /tmp/hostfeed)"
   # A clean build hits several self-healing failures (all ordering, not our
   # code): singlefilehost links before libruntimeinfo.a is built, sfx-finish
   # runs before the shims (facades) are compiled, and restore needs the
@@ -254,7 +256,7 @@ PYEOF
         /p:RuntimeIdentifierGraphPath="$rsp" /p:IncludeSymbols=false \
         /p:PreReleaseVersionLabel="$LABEL" /p:PreReleaseVersion="$PRE" /p:OfficialBuildId="$BUILDID" \
         /p:RuntimeFrameworkVersion="11.0.0-$LABEL.$PRE.26451.$(echo "$BUILDID" | cut -d. -f2)" \
-        "/p:RestoreAdditionalProjectSources=/tmp/hostfeed" \
+        "/p:RestoreSources=$RESTORE_SOURCES" \
         -cmakeargs "-DCMAKE_SYSTEM_NAME=OHOS -DHAVE_CLOCK_MONOTONIC_COARSE_EXITCODE=0 -DHAVE_CLOCK_REALTIME_EXITCODE=0 -DHAVE_CLOCK_THREAD_CPUTIME_EXITCODE=0 -DHAVE_MMAP_DEV_ZERO_EXITCODE=0 -DHAVE_PROCFS_CTL_EXITCODE=1 -DHAVE_PROCFS_STAT_EXITCODE=0 -DHAVE_PROCFS_STATM_EXITCODE=0 -DHAVE_SCHED_GETCPU_EXITCODE=0 -DHAVE_SCHED_GET_PRIORITY_EXITCODE=0 -DHAVE_WORKING_CLOCK_GETTIME_EXITCODE=0 -DHAVE_WORKING_GETTIMEOFDAY_EXITCODE=0 -DONE_SHARED_MAPPING_PER_FILEREGION_PER_PROCESS_EXITCODE=1 -DREALPATH_SUPPORTS_NONEXISTENT_FILES_EXITCODE=1 -DHAVE_SHM_OPEN_THAT_WORKS_WELL_ENOUGH_WITH_MMAP_EXITCODE=0 -DHAVE_BROKEN_FIFO_KEVENT_EXITCODE=1 -DHAVE_BROKEN_FIFO_SELECT_EXITCODE=1 -DOPENSSL_ROOT_DIR=$OPENSSL_DIR -DOPENSSL_INCLUDE_DIR=$OPENSSL_DIR/include \
           -DOPENSSL_CRYPTO_LIBRARY=$OPENSSL_DIR/lib/libcrypto.a -DOPENSSL_SSL_LIBRARY=$OPENSSL_DIR/lib/libssl.a \
           -DCMAKE_ICU_DIR=$ICU_DIR" \
