@@ -146,8 +146,9 @@ ensure_selfsign() {
   local selfsign="$WORK/selfsign"
   if [ ! -x "$selfsign" ]; then
     info "building selfsign (sdk documentation/ohos-install)..."
+    local dotnet_bin="${DOTNET:-$RUNTIME_REPO/.dotnet/dotnet}"
     (cd "$SDK_REPO/documentation/ohos-install" && \
-      dotnet publish selfsign.csproj -c Release -r linux-x64 -p:PublishAot=true \
+      "$dotnet_bin" publish selfsign.csproj -c Release -r linux-x64 -p:PublishAot=true \
         -o "$WORK/selfsign-out") 2>&1 | tail -1 || die "selfsign build failed"
     cp -f "$WORK/selfsign-out/selfsign" "$selfsign" && chmod +x "$selfsign"
   fi
