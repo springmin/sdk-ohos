@@ -654,6 +654,14 @@ stage3() {
     cp -f "$eng_pgraph" "$ridgraph"
     info "injected eng/ portable RID graph into aspnetcore bootstrap SDK"
   fi
+  # NETSDK1083 (ohos-arm64 not recognized) — the aspnetcore bootstrap SDK's
+  # RuntimeIdentifierGraph.json also needs the ohos entries.
+  local arsp="$ASCORE_REPO/.dotnet/sdk/$RIDGRAPH_SDKVER/RuntimeIdentifierGraph.json"
+  if [ -f "$arsp" ] && ! python3 -c "import json,sys; sys.exit(0 if 'ohos-arm64' in json.load(open('$arsp'))['runtimes'] else 1)" 2>/dev/null; then
+    [ -f "$SDK_REPO/eng/RuntimeIdentifierGraph.ohos.json" ] || die "no eng RID graph for aspnetcore inject"
+    cp -f "$SDK_REPO/eng/RuntimeIdentifierGraph.ohos.json" "$arsp"
+    info "injected eng/ RID graph into aspnetcore bootstrap SDK"
+  fi
   # aspnetcore's darc-flowed runtime versions (e.g. 11.0.0-rc.1.26451.109 from
   # official runtime) point at a feed that has no ohos packs — override the
   # runtime-driven versions to the locally built one so restore hits our feed.
