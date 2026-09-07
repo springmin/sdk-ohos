@@ -89,23 +89,30 @@ jobs:
           echo "SDK_REPO=$GITHUB_WORKSPACE/sdk" >> "$GITHUB_ENV"
           echo "ASCORE_REPO=$GITHUB_WORKSPACE/aspnetcore" >> "$GITHUB_ENV"
 
-      - name: Pre-seed host linux-x64 runtime packs (folder feed /tmp/hostfeed)
+      - name: Install host linux-x64 runtime packs into SDK packs dir
         run: |
-          mkdir -p /tmp/hostfeed
+          # SDK's FrameworkReference resolution finds host runtime packs under
+          # the SDK packs root (.dotnet/packs), not ~/.nuget. Install the
+          # linux-x64 runtime pack there so in-build tools (crossgen2/ILCompiler
+          # inbuild, self-contained at the host RID) resolve it.
+          PKROOT="$GITHUB_WORKSPACE/runtime/.dotnet/packs/Microsoft.NETCore.App.Runtime.linux-x64"
+          mkdir -p "$PKROOT"
           for v in 11.0.0-rc.1.26420.103 11.0.0-rc.1.26431.109 11.0.0-rc.1.26451.109; do
+            d="$PKROOT/$v"
+            [ -d "$d/runtimes" ] && continue
             id="microsoft.netcore.app.runtime.linux-x64"
-            d="/tmp/hostfeed/$id/$v"
-            [ -f "$d/$id.$v.nupkg" ] && continue
-            mkdir -p "$d"
             case "$v" in
               11.0.0-rc.1.26420.103)
                 src="https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet11/nuget/v3/flat2/$id/$v/$id.$v.nupkg" ;;
               *)
                 src="https://github.com/springmin/runtime-ohos/releases/download/v11.0.0-rc.1.26451.109-ohos/$id.$v.nupkg" ;;
             esac
-            curl -fsSL --retry 3 -o "$d/$id.$v.nupkg" "$src" && echo "fetched $v" || echo "FAILED $v"
+            mkdir -p "$d"
+            curl -fsSL --retry 3 -o /tmp/hostpack.nupkg "$src" || { echo "FAILED fetch $v"; continue; }
+            (cd "$d" && python3 -c "import zipfile; zipfile.ZipFile('/tmp/hostpack.nupkg').extractall('.')")
+            test -d "$d/runtimes" && echo "installed $v to SDK packs" || echo "FAILED install $v"
           done
-          ls -R /tmp/hostfeed 2>&1 | head -12
+          ls "$PKROOT" 2>&1 | head -5
 
       - name: Bootstrap runtime + aspnetcore SDK (RID graphs + shims)
         run: |
