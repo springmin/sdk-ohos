@@ -113,6 +113,11 @@ jobs:
             test -d "$d/runtimes" && echo "installed $v to SDK packs" || echo "FAILED install $v"
           done
           ls "$PKROOT" 2>&1 | head -5
+          mkdir -p /tmp/hostfeed/microsoft.netcore.app.runtime.linux-x64
+          for v in 11.0.0-rc.1.26420.103 11.0.0-rc.1.26431.109 11.0.0-rc.1.26451.109; do
+            cp "$PKROOT/$v"/*.nupkg "/tmp/hostfeed/microsoft.netcore.app.runtime.linux-x64/$v/" 2>/dev/null               || { mkdir -p "/tmp/hostfeed/microsoft.netcore.app.runtime.linux-x64/$v"; cp "$PKROOT/$v"/*.nupkg "/tmp/hostfeed/microsoft.netcore.app.runtime.linux-x64/$v/"; }
+          done
+          find /tmp/hostfeed -name "*.nupkg" | head -4
 
       - name: Bootstrap runtime + aspnetcore SDK (RID graphs + shims)
         run: |
