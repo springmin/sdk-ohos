@@ -27,6 +27,10 @@ on:
         description: Upload artifacts to the three -ohos GitHub releases (needs OHOS_RELEASE_TOKEN)
         type: boolean
         default: false
+      crossgen2_version:
+        description: Stock crossgen2 version for R2R CoreLib (must match the runtime branch R2R version)
+        required: false
+        default: '11.0.0-rc.1.26427.131'
 
 permissions:
   contents: read
@@ -39,6 +43,7 @@ jobs:
       CI: 'true'
       BUILDID: ${{ inputs.buildid }}
       RID: ${{ inputs.rid }}
+      STOCK_CROSSGEN2_VERSION: ${{ inputs.crossgen2_version }}
     steps:
       - name: Checkout sdk-ohos (scripts + selfsign)
         uses: actions/checkout@v4
