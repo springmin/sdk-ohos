@@ -30,7 +30,7 @@ on:
       crossgen2_version:
         description: Stock crossgen2 version for R2R CoreLib (must match the runtime branch R2R version)
         required: false
-        default: '11.0.0-rc.1.26427.131'
+        default: '11.0.0-rc.1.26451.109'
 
 permissions:
   contents: read
