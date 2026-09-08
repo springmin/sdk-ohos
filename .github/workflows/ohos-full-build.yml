@@ -196,7 +196,7 @@ jobs:
           retention-days: 30
 
       - name: Publish to -ohos releases
-        if: inputs.upload_release == 'true'
+        if: inputs.upload_release
         env:
           OHOS_RELEASE_TOKEN: ${{ secrets.OHOS_RELEASE_TOKEN }}
         run: |
