@@ -628,6 +628,21 @@ stage2() {
   [ -n "$rt_archive" ] || rt_archive=$(ls "$ASSETS"/dotnet-runtime-*"$RID".tar.gz 2>/dev/null | tail -1)
   [ -n "$rt_archive" ] || die "no runtime tarball for $RID in $ASSETS (runtime build missing it?)"
   cp -f "$rt_archive" "$ASSETS/Runtime/$ASPCORE_TRANSPORT/$(basename "$rt_archive")"
+  # The SDK redist RestoreLayout downloads the shared-framework tarball from
+  # Runtime/<Microsoft.NETCore.Platforms blob version>/dotnet-runtime-<RuntimePkgVer>-<rid>.tar.gz.
+  # The Platforms version darc-flows independently of our buildid, so mirror the
+  # tarball under that folder too (filename already carries our build version).
+  local plat_ver=$(python3 -c "
+import re, sys
+s = open('$SDK_REPO/eng/Version.Details.xml').read()
+m = re.search(r'Name=\"Microsoft.NETCore.Platforms\" Version=\"([^\"]+)\"', s)
+print(m.group(1) if m else '')
+")
+  if [ -n "$plat_ver" ] && [ "$plat_ver" != "$ASPCORE_TRANSPORT" ]; then
+    mkdir -p "$ASSETS/Runtime/$plat_ver"
+    cp -f "$rt_archive" "$ASSETS/Runtime/$plat_ver/$(basename "$rt_archive")"
+    info "asset mirrored: Runtime/$plat_ver/$(basename "$rt_archive") (SDK Platforms blob version)"
+  fi
   # start the asset http server the aspnetcore/sdk builds download from
   # (PublicBaseURL=http://localhost:8000/) unless one is already listening
   if ! curl -sf --max-time 2 http://localhost:8000/ >/dev/null 2>&1; then
@@ -704,6 +719,25 @@ stage4() {
   RT_VERSION="${RT_VERSION:-$VERSION_BAND-$LABEL.$PRE.$BUILDID}"
   cd "$SDK_REPO"
   local rtver="$RT_VERSION"
+  # SDK BundledVersions come from Version.Details.xml (darc 26452.110), not the
+  # -p: overrides; point the runtime/aspnetcore rows at our build version so
+  # RestoreLayout downloads the matching transport from the local asset server.
+  python3 - "$SDK_REPO/eng/Version.Details.xml" "$rtver" <<'PYEOF'
+import re, sys
+f, ver = sys.argv[1], sys.argv[2]
+s = open(f).read()
+s2 = re.sub(r'(MicrosoftNETCoreAppRuntimePackageVersion[^
+]*?version=")[^"]+', r'\g<1>' + ver, s)
+s2 = re.sub(r'(MicrosoftNETCoreAppRefPackageVersion[^
+]*?version=")[^"]+', r'\g<1>' + ver, s2)
+s2 = re.sub(r'(MicrosoftAspNetCoreAppRefPackageVersion[^
+]*?version=")[^"]+', r'\g<1>' + ver, s2)
+s2 = re.sub(r'(MicrosoftAspNetCoreAppRuntimePackageVersion[^
+]*?version=")[^"]+', r'\g<1>' + ver, s2)
+if s2 != s:
+    open(f, 'w').write(s2)
+    info "SDK Version.Details.xml: runtime/aspnetcore pinned to $ver"
+PYEOF
   # override ONLY Host/Runtime package versions (Ref/ILLink/Crossgen2 keep the
   # darc-flowed official versions — see Directory.Build.props =='' guards)
   ./build.sh -os ohos -arch "$ARCH" -c "$CONFIG" \
