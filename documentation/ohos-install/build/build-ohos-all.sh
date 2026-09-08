@@ -719,25 +719,6 @@ stage4() {
   RT_VERSION="${RT_VERSION:-$VERSION_BAND-$LABEL.$PRE.$BUILDID}"
   cd "$SDK_REPO"
   local rtver="$RT_VERSION"
-  # SDK BundledVersions come from Version.Details.xml (darc 26452.110), not the
-  # -p: overrides; point the runtime/aspnetcore rows at our build version so
-  # RestoreLayout downloads the matching transport from the local asset server.
-  python3 - "$SDK_REPO/eng/Version.Details.xml" "$rtver" <<'PYEOF'
-import re, sys
-f, ver = sys.argv[1], sys.argv[2]
-s = open(f).read()
-s2 = re.sub(r'(MicrosoftNETCoreAppRuntimePackageVersion[^
-]*?version=")[^"]+', r'\g<1>' + ver, s)
-s2 = re.sub(r'(MicrosoftNETCoreAppRefPackageVersion[^
-]*?version=")[^"]+', r'\g<1>' + ver, s2)
-s2 = re.sub(r'(MicrosoftAspNetCoreAppRefPackageVersion[^
-]*?version=")[^"]+', r'\g<1>' + ver, s2)
-s2 = re.sub(r'(MicrosoftAspNetCoreAppRuntimePackageVersion[^
-]*?version=")[^"]+', r'\g<1>' + ver, s2)
-if s2 != s:
-    open(f, 'w').write(s2)
-    info "SDK Version.Details.xml: runtime/aspnetcore pinned to $ver"
-PYEOF
   # override ONLY Host/Runtime package versions (Ref/ILLink/Crossgen2 keep the
   # darc-flowed official versions — see Directory.Build.props =='' guards)
   ./build.sh -os ohos -arch "$ARCH" -c "$CONFIG" \
