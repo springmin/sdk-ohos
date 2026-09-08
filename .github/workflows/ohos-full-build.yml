@@ -60,6 +60,7 @@ jobs:
           repository: springmin/aspnetcore-ohos
           ref: ${{ inputs.aspnetcore_ref }}
           path: aspnetcore
+          submodules: recursive
 
       - name: Install host build deps
         run: |
