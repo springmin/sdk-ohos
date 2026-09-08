@@ -519,9 +519,14 @@ stage1() {
   local ilcp="$RUNTIME_REPO/src/coreclr/tools/aot/ILCompiler/ILCompiler_publish.csproj"
   local ilcd="$RUNTIME_REPO/artifacts/bin/coreclr/ohos.$ARCH.$CONFIG/ilc-published"
   info "re-publishing ilc as CoreCLR split layout (PublishSingleFile=false)..."
+  # PublishTrimmed=false: ILLink strips interface-dispatched methods such as
+  # CustomAttributeTypeProvider.GetPrimitiveType from ILCompiler.TypeSystem.dll
+  # when trimming the split publish (device TypeLoadException, dotnet/runtime
+  # #133296 verification round). ilc is a build tool, not a shipping artifact —
+  # trimming buys nothing here and breaks the split layout.
   ./.dotnet/dotnet build "$ilcp" -c "$CONFIG" -r "$RID" -t:Publish \
     -p:TargetOS=ohos -p:TargetArchitecture="$ARCH" -p:PortableOS=ohos \
-    -p:UseBootstrap=true -p:PublishSingleFile=false \
+    -p:UseBootstrap=true -p:PublishSingleFile=false -p:PublishTrimmed=false \
     "/p:RuntimeIdentifierGraphPath=$rsp" -p:IncludeSymbols=false -v:q -nologo \
     2>&1 | tee -a "$LOG" || die "ilc split publish failed"
   pkill -9 -f "MSBuild.*nodem" 2>/dev/null || true; sleep 2
