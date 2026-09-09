@@ -540,8 +540,12 @@ stage1() {
   # it does not copy Microsoft.NETCore.App files next to the ilc apphost; the
   # device has no bootstrap SDK, so the pack must carry the framework itself.
   # The runtime pack nupkg from clr+libs+packs (same build) provides it.
+  # The deps runtimepack entry version must be the framework the ilc was built
+  # against (bootstrap SDK runtime 26420.103, round-17 device-verified), NOT the
+  # runtime pack file version - hostpolicy resolves libcoreclr.so from it and a
+  # mismatch fails with "Could not resolve CoreCLR path" on device.
   local rtpack_nupkg=$(ls "$ship"/Microsoft.NETCore.App.Runtime.$RID.$RT_VERSION.nupkg 2>/dev/null | head -1)
-  python3 "$SCRIPT_DIR/assemble-ilc-pack.py" "$ilcd" "$ilc_ref" "$ilcpk" "$rtpack_nupkg" \
+  python3 "$SCRIPT_DIR/assemble-ilc-pack.py" "$ilcd" "$ilc_ref" "$ilcpk" "$rtpack_nupkg" "11.0.0-rc.1.26420.103" \
     || die "assemble ilc split pack failed"
   ./build.sh -os ohos -arch "$ARCH" --cross -c "$CONFIG" -lc "$CONFIG" -rc "$CONFIG" \
     /p:UseBootstrapLayout=true \
