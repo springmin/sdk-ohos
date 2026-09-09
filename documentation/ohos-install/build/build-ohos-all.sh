@@ -536,7 +536,12 @@ stage1() {
   local ilcpk="$ship/runtime.ohos-arm64.Microsoft.DotNet.ILCompiler.$RT_VERSION.nupkg"
   local ilc_ref=$(ls "$ship"/runtime.ohos-arm64.Microsoft.DotNet.ILCompiler.*.nupkg 2>/dev/null | grep -v "$RT_VERSION" | head -1)
   [ -n "$ilc_ref" ] || ilc_ref="$ilcpk"  # same-pack metadata is safe (atomic write)
-  python3 "$SCRIPT_DIR/assemble-ilc-pack.py" "$ilcd" "$ilc_ref" "$ilcpk" \
+  # Framework overlay source: the split publish runs with UseBootstrapLayout so
+  # it does not copy Microsoft.NETCore.App files next to the ilc apphost; the
+  # device has no bootstrap SDK, so the pack must carry the framework itself.
+  # The runtime pack nupkg from clr+libs+packs (same build) provides it.
+  local rtpack_nupkg=$(ls "$ship"/Microsoft.NETCore.App.Runtime.$RID.$RT_VERSION.nupkg 2>/dev/null | head -1)
+  python3 "$SCRIPT_DIR/assemble-ilc-pack.py" "$ilcd" "$ilc_ref" "$ilcpk" "$rtpack_nupkg" \
     || die "assemble ilc split pack failed"
   ./build.sh -os ohos -arch "$ARCH" --cross -c "$CONFIG" -lc "$CONFIG" -rc "$CONFIG" \
     /p:UseBootstrapLayout=true \
