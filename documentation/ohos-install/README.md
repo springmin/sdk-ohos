@@ -75,9 +75,17 @@ dotnet --list-runtimes
 OpenHarmony 只执行带 `.codesign` 段的 ELF。**Release 产物未预签名**，
 解压后必须签名（`execve` 未签名 → `EACCES`）。
 
-脚本按顺序使用签名工具：
-1. `binary-sign-tool`（OpenHarmony SDK / harmonybrew，自动探测）
-2. `selfsign`（仓库提供的 C# AOT 单文件签名工具，见下方）
+脚本按顺序使用签名工具（**selfsign 优先**）：
+1. `selfsign`（C# AOT 单文件签名工具，见下方）——脚本自动从
+   sdk-ohos Release 下载设备端预构建版并部署到 `$INSTALL_DIR/selfsign`
+   （与 `dotnet`/`dnx` 平行，`$INSTALL_DIR` 已在 PATH 上，开箱即用）；
+   若本机已存在（PATH 上或已部署）则直接使用
+2. `binary-sign-tool`（OHOS SDK / harmonybrew，自动探测）——仅当
+   selfsign 不可用（下载失败 / 离线安装 / 未预签名且无法自举）时回退
+
+> 自动部署的 selfsign 若未携带 `.codesign`，脚本会用 binary-sign-tool
+> 为其自举签名（未签名 ELF 无法执行，selfsign 不能签自己）；两者皆无时
+> 脚本会移除该 selfsign 并回退 binary-sign-tool，或报错提示。
 
 `selfsign` 使用说明（源码见本目录 `selfsign.cs` + `selfsign.csproj`）：
 
@@ -102,7 +110,7 @@ selfsign <input_elf> [output_elf] [--force] [--strip]
 ```sh
 # 宿主（x64 Linux，交叉编译机 / CI）—— 签名 OpenHarmony ELF：
 #   https://github.com/springmin/sdk-ohos/releases/download/v11.0.100-rc.1.26451.1-ohos/selfsign-linux-x64
-# 设备端（ohos-arm64，NativeAOT 单文件）—— 在真机上签名：
+# 设备端（openharmony-arm64，NativeAOT 单文件）—— 在真机上签名：
 #   https://github.com/springmin/sdk-ohos/releases/download/v11.0.100-rc.1.26451.1-ohos/selfsign-ohos-arm64
 
 # 宿主批量预签名（配合 sign-ohos-release.sh）：
@@ -146,8 +154,12 @@ SDK/Runtime 已内嵌全部 OpenHarmony 沙箱修复，**不再需要**外部 wr
 **Q: 报错 `tarball not readable`**
 文件在另一个应用的私有沙箱里。用文件管理器把文件移到 `Download` 后重试。
 
-**Q: 报错 `binary-sign-tool not found` + 无 `selfsign`**
-两种签名工具都缺失。安装 OpenHarmony SDK / harmonybrew，或把 `selfsign` 加入 PATH。
+**Q: 报错 `no signing tool available`（selfsign 下载失败 + 无 binary-sign-tool）**
+在线安装时脚本会先尝试部署 selfsign；若网络不可用（离线安装本地
+tar.gz）且设备没有 binary-sign-tool，两种工具都会缺失。安装
+OHOS SDK / harmonybrew（提供 binary-sign-tool），或把预构建
+`selfsign-ohos-arm64`（或自行编译的 `selfsign`）放入 PATH 或
+`$INSTALL_DIR/selfsign` 后重跑。
 
 **Q: `dotnet --version` 提示 "No SDKs were found"**
 装的是 Runtime 包。运行/编译应用需安装 SDK 包（`sh install-dotnet-ohos.sh sdk`）。

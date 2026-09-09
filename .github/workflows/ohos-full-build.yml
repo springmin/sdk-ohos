@@ -1,0 +1,225 @@
+name: ohos-full-build
+
+on:
+  workflow_dispatch:
+    inputs:
+      buildid:
+        description: OfficialBuildId (YYYYMMDD.N)
+        required: true
+        default: '20260901.109'
+      runtime_ref:
+        description: runtime-ohos branch/tag to build
+        required: true
+        default: 'feature/ohos-cross-runtime'
+      aspnetcore_ref:
+        description: aspnetcore-ohos branch/tag to build
+        required: true
+        default: 'feature/ohos-cross-compile'
+      sdk_ref:
+        description: sdk-ohos branch/tag to build
+        required: true
+        default: 'feature/ohos-cross-sdk'
+      rid:
+        description: RID to build
+        required: true
+        default: 'ohos-arm64'
+      upload_release:
+        description: Upload artifacts to the three -ohos GitHub releases (needs OHOS_RELEASE_TOKEN)
+        type: boolean
+        default: false
+      crossgen2_version:
+        description: Stock crossgen2 version for R2R CoreLib (must match the runtime branch R2R version)
+        required: false
+        default: '11.0.0-rc.1.26451.109'
+
+permissions:
+  contents: read
+
+jobs:
+  full-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 355
+    env:
+      CI: 'true'
+      BUILDID: ${{ inputs.buildid }}
+      RID: ${{ inputs.rid }}
+      STOCK_CROSSGEN2_VERSION: ${{ inputs.crossgen2_version }}
+    steps:
+      - name: Checkout sdk-ohos (scripts + selfsign)
+        uses: actions/checkout@v4
+        with:
+          repository: springmin/sdk-ohos
+          ref: ${{ inputs.sdk_ref }}
+          path: sdk
+
+      - name: Checkout runtime-ohos
+        uses: actions/checkout@v4
+        with:
+          repository: springmin/runtime-ohos
+          ref: ${{ inputs.runtime_ref }}
+          path: runtime
+
+      - name: Checkout aspnetcore-ohos
+        uses: actions/checkout@v4
+        with:
+          repository: springmin/aspnetcore-ohos
+          ref: ${{ inputs.aspnetcore_ref }}
+          path: aspnetcore
+          submodules: recursive
+
+      - name: Install host build deps
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq cmake ninja-build clang lld build-essential \
+            python3 python3-pip curl git llvm make perl \
+            libicu-dev libssl-dev zlib1g-dev >/dev/null
+
+      - name: Cache NDK/OpenSSL/ICU env
+        id: cache-env
+        uses: actions/cache@v4
+        with:
+          path: ~/.ohos-ci-env
+          key: ohos-ci-env-${{ inputs.rid }}-${{ hashFiles('sdk/documentation/ohos-install/build/ohos-ci-env.sh') }}
+
+      - name: Prepare NDK + OpenSSL + ICU
+        if: steps.cache-env.outputs.cache-hit != 'true'
+        run: bash sdk/documentation/ohos-install/build/ohos-ci-env.sh --prefix "$HOME/.ohos-ci-env"
+
+      - name: Export env
+        run: |
+          eval "$(bash sdk/documentation/ohos-install/build/ohos-ci-env.sh --prefix "$HOME/.ohos-ci-env")"
+          echo "OHOS_NDK_HOME=$OHOS_NDK_HOME" >> "$GITHUB_ENV"
+          echo "OPENSSL_DIR=$OPENSSL_DIR" >> "$GITHUB_ENV"
+          echo "ICU_DIR=$ICU_DIR" >> "$GITHUB_ENV"
+          echo "RUNTIME_REPO=$GITHUB_WORKSPACE/runtime" >> "$GITHUB_ENV"
+          echo "SDK_REPO=$GITHUB_WORKSPACE/sdk" >> "$GITHUB_ENV"
+          echo "ASCORE_REPO=$GITHUB_WORKSPACE/aspnetcore" >> "$GITHUB_ENV"
+
+      - name: Install host linux-x64 runtime packs into SDK packs dir
+        run: |
+          # SDK's FrameworkReference resolution finds host runtime packs under
+          # the SDK packs root (.dotnet/packs), not ~/.nuget. Install the
+          # linux-x64 runtime pack there so in-build tools (crossgen2/ILCompiler
+          # inbuild, self-contained at the host RID) resolve it.
+          PKROOT="$GITHUB_WORKSPACE/runtime/.dotnet/packs/Microsoft.NETCore.App.Runtime.linux-x64"
+          mkdir -p "$PKROOT"
+          for v in 11.0.0-rc.1.26420.103 11.0.0-rc.1.26431.109 11.0.0-rc.1.26451.109; do
+            d="$PKROOT/$v"
+            [ -d "$d/runtimes" ] && continue
+            id="microsoft.netcore.app.runtime.linux-x64"
+            case "$v" in
+              11.0.0-rc.1.26420.103)
+                src="https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet11/nuget/v3/flat2/$id/$v/$id.$v.nupkg" ;;
+              *)
+                src="https://github.com/springmin/runtime-ohos/releases/download/v11.0.0-rc.1.26451.109-ohos/$id.$v.nupkg" ;;
+            esac
+            mkdir -p "$d" "/tmp/hostfeed/$id/$v"
+            curl -fsSL --retry 3 -o /tmp/hostpack.nupkg "$src" || { echo "FAILED fetch $v"; continue; }
+            cp /tmp/hostpack.nupkg "/tmp/hostfeed/$id/$v/$id.$v.nupkg"
+            (cd "$d" && python3 -c "import zipfile; zipfile.ZipFile('/tmp/hostpack.nupkg').extractall('.')")
+            test -d "$d/runtimes" && echo "installed $v to SDK packs + hostfeed" || echo "FAILED install $v"
+          done
+          ls "$PKROOT" 2>&1 | head -5
+          find /tmp/hostfeed -name "*.nupkg" | head -4
+
+      - name: Pre-seed NETStandard.Library (netstandard2.x libs compile)
+        run: |
+          for v in 1.6.1 2.0.3; do
+            id="netstandard.library"
+            dir="$HOME/.nuget/packages/$id/$v"
+            [ -d "$dir" ] && continue
+            mkdir -p "$dir"
+            curl -fsSL --retry 3 -o /tmp/ns.nupkg "https://api.nuget.org/v3-flatcontainer/$id/$v/$id.$v.nupkg" || { echo "FAILED $id $v"; continue; }
+            cp /tmp/ns.nupkg "$dir/$id.$v.nupkg"
+            python3 -c "import hashlib,base64,json,zipfile,glob,shutil; p='$dir/$id.$v.nupkg'; h=base64.b64encode(hashlib.sha512(open(p,'rb').read()).digest()).decode(); open('$dir/$id.$v.nupkg.sha512','w').write(h); open('$dir/.nupkg.metadata','w').write(json.dumps({'version':2,'contentHash':h,'source':'nuget.org'})); zipfile.ZipFile(p).extractall('$dir'); [shutil.copy(n,'$dir/$id.nuspec') for n in glob.glob('$dir/*.nuspec')]"
+            echo "seeded $id $v"
+          done
+          # netstandard2.1 libs need NETStandard.Library.Ref 2.1.0 (SDK NETStandard21RefPath)
+          for v in 2.1.0; do
+            id="netstandard.library.ref"
+            dir="$HOME/.nuget/packages/$id/$v"
+            [ -d "$dir" ] && continue
+            mkdir -p "$dir"
+            curl -fsSL --retry 3 -o /tmp/nsr.nupkg "https://api.nuget.org/v3-flatcontainer/$id/$v/$id.$v.nupkg" || { echo "FAILED $id $v"; continue; }
+            cp /tmp/nsr.nupkg "$dir/$id.$v.nupkg"
+            python3 -c "import hashlib,base64,json,zipfile,glob,shutil; p='$dir/$id.$v.nupkg'; h=base64.b64encode(hashlib.sha512(open(p,'rb').read()).digest()).decode(); open('$dir/$id.$v.nupkg.sha512','w').write(h); open('$dir/.nupkg.metadata','w').write(json.dumps({'version':2,'contentHash':h,'source':'nuget.org'})); zipfile.ZipFile(p).extractall('$dir'); [shutil.copy(n,'$dir/$id.nuspec') for n in glob.glob('$dir/*.nuspec')]"
+            echo "seeded $id $v"
+          done
+
+      - name: Bootstrap runtime + aspnetcore SDK (RID graphs + shims)
+        run: |
+          curl -sSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh
+          # runtime global.json SDK (actual build SDK)
+          bash /tmp/dotnet-install.sh --version 11.0.100-rc.1.26420.103 \
+            --install-dir "$GITHUB_WORKSPACE/runtime/.dotnet" --no-path
+          # RIDGRAPH_SDKVER (shims + aspnetcore portable graph)
+          bash /tmp/dotnet-install.sh --version 11.0.100-preview.6.26359.118 \
+            --install-dir "$GITHUB_WORKSPACE/runtime/.dotnet" --no-path
+          bash /tmp/dotnet-install.sh --version 11.0.100-preview.6.26359.118 \
+            --install-dir "$GITHUB_WORKSPACE/aspnetcore/.dotnet" --no-path
+          # aspnetcore global.json SDK (arcade would download it mid-build, too
+          # late for the RID graph injection before the build)
+          bash /tmp/dotnet-install.sh --version 11.0.100-rc.1.26420.103 \
+            --install-dir "$GITHUB_WORKSPACE/aspnetcore/.dotnet" --no-path
+          # ILLink.Tasks (built in-tree) runs with rollForward=Major against
+          # Microsoft.NETCore.App 11.0.0; no 11.0.0 release exists yet, so
+          # alias the SDK runtime (local runs do the same).
+          cp -r "$GITHUB_WORKSPACE/runtime/.dotnet/shared/Microsoft.NETCore.App/11.0.0-rc.1.26420.103" \
+            "$GITHUB_WORKSPACE/runtime/.dotnet/shared/Microsoft.NETCore.App/11.0.0"
+          "$GITHUB_WORKSPACE/runtime/.dotnet/dotnet" --list-runtimes
+
+      - name: Install fork Ref pack (26451.109, has CompositeMLKem etc.)
+        run: |
+          PKROOT="$GITHUB_WORKSPACE/runtime/.dotnet/packs/Microsoft.NETCore.App.Ref"
+          mkdir -p "$PKROOT"
+          d="$PKROOT/11.0.0-rc.1.26451.109"
+          if [ ! -f "$d/data/FrameworkList.xml" ]; then
+            mkdir -p "$d"
+            curl -fsSL --retry 3 -o /tmp/ref.nupkg "https://github.com/springmin/runtime-ohos/releases/download/v11.0.0-rc.1.26451.109-ohos/Microsoft.NETCore.App.Ref.11.0.0-rc.1.26451.109.nupkg"
+            (cd "$d" && python3 -c "import zipfile; zipfile.ZipFile('/tmp/ref.nupkg').extractall('.')")
+            test -f "$d/data/FrameworkList.xml" && echo "installed fork Ref 26451.109" || echo "FAILED Ref install"
+          fi
+          ls "$PKROOT" 2>&1 | head -4
+
+      - name: Build runtime -> aspnetcore -> sdk
+        run: |
+          set +e
+          bash sdk/documentation/ohos-install/build/build-ohos-all.sh \
+            --buildid="$BUILDID" --rid="$RID" > /tmp/build.log 2>&1
+          rc=$?
+          tail -400 /tmp/build.log
+          exit $rc
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ohos-build-${{ inputs.rid }}-${{ inputs.buildid }}
+          path: |
+            runtime/artifacts/packages/Release/Shipping/*
+            aspnetcore/artifacts/packages/Release/Shipping/*
+            sdk/artifacts/packages/Release/Shipping/*
+          retention-days: 30
+
+      - name: Publish to -ohos releases
+        if: inputs.upload_release
+        env:
+          GH_TOKEN: ${{ secrets.OHOS_RELEASE_TOKEN }}
+        run: |
+          set -euo pipefail
+          RT_VERSION=$(ls runtime/artifacts/packages/Release/Shipping/Microsoft.NETCore.App.Ref.*.nupkg | grep -vE 'symbols|\.dev\.' | sed 's/.*Ref\.//; s/\.nupkg//' | sort -u | tail -1)
+          SDK_TAR=$(ls sdk/artifacts/packages/Release/Shipping/dotnet-sdk-*-ohos-arm64.tar.gz | head -1)
+          SDK_VERSION=$(basename "$SDK_TAR" | sed 's/dotnet-sdk-//; s/-ohos-arm64\.tar\.gz//')
+          echo "Publishing runtime/aspnetcore at $RT_VERSION, sdk redist at $SDK_VERSION"
+          gh auth status
+          gh release create "v$RT_VERSION-ohos" --repo springmin/runtime-ohos \
+            --notes "CI build (workflow_dispatch ${{ inputs.buildid }})" || true
+          gh release upload "v$RT_VERSION-ohos" --repo springmin/runtime-ohos --clobber \
+            runtime/artifacts/packages/Release/Shipping/* || true
+          gh release create "v$RT_VERSION-ohos" --repo springmin/aspnetcore-ohos \
+            --notes "CI build (workflow_dispatch ${{ inputs.buildid }})" || true
+          gh release upload "v$RT_VERSION-ohos" --repo springmin/aspnetcore-ohos --clobber \
+            aspnetcore/artifacts/packages/Release/Shipping/* || true
+          gh release create "v$SDK_VERSION-ohos" --repo springmin/sdk-ohos \
+            --notes "CI build (workflow_dispatch ${{ inputs.buildid }})" || true
+          gh release upload "v$SDK_VERSION-ohos" --repo springmin/sdk-ohos --clobber \
+            sdk/artifacts/packages/Release/Shipping/* || true
