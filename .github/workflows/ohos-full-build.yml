@@ -10,19 +10,19 @@ on:
       runtime_ref:
         description: runtime-ohos branch/tag to build
         required: true
-        default: 'feature/ohos-cross-runtime'
+        default: 'feature/openharmony'
       aspnetcore_ref:
         description: aspnetcore-ohos branch/tag to build
         required: true
-        default: 'feature/ohos-cross-compile'
+        default: 'feature/openharmony'
       sdk_ref:
         description: sdk-ohos branch/tag to build
         required: true
-        default: 'feature/ohos-cross-sdk'
+        default: 'feature/openharmony'
       rid:
         description: RID to build
         required: true
-        default: 'ohos-arm64'
+        default: 'openharmony-arm64'
       upload_release:
         description: Upload artifacts to the three -ohos GitHub releases (needs OHOS_RELEASE_TOKEN)
         type: boolean
@@ -207,8 +207,8 @@ jobs:
         run: |
           set -euo pipefail
           RT_VERSION=$(ls runtime/artifacts/packages/Release/Shipping/Microsoft.NETCore.App.Ref.*.nupkg | grep -vE 'symbols|\.dev\.' | sed 's/.*Ref\.//; s/\.nupkg//' | sort -u | tail -1)
-          SDK_TAR=$(ls sdk/artifacts/packages/Release/Shipping/dotnet-sdk-*-ohos-arm64.tar.gz | head -1)
-          SDK_VERSION=$(basename "$SDK_TAR" | sed 's/dotnet-sdk-//; s/-ohos-arm64\.tar\.gz//')
+          SDK_TAR=$(ls sdk/artifacts/packages/Release/Shipping/dotnet-sdk-*-openharmony-arm64.tar.gz | head -1)
+          SDK_VERSION=$(basename "$SDK_TAR" | sed 's/dotnet-sdk-//; s/-openharmony-arm64\.tar\.gz//')
           echo "Publishing runtime/aspnetcore at $RT_VERSION, sdk redist at $SDK_VERSION"
           gh auth status
           gh release create "v$RT_VERSION-ohos" --repo springmin/runtime-ohos \
