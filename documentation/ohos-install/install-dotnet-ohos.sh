@@ -89,7 +89,11 @@ has_codesign() { readelf -S "$1" 2>/dev/null | grep -q ".codesign"; }
 sign_elf() { # f -> signs one ELF in place (selfsign preferred, then binary-sign-tool)
     f="$1"
     if [ -n "$SELFSIGN" ]; then
-        "$SELFSIGN" "$f" >/dev/null 2>&1
+        # --force re-signs even when a .codesign section already exists:
+        # shipped signatures may come from older tooling and are rejected by
+        # the device (EPERM), so every ELF is rewritten with the current
+        # device-verified algorithm.
+        "$SELFSIGN" "$f" --force >/dev/null 2>&1
     else
         "$SIGN_TOOL" sign -inFile "$f" -outFile "$f" -selfSign 1 >/dev/null 2>&1
     fi
@@ -256,9 +260,9 @@ sign_all() {
     find "$INSTALL_DIR" -type f 2>/dev/null | while IFS= read -r f; do
         file "$f" 2>/dev/null | grep -q "ELF" || continue
         read -r s k d < "$CNTFILE"
-        if has_codesign "$f"; then
-            printf '%d %d %d\n' "$s" "$((k + 1))" "$d" > "$CNTFILE"; continue
-        fi
+        # Re-sign unconditionally: shipped signatures may be from older
+        # tooling and rejected by the device (EPERM). selfsign --force
+        # rewrites them with the current algorithm.
         if sign_elf "$f" >/dev/null 2>&1; then
             printf '%d %d %d\n' "$((s + 1))" "$k" "$d" > "$CNTFILE"
         else

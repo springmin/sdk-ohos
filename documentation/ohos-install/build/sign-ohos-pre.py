@@ -42,10 +42,11 @@ def has_codesign(path):
 
 
 def sign_elf(path):
-    # already signed -> skip (idempotent)
-    if has_codesign(path):
-        return False
-    subprocess.run([SELFSIGN, path], check=True, capture_output=True)
+    # Force re-sign: an existing .codesign section may carry a signature from
+    # older tooling that the device rejects with EPERM (the signature covers
+    # file content; any post-sign modification invalidates it). --force
+    # rewrites it with the current algorithm, which is device-verified.
+    subprocess.run([SELFSIGN, path, "--force"], check=True, capture_output=True)
     return True
 
 
