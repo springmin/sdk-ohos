@@ -15,7 +15,7 @@ lib/ managed dlls); pass it as the 4th argument and this script overlays the
 framework files into tools/.
 
 Usage: assemble-ilc-pack.py <ilc-published-dir> <reference-pack> <out-nupkg> [runtime-pack.nupkg] [framework-version]
-  ilc-published   artifacts/bin/coreclr/ohos.arm64.Release/ilc-published
+  ilc-published   artifacts/bin/coreclr/openharmony.arm64.Release/ilc-published
   reference       existing ILCompiler nupkg (non-tools metadata reused; may be
                   the same path as out — written atomically via temp + move)
   out-nupkg       target (Shipping pack path)

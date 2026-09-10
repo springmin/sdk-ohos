@@ -5,7 +5,7 @@
     <!-- OpenHarmony ships no bundled workloads (no Mono/Android/iOS/wasm toolchains
          for it); skip all workload manifest packs for ohos. -->
     <ProjectReference Remove="**\*.Manifest.proj"
-                      Condition="'$(OSName)' == 'ohos'" />
+                      Condition="'$(OSName)' == 'openharmony'" />
   </ItemGroup>
 
   <Target Name="LayoutBuiltinManifests">

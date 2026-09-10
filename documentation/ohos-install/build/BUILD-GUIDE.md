@@ -1,6 +1,6 @@
 # OHOS 三仓一键全链构建 · 使用说明
 
-构建 .NET（runtime → aspnetcore → sdk）的 OpenHarmony (OHOS, RID `ohos-arm64`) 交叉产物。
+构建 .NET（runtime → aspnetcore → sdk）的 OpenHarmony (OHOS, RID `openharmony-arm64`) 交叉产物。
 
 版本：runtime/aspnetcore `11.0.0-rc.1.26451.109` · SDK `11.0.100-rc.1.26451.109`
 （由 `--buildid 20260901.109` 决定；三仓需保持同一版本使 feed 可解析）
@@ -22,10 +22,10 @@
 ### A. GitHub Actions（最省心，干净环境，产物自动上传）
 ```sh
 gh workflow run ohos-full-build.yml --repo springmin/sdk-ohos \
-  --ref feature/ohos-cross-sdk -f buildid=20260901.109
+  --ref feature/openharmony -f buildid=20260901.109
 ```
-- runner：ubuntu-24.04（4 核/16GB）；NDK/OpenSSL/ICU 由 cache `ohos-ci-env-ohos-arm64-<hash>` 提供（首次 ~30 min 准备，之后命中）。
-- 产物：run 页 artifact `ohos-build-ohos-arm64-<buildid>`（28–29 文件，保留 30 天）。
+- runner：ubuntu-24.04（4 核/16GB）；NDK/OpenSSL/ICU 由 cache `ohos-ci-env-openharmony-arm64-<hash>` 提供（首次 ~30 min 准备，之后命中）。
+- 产物：run 页 artifact `ohos-build-openharmony-arm64-<buildid>`（28–29 文件，保留 30 天）。
 
 ### B. 本地一键（增量，复用已编译环境）
 ```sh
@@ -46,7 +46,7 @@ sh build-ohos-all.sh                    # 默认全链；BUILDID 默认 20260901
 
 ```sh
 sh build-ohos-all.sh \
-  [--arch arm64] [--rid ohos-arm64] [--config Release] \
+  [--arch arm64] [--rid openharmony-arm64] [--config Release] \
   [--buildid 20260901.109] \
   [--skip-runtime|--skip-aspnetcore|--skip-sdk] \   # 跳过某仓（需其产物已在 feed）
   [--stage-only 1|3|4]                              # 只跑单个 stage（1=runtime…）
@@ -65,7 +65,7 @@ sh build-ohos-all.sh \
 
 - 本地收集：`sdk-ohos/documentation/ohos-install/.work/output/`（29 文件）
 - 各仓自身 Shipping：`<repo>/artifacts/packages/Release/Shipping/`（含
-  `dotnet-sdk-11.0.100-rc.1.26451.109-ohos-arm64.tar.gz` 160MB、runtime/aspnetcore tar、
+  `dotnet-sdk-11.0.100-rc.1.26451.109-openharmony-arm64.tar.gz` 160MB、runtime/aspnetcore tar、
   NativeAOT/ILCompiler/Host/Crossgen2/Ref 等 nupkg，均已 `.codesign` 预签名）
 - SDK redist 目录：`<sdk>/artifacts/bin/redist/Release/dotnet`（内嵌 real runtime 26451.109）
 - 设备部署：见 `DEVICE-DEPLOYMENT.md` 示例（hdc 推送 + 自包含应用直跑）。
@@ -73,4 +73,4 @@ sh build-ohos-all.sh \
 ## 六、验证（qemu-aarch64 冒烟，可选）
 
 用 `~/dotnet/deps/qemu-rootfs`（musl + arc4 shim + libc++_shared）：
-`dotnet --info` → RID=`ohos-arm64`、版本 `11.0.0-rc.1.26451.109`；托管应用 exit 0。
+`dotnet --info` → RID=`openharmony-arm64`、版本 `11.0.0-rc.1.26451.109`；托管应用 exit 0。
