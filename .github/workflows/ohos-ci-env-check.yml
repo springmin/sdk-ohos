@@ -17,7 +17,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: springmin/sdk-ohos
-          ref: feature/ohos-cross-sdk
+          ref: feature/openharmony
           path: sdk
 
       - name: Install host build deps
@@ -31,7 +31,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.ohos-ci-env
-          key: ohos-ci-env-ohos-arm64-${{ hashFiles('sdk/documentation/ohos-install/build/ohos-ci-env.sh') }}
+          key: ohos-ci-env-openharmony-arm64-${{ hashFiles('sdk/documentation/ohos-install/build/ohos-ci-env.sh') }}
 
       - name: Prepare NDK + OpenSSL + ICU
         if: steps.cache-env.outputs.cache-hit != 'true'
