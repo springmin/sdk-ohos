@@ -104,9 +104,9 @@ download() { # url -> file
     url="$1"; out="$2"
     info "downloading ${url}"
     if command -v curl >/dev/null 2>&1; then
-        curl -fSL -o "$out" "$url" || return 1
+        curl -fSL --retry 3 --retry-delay 2 --connect-timeout 30 -o "$out" "$url" || return 1
     elif command -v wget >/dev/null 2>&1; then
-        wget -O "$out" "$url" || return 1
+        wget --tries=3 --timeout=30 -O "$out" "$url" || return 1
     else
         printf 'ERROR: need curl or wget to download\n' >&2; return 1
     fi
