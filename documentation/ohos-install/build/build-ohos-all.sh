@@ -587,9 +587,11 @@ stage1() {
   local rtpk="$ship/Microsoft.NETCore.App.Runtime.$RID.$RT_VERSION.nupkg"
   local rtl="$RUNTIME_REPO/artifacts/bin/microsoft.netcore.app.runtime.$RID/$CONFIG"
   cp -f "$clrbin/System.Private.CoreLib.dll" "$rtl/runtimes/$RID/native/System.Private.CoreLib.dll" 2>/dev/null || true
-  # the sfxproj pack step can emit an EMPTY zip (0 files) on a clean openharmony build;
-  # detect and reassemble from the layout + reference metadata.
-  if [ ! -s "$rtpk" ] || python3 -c "import zipfile,sys; sys.exit(0 if len(zipfile.ZipFile('$rtpk').namelist()) else 1)" 2>/dev/null; then
+  # the sfxproj pack step can emit an EMPTY zip (0 files) on a clean openharmony
+  # build; reassemble from the layout + reference metadata only when the pack is
+  # missing, zero-length, or an empty/corrupt zip. A valid pack is kept as-is
+  # (the CoreLib swap below still runs on it).
+  if [ ! -s "$rtpk" ] || ! python3 -c "import zipfile,sys; sys.exit(0 if len(zipfile.ZipFile('$rtpk').namelist()) else 1)" 2>/dev/null; then
     info "Runtime pack empty/corrupt — reassembling from layout"
     local refpk="$SCRIPT_DIR/reference-runtime-pack.nupkg"
     python3 "$SCRIPT_DIR/pack-runtime.py" "$rtl" "$refpk" "$rtpk" || die "manual runtime pack failed"
