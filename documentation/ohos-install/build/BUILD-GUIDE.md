@@ -11,7 +11,7 @@
 
 | 脚本 | 作用 | 位置 |
 |---|---|---|
-| **`build-ohos-all.sh`** | **全链构建主脚本**（stage0 env 检查 → stage1 runtime → stage2 asset → stage3 aspnetcore → stage4 sdk redist → stage5 collect） | 本目录（git 仓：`documentation/ohos-install/build/`；fork `springmin/sdk-ohos@feature/ohos-cross-sdk` 同路径） |
+| **`build-ohos-all.sh`** | **全链构建主脚本**（stage0 env 检查 → stage1 runtime → stage2 asset → stage3 aspnetcore → stage4 sdk redist → stage5 collect） | 本目录（git 仓：`documentation/ohos-install/build/`；fork `springmin/sdk-ohos@feature/openharmony`（默认分支）同路径） |
 | `ohos-ci-env.sh` | 干净机一次性环境准备（NDK / OpenSSL / ICU 从零下载编译），供本地与 CI cache 复用 | 同目录 |
 | `.github/workflows/ohos-full-build.yml` | CI 版一键全链（workflow_dispatch），环境由 GitHub cache 提供 | sdk 仓根 |
 | `install-dotnet-ohos.sh` | **设备端**安装器：从 GitHub release 装 SDK/Runtime 到 OHOS（非构建） | `documentation/ohos-install/` |
@@ -67,6 +67,11 @@ sh build-ohos-all.sh \
 - 各仓自身 Shipping：`<repo>/artifacts/packages/Release/Shipping/`（含
   `dotnet-sdk-11.0.100-rc.1.26451.109-openharmony-arm64.tar.gz` 160MB、runtime/aspnetcore tar、
   NativeAOT/ILCompiler/Host/Crossgen2/Ref 等 nupkg，均已 `.codesign` 预签名）
+- `Microsoft.NETCore.App.Crossgen2.openharmony-arm64` 为**未裁剪的 split 布局**（`PublishSingleFile=false` +
+  `PublishTrimmed=false` + runtime pack 框架覆盖 + `runtimepack` deps 条目；由 `assemble-crossgen2-pack.py` 组装）：
+  ILLink 会裁掉接口分派方法（`CustomAttributeTypeProvider.GetPrimitiveType`，dotnet/runtime #133296 同类），
+  且 bootstrap 布局不携带框架——两者都会导致设备端 `PublishReadyToRun` 启动失败（2026-09-12 设备 E2E 通过）。
+  `dotnet-crossgen2-*.tar.gz` 由同一布局刷新，签名循环已覆盖。
 - SDK redist 目录：`<sdk>/artifacts/bin/redist/Release/dotnet`（内嵌 real runtime 26451.109）
 - 设备部署：见 `DEVICE-DEPLOYMENT.md` 示例（hdc 推送 + 自包含应用直跑）。
 
