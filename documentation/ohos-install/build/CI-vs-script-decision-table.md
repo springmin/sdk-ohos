@@ -17,6 +17,7 @@ what the ohos script chooses, with the deviation class.
 | 8 | signing | none (no OHOS concept) | `.codesign` on every ELF at build/pre-package time | ohos-specific (device executes only signed ELF) |
 | 9 | version flow | darc / transport feeds | local NuGet folder feed + `rt-version.txt` override + localhost asset server | environment substitute (no darc; overrides mirror it) |
 | 10 | bootstrap host | official uses same-arch hosts/containers (same-OS AOT tools) | x64 host cross + bootstrap host sync (bin corehost → bootstrap/<rid>/host) | environment (no ohos host) |
+| 11 | crossgen2 pack shape (SDK-side R2R) | single-file, trimmed (`crossgen2_publish.csproj` PublishTrimmed/AotOrSingleFile; bootstrap layout) | untrimmed CoreCLR **split layout** + runtime-pack framework overlay + `runtimepack` deps entry (`assemble-crossgen2-pack.py`; same treatment as ilc) — device `PublishReadyToRun` E2E passed 2026-09-12 | intentional (device constraint: ILLink strips interface-dispatched methods — dotnet/runtime #133296 class; no bootstrap SDK on device) |
 
 **Classes:** intentional = ohos-specific / reviewed; temporary = pending upstream
 (item 5 — revert 36ef / R2R 27.0, tracked dotnet/runtime #133296); environment =
