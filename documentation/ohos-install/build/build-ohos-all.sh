@@ -547,6 +547,32 @@ stage1() {
   local rtpack_nupkg=$(ls "$ship"/Microsoft.NETCore.App.Runtime.$RID.$RT_VERSION.nupkg 2>/dev/null | head -1)
   python3 "$SCRIPT_DIR/assemble-ilc-pack.py" "$ilcd" "$ilc_ref" "$ilcpk" "$rtpack_nupkg" "11.0.0-rc.1.26420.103" \
     || die "assemble ilc split pack failed"
+
+  # --- crossgen2 pack: untrimmed split re-publish (device R2R) ---
+  # The in-build crossgen2 pack is a TRIMMED SINGLE-FILE publish; ILLink strips
+  # interface-dispatched methods such as CustomAttributeTypeProvider.GetPrimitiveType
+  # from ILCompiler.TypeSystem.dll (device TypeLoadException, dotnet/runtime #133296 -
+  # the same class of bug the ilc split publish above fixes). Re-publish
+  # crossgen2_publish with PublishSingleFile=false + PublishTrimmed=false and
+  # reassemble the pack (framework overlay + runtimepack deps entry). The tool
+  # tarball is refreshed from the same layout so both released artifacts agree.
+  local cg2p="$RUNTIME_REPO/src/coreclr/tools/aot/crossgen2/crossgen2_publish.csproj"
+  local cg2d="$RUNTIME_REPO/artifacts/bin/coreclr/openharmony.$ARCH.$CONFIG/crossgen2-published"
+  info "re-publishing crossgen2 as CoreCLR split layout (PublishSingleFile=false, PublishTrimmed=false)..."
+  ./.dotnet/dotnet build "$cg2p" -c "$CONFIG" -r "$RID" -t:Publish \
+    -p:TargetOS=openharmony -p:TargetArchitecture="$ARCH" -p:PortableOS=openharmony \
+    -p:UseBootstrap=true -p:PublishSingleFile=false -p:PublishTrimmed=false \
+    "/p:RuntimeIdentifierGraphPath=$rsp" -p:IncludeSymbols=false -v:q -nologo \
+    2>&1 | tee -a "$LOG" || die "crossgen2 split publish failed"
+  pkill -9 -f "MSBuild.*nodem" 2>/dev/null || true; sleep 2
+  [ -f "$cg2d/libc++_shared.so" ] || cp -f "$ndk_libcxx" "$cg2d/libc++_shared.so"
+  local cg2pk="$ship/Microsoft.NETCore.App.Crossgen2.$RID.$RT_VERSION.nupkg"
+  local cg2_ref=$(ls "$ship"/Microsoft.NETCore.App.Crossgen2.$RID.*.nupkg 2>/dev/null | grep -v "$RT_VERSION" | head -1)
+  [ -n "$cg2_ref" ] || cg2_ref="$cg2pk"  # same-pack metadata is safe (atomic write)
+  python3 "$SCRIPT_DIR/assemble-crossgen2-pack.py" "$cg2d" "$cg2_ref" "$cg2pk" "$rtpack_nupkg" "11.0.0-rc.1.26420.103" \
+    || die "assemble crossgen2 split pack failed"
+  tar czf "$ship/dotnet-crossgen2-$RT_VERSION-$RID.tar.gz" -C "$cg2d" --exclude='*.pdb' . \
+    || die "crossgen2 tool tarball refresh failed"
   ./build.sh -os openharmony -arch "$ARCH" --cross -c "$CONFIG" -lc "$CONFIG" -rc "$CONFIG" \
     /p:UseBootstrapLayout=true \
     -projects "$RUNTIME_REPO/src/installer/pkg/sfx/Microsoft.NETCore.App/Microsoft.NETCore.App.Runtime.NativeAOT.sfxproj" \
@@ -619,7 +645,7 @@ stage1() {
   for pk in "$ship"/*"$RID"*"$RT_VERSION"*.nupkg; do
     [ -f "$pk" ] && sign_all "$pk"
   done
-  for tb in "$ship"/dotnet-runtime-*"$RID"*.tar.gz; do
+  for tb in "$ship"/dotnet-runtime-*"$RID"*.tar.gz "$ship"/dotnet-crossgen2-*"$RID"*.tar.gz; do
     [ -f "$tb" ] && sign_all "$tb"
   done
   # collect packs into the local feed (post-sign: feed is the downstream restore source)
