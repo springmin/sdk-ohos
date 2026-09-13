@@ -15,8 +15,11 @@
 #    cross legs (linux-musl-arm64 etc.); -os openharmony + --cross carry the OpenHarmony sysroot.
 #  - ILCompiler packs via clr.aot+packs + explicit NativeAOT.sfxproj == fork plan C.7
 #    (DotNetBuildAllRuntimePacks=true would also trigger Mono cross-AOT).
-#  - ReadyToRun CoreLib uses the OFFICIAL NuGet crossgen2 + pack CoreLib swap:
-#    OpenHarmony-only (fork crossgen2_inbuild hangs; no PGO in openharmony). Intentional deviation.
+#  - ReadyToRun: the OFFICIAL NuGet crossgen2 compiles the CoreLib and, since
+#    2026-09-13, the whole framework (OHOS_FRAMEWORK_R2R=1) with an overlay into
+#    the runtime pack; device-side self-contained + PublishReadyToRun publishes
+#    then only compile app assemblies (the SDK skips already-R2R framework dlls).
+#    OpenHarmony-only (fork crossgen2_inbuild hangs; no PGO data). Intentional deviation.
 #  - aspnetcore: os-name=openharmony passes through (no whitelist); PublishReadyToRun=false
 #    + NativeAotSupported=false are OpenHarmony kill switches; PublicBaseURL local server
 #    stands in for ci.dot.net feeds. Version overrides replace darc pins.
@@ -74,6 +77,10 @@ ICU_DIR="${ICU_DIR:-/tmp/icu-ohos-install}"
 # official CI's crossgen2 runs against the previously-published host runtime.
 STOCK_CROSSGEN2_VERSION="${STOCK_CROSSGEN2_VERSION:-11.0.0-rc.1.26427.131}"
 STOCK_CROSSGEN2_DIR="$WORK/stock-crossgen2/$STOCK_CROSSGEN2_VERSION"
+# Framework-wide R2R overlay (mac model): 1 = compile all PureIL framework
+# assemblies at pack build and overlay them (device SCD+R2R becomes app-only).
+OHOS_FRAMEWORK_R2R="${OHOS_FRAMEWORK_R2R:-1}"
+R2R_JOBS="${R2R_JOBS:-4}"
 
 RUN_RUNTIME=1; RUN_ASCORE=1; RUN_SDK=1
 STAGE_ONLY=""
@@ -677,6 +684,26 @@ for x in glob.glob(dirp+'/*.nuspec'): shutil.copy(x, dirp+'/$HOSTPACK_ID.nuspec'
   done
   [ -n "$rep_ok" ] || die "replace pack CoreLib failed after retries"
   info "runtime pack CoreLib swapped to R2R ($(stat -c%s "$rtpk") bytes)"
+  # --- framework-wide ReadyToRun overlay (mac model, 2026-09-13) -------------
+  # The SDK skips already-R2R framework assemblies when a self-contained app
+  # publishes with PublishReadyToRun, so overlaying the whole framework here
+  # turns device publishes into app-only compiles (previously ~180 assemblies,
+  # hours on device). Same stock crossgen2 as the CoreLib step; per-assembly
+  # failures (facades/no-IL) are tolerated and stay PureIL.
+  if [ "$OHOS_FRAMEWORK_R2R" = "1" ]; then
+    local libdir="$rtl/runtimes/$RID/lib/net11.0"
+    local r2rout="$WORK/framework-r2r"
+    [ -d "$libdir" ] || die "framework R2R: layout lib dir missing: $libdir"
+    mkdir -p "$r2rout"
+    info "framework R2R: compiling $(find "$libdir" -maxdepth 1 -name '*.dll' | wc -l) assemblies (stock crossgen2, jobs=$R2R_JOBS)..."
+    DOTNET_ROOT="$RUNTIME_REPO/.dotnet" python3 "$SCRIPT_DIR/crossgen-framework.py" \
+      --crossgen2 "$STOCK_CROSSGEN2_DIR/tools/crossgen2" \
+      --libdir "$libdir" --outdir "$r2rout" --jobs "$R2R_JOBS" \
+      2>&1 | tee -a "$LOG" || die "framework R2R crossgen failed"
+    python3 "$SCRIPT_DIR/overlay-pack.py" "$rtpk" "$r2rout" || die "framework R2R pack overlay failed"
+    cp -f "$r2rout"/*.dll "$libdir/" 2>/dev/null || true
+    info "framework R2R: overlaid pack ($(stat -c%s "$rtpk") bytes) + layout"
+  fi
   # refresh the local feed copy
   cp -f "$ship/Microsoft.NETCore.App.Runtime.$RID.$RT_VERSION.nupkg" "$FEED/" 2>/dev/null
   # --- pre-sign every openharmony ELF (runtime/nativeaot/host/ilc packs + tarballs) ---
