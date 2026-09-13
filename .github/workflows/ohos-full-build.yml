@@ -31,6 +31,10 @@ on:
         description: Stock crossgen2 version for R2R CoreLib (must match the runtime branch R2R version)
         required: false
         default: '11.0.0-rc.1.26451.109'
+      in_tree_r2r:
+        description: 'A/B: R2R the runtime framework in-tree (OpenHarmonyInTreeR2R, in-build crossgen2) instead of the out-of-tree overlay'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -44,6 +48,7 @@ jobs:
       BUILDID: ${{ inputs.buildid }}
       RID: ${{ inputs.rid }}
       STOCK_CROSSGEN2_VERSION: ${{ inputs.crossgen2_version }}
+      OHOS_IN_TREE_R2R: ${{ inputs.in_tree_r2r == true && '1' || '0' }}
     steps:
       - name: Checkout sdk-ohos (scripts + selfsign)
         uses: actions/checkout@v4
@@ -188,8 +193,8 @@ jobs:
             --buildid="$BUILDID" --rid="$RID" > /tmp/build.log 2>&1
           rc=$?
           tail -400 /tmp/build.log
-          echo "--- build markers (crossgen2 probe / framework R2R / aspnetcore R2R / PGO) ---"
-          grep -aE "crossgen2 probe|framework R2R|aspnetcore R2R|PGO mibc|re-versioning host pack" /tmp/build.log | tail -40 || true
+          echo "--- build markers (crossgen2 probe / framework R2R / aspnetcore R2R / in-tree R2R / PGO) ---"
+          grep -aE "crossgen2 probe|framework R2R|aspnetcore R2R|in-tree R2R|PGO mibc|re-versioning host pack" /tmp/build.log | tail -40 || true
           exit $rc
 
       - name: Upload build artifacts

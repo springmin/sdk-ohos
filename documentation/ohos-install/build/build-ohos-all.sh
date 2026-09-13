@@ -82,6 +82,15 @@ STOCK_CROSSGEN2_DIR="$WORK/stock-crossgen2/$STOCK_CROSSGEN2_VERSION"
 # Framework-wide R2R overlay (mac model): 1 = compile all PureIL framework
 # assemblies at pack build and overlay them (device SCD+R2R becomes app-only).
 OHOS_FRAMEWORK_R2R="${OHOS_FRAMEWORK_R2R:-1}"
+# In-tree R2R A/B (Level A): 1 = the CoreCLR.sfxproj R2Rs the framework with the
+# in-build crossgen2 (gated by the OpenHarmonyInTreeR2R property in the sfxproj)
+# and the out-of-tree runtime framework overlay is skipped. The PGO mibc must be
+# seeded before the packs build. Default 0 keeps the shipped overlay path.
+OHOS_IN_TREE_R2R="${OHOS_IN_TREE_R2R:-0}"
+IN_TREE_R2R_PACK_ARGS=""
+if [ "$OHOS_IN_TREE_R2R" = "1" ]; then
+  IN_TREE_R2R_PACK_ARGS="/p:OpenHarmonyInTreeR2R=true /p:EnableNgenOptimization=true"
+fi
 R2R_JOBS="${R2R_JOBS:-4}"
 
 RUN_RUNTIME=1; RUN_ASCORE=1; RUN_SDK=1
@@ -232,6 +241,48 @@ seed_bootstrap_ref() {
 }
 
 build_clr_libs_packs() {
+  # --- in-tree R2R preparation (A/B, OHOS_IN_TREE_R2R=1) ---------------------
+  # Seed the PGO mibc at $(CoreCLRArtifactsPath)StandardOptimizationData.mibc
+  # BEFORE the packs build (eng/codeOptimization.targets reads it there when
+  # PublishReadyToRun+EnableNgenOptimization are set), and make sure the
+  # in-build crossgen2 exists at Crossgen2InBuildDir, which the CoreCLR.sfxproj's
+  # overridden ResolveReadyToRunCompilers points at. Publishing it here is a
+  # safety net: the clr.nativecorelib subset normally builds it in the same pass.
+  if [ "$OHOS_IN_TREE_R2R" = "1" ]; then
+    local clrbin_early="$RUNTIME_REPO/artifacts/bin/coreclr/openharmony.$ARCH.$CONFIG"
+    local host_arch="" host_rid=""
+    case "$(uname -m)" in
+      x86_64|amd64) host_arch=x64; host_rid=linux-x64 ;;
+      aarch64|arm64) host_arch=arm64; host_rid=linux-arm64 ;;
+    esac
+    mkdir -p "$clrbin_early"
+    if [ ! -s "$clrbin_early/StandardOptimizationData.mibc" ] && [ -f "$SCRIPT_DIR/reference-runtime-pack.nupkg" ]; then
+      (python3 -c "
+import zipfile
+z = zipfile.ZipFile('$SCRIPT_DIR/reference-runtime-pack.nupkg')
+open('$clrbin_early/StandardOptimizationData.mibc','wb').write(z.read('tools/StandardOptimizationData.mibc'))
+" && info "in-tree R2R: PGO mibc seeded before the packs build") || info "in-tree R2R: mibc seed failed - continuing without PGO"
+    fi
+    if [ -n "$host_arch" ] && [ ! -f "$clrbin_early/$host_arch/crossgen2/crossgen2" ]; then
+      local cg2dir="$clrbin_early/$host_arch/crossgen2"
+      local cg2pub="$WORK/inbuild-crossgen2-pre.log"
+      info "in-tree R2R: publishing in-build crossgen2 to $cg2dir"
+      ( cd "$RUNTIME_REPO" && \
+        timeout 900 ./.dotnet/dotnet build src/coreclr/tools/aot/crossgen2/crossgen2_inbuild.csproj \
+          -c "$CONFIG" -r "$host_rid" -t:Publish \
+          -p:TargetOS=openharmony -p:TargetArchitecture="$ARCH" -p:PortableOS=openharmony \
+          -p:UseBootstrap=true -p:CrossBuild=true \
+          "/p:PublishDir=$cg2dir/" \
+          "/p:RuntimeIdentifierGraphPath=$rsp" -p:IncludeSymbols=false -v:q -nologo \
+          ) >> "$cg2pub" 2>&1 || true
+      if [ -f "$cg2dir/crossgen2" ]; then
+        info "in-tree R2R: in-build crossgen2 ready"
+      else
+        info "in-tree R2R: in-build crossgen2 publish failed - log tail:"
+        tail -12 "$cg2pub" 2>/dev/null || true
+      fi
+    fi
+  fi
   # Mirror the host linux-x64 runtime packs into the local NuGet feed (flat)
   # so the in-build tool restore (RestoreAdditionalProjectSources=$FEED) and
   # SDK runtime-pack download can resolve them regardless of version source.
@@ -316,6 +367,7 @@ PYEOF
         -subset clr+libs+packs \
         /p:UseBootstrapLayout=true /p:BuildHostTools=true /p:ApiCompatValidateAssemblies=false \
         /p:RuntimeIdentifierGraphPath="$rsp" /p:IncludeSymbols=false \
+        $IN_TREE_R2R_PACK_ARGS \
         /p:PreReleaseVersionLabel="$LABEL" /p:PreReleaseVersion="$PRE" /p:OfficialBuildId="$BUILDID" \
         "/p:RestoreAdditionalProjectSources=$FEED" \
         -cmakeargs "-DCMAKE_SYSTEM_NAME=OHOS -DHAVE_CLOCK_MONOTONIC_COARSE_EXITCODE=0 -DHAVE_CLOCK_REALTIME_EXITCODE=0 -DHAVE_CLOCK_THREAD_CPUTIME_EXITCODE=0 -DHAVE_MMAP_DEV_ZERO_EXITCODE=0 -DHAVE_PROCFS_CTL_EXITCODE=1 -DHAVE_PROCFS_STAT_EXITCODE=0 -DHAVE_PROCFS_STATM_EXITCODE=0 -DHAVE_SCHED_GETCPU_EXITCODE=0 -DHAVE_SCHED_GET_PRIORITY_EXITCODE=0 -DHAVE_WORKING_CLOCK_GETTIME_EXITCODE=0 -DHAVE_WORKING_GETTIMEOFDAY_EXITCODE=0 -DONE_SHARED_MAPPING_PER_FILEREGION_PER_PROCESS_EXITCODE=1 -DREALPATH_SUPPORTS_NONEXISTENT_FILES_EXITCODE=1 -DHAVE_SHM_OPEN_THAT_WORKS_WELL_ENOUGH_WITH_MMAP_EXITCODE=0 -DHAVE_BROKEN_FIFO_KEVENT_EXITCODE=1 -DHAVE_BROKEN_FIFO_SELECT_EXITCODE=1 -DOPENSSL_ROOT_DIR=$OPENSSL_DIR -DOPENSSL_INCLUDE_DIR=$OPENSSL_DIR/include \
@@ -779,7 +831,7 @@ open('$clrbin/StandardOptimizationData.mibc','wb').write(z.read('tools/StandardO
     info "crossgen2 probe: in-build crossgen2 binary not found"
   fi
   set -e
-  if [ "$OHOS_FRAMEWORK_R2R" = "1" ]; then
+  if [ "$OHOS_FRAMEWORK_R2R" = "1" ] && [ "$OHOS_IN_TREE_R2R" != "1" ]; then
     local libdir="$rtl/runtimes/$RID/lib/net11.0"
     local r2rout="$WORK/framework-r2r"
     local r2rrefs="$WORK/framework-r2r-refs"
@@ -816,6 +868,8 @@ open('$clrbin/StandardOptimizationData.mibc','wb').write(z.read('tools/StandardO
       info "framework R2R: runtime tarball for $RT_VERSION not found yet (skipped)"
     fi
     info "framework R2R: overlaid pack ($(stat -c%s "$rtpk") bytes) + layout"
+  elif [ "$OHOS_IN_TREE_R2R" = "1" ]; then
+    info "in-tree R2R: out-of-tree runtime framework overlay skipped (handled by the build)"
   fi
   # refresh the local feed copy
   cp -f "$ship/Microsoft.NETCore.App.Runtime.$RID.$RT_VERSION.nupkg" "$FEED/" 2>/dev/null
