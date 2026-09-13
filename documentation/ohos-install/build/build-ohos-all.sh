@@ -498,6 +498,47 @@ stage1() {
   [ -n "$RT_VERSION" ] || RT_VERSION="$VERSION_BAND-$LABEL.$PRE.$BUILDID"
   echo "$RT_VERSION" > "$WORK/rt-version.txt"
   info "runtime product version: $RT_VERSION"
+  # Hardening (2026-09-13): a non-default buildid derives a fresh RT_VERSION for
+  # which no host linux-x64 pack is published anywhere (a 26463.1 build died
+  # with a 404 at the pre-seed below). Re-version an available seeded pack to
+  # RT_VERSION (same repackage approach as the 11.0.0 alias above), so clean
+  # hosts always have the pack the in-build tools restore.
+  HOSTPACK_ID=microsoft.netcore.app.runtime.linux-x64
+  HOSTPACK_DIR="$HOME/.nuget/packages/$HOSTPACK_ID/$RT_VERSION"
+  if ! ls "$HOSTPACK_DIR"/*.nuspec >/dev/null 2>&1; then
+    HOSTPACK_SRC=""
+    for cand in "$HOME/.nuget/packages/$HOSTPACK_ID"/*; do
+      [ -d "$cand" ] || continue
+      f=$(ls "$cand"/*.nupkg 2>/dev/null | head -1)
+      [ -n "$f" ] && HOSTPACK_SRC="$f"
+    done
+    if [ -n "$HOSTPACK_SRC" ]; then
+      HOSTPACK_SRCVER=$(basename "$HOSTPACK_SRC" | sed "s/^$HOSTPACK_ID\.//; s/\.nupkg$//")
+      info "re-versioning host pack $HOSTPACK_SRCVER -> $RT_VERSION (no published pack for this buildid)"
+      mkdir -p "$HOSTPACK_DIR" "/tmp/hostfeed/$HOSTPACK_ID/$RT_VERSION"
+      python3 -c "
+import zipfile
+src, out, old, new = '$HOSTPACK_SRC', '$HOSTPACK_DIR/$HOSTPACK_ID.$RT_VERSION.nupkg', '$HOSTPACK_SRCVER', '$RT_VERSION'
+with zipfile.ZipFile(src) as zin, zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as zout:
+    for n in zin.namelist():
+        d = zin.read(n)
+        if n.endswith('.nuspec') or n.endswith('.nupkg.metadata'):
+            d = d.decode().replace(old, new).encode()
+        zout.writestr(n, d)
+"
+      cp "$HOSTPACK_DIR/$HOSTPACK_ID.$RT_VERSION.nupkg" "/tmp/hostfeed/$HOSTPACK_ID/$RT_VERSION/"
+      python3 -c "
+import hashlib,base64,json,zipfile,glob,shutil
+dirp='$HOSTPACK_DIR'; n='$HOSTPACK_ID.$RT_VERSION.nupkg'; p=dirp+'/'+n
+h=base64.b64encode(hashlib.sha512(open(p,'rb').read()).digest()).decode()
+open(p+'.sha512','w').write(h)
+open(dirp+'/.nupkg.metadata','w').write(json.dumps({'version':2,'contentHash':h,'source':'local'}))
+zipfile.ZipFile(p).extractall(dirp)
+for x in glob.glob(dirp+'/*.nuspec'): shutil.copy(x, dirp+'/$HOSTPACK_ID.nuspec'); break
+"
+      info "re-versioned host pack -> $RT_VERSION"
+    fi
+  fi
   ensure_nuget_runtime_pack "linux-x64" "$RT_VERSION" "" ""
 
   # AOT tooling packs via clr.aot+packs + explicit NativeAOT.sfxproj — the
