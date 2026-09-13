@@ -89,7 +89,7 @@ OHOS_FRAMEWORK_R2R="${OHOS_FRAMEWORK_R2R:-1}"
 OHOS_IN_TREE_R2R="${OHOS_IN_TREE_R2R:-0}"
 IN_TREE_R2R_PACK_ARGS=""
 if [ "$OHOS_IN_TREE_R2R" = "1" ]; then
-  IN_TREE_R2R_PACK_ARGS="/p:OpenHarmonyInTreeR2R=true /p:EnableNgenOptimization=true"
+  IN_TREE_R2R_PACK_ARGS="/p:OpenHarmonyInTreeR2R=true /p:EnableNgenOptimization=true /p:Crossgen2InBuildDir=$STOCK_CROSSGEN2_DIR/tools/"
 fi
 R2R_JOBS="${R2R_JOBS:-4}"
 
@@ -244,17 +244,12 @@ build_clr_libs_packs() {
   # --- in-tree R2R preparation (A/B, OHOS_IN_TREE_R2R=1) ---------------------
   # Seed the PGO mibc at $(CoreCLRArtifactsPath)StandardOptimizationData.mibc
   # BEFORE the packs build (eng/codeOptimization.targets reads it there when
-  # PublishReadyToRun+EnableNgenOptimization are set), and make sure the
-  # in-build crossgen2 exists at Crossgen2InBuildDir, which the CoreCLR.sfxproj's
-  # overridden ResolveReadyToRunCompilers points at. Publishing it here is a
-  # safety net: the clr.nativecorelib subset normally builds it in the same pass.
+  # PublishReadyToRun+EnableNgenOptimization are set), and stage the stock
+  # linux-x64 crossgen2 for the CoreCLR.sfxproj's overridden
+  # ResolveReadyToRunCompilers (Crossgen2InBuildDir is overridden globally to
+  # point at it).
   if [ "$OHOS_IN_TREE_R2R" = "1" ]; then
     local clrbin_early="$RUNTIME_REPO/artifacts/bin/coreclr/openharmony.$ARCH.$CONFIG"
-    local host_arch="" host_rid=""
-    case "$(uname -m)" in
-      x86_64|amd64) host_arch=x64; host_rid=linux-x64 ;;
-      aarch64|arm64) host_arch=arm64; host_rid=linux-arm64 ;;
-    esac
     mkdir -p "$clrbin_early"
     if [ ! -s "$clrbin_early/StandardOptimizationData.mibc" ] && [ -f "$SCRIPT_DIR/reference-runtime-pack.nupkg" ]; then
       (python3 -c "
@@ -263,25 +258,15 @@ z = zipfile.ZipFile('$SCRIPT_DIR/reference-runtime-pack.nupkg')
 open('$clrbin_early/StandardOptimizationData.mibc','wb').write(z.read('tools/StandardOptimizationData.mibc'))
 " && info "in-tree R2R: PGO mibc seeded before the packs build") || info "in-tree R2R: mibc seed failed - continuing without PGO"
     fi
-    if [ -n "$host_arch" ] && [ ! -f "$clrbin_early/$host_arch/crossgen2/crossgen2" ]; then
-      local cg2dir="$clrbin_early/$host_arch/crossgen2"
-      local cg2pub="$WORK/inbuild-crossgen2-pre.log"
-      info "in-tree R2R: publishing in-build crossgen2 to $cg2dir"
-      ( cd "$RUNTIME_REPO" && \
-        timeout 900 ./.dotnet/dotnet build src/coreclr/tools/aot/crossgen2/crossgen2_inbuild.csproj \
-          -c "$CONFIG" -r "$host_rid" -t:Publish \
-          -p:TargetOS=openharmony -p:TargetArchitecture="$ARCH" -p:PortableOS=openharmony \
-          -p:UseBootstrap=true -p:CrossBuild=true \
-          "/p:PublishDir=$cg2dir/" \
-          "/p:RuntimeIdentifierGraphPath=$rsp" -p:IncludeSymbols=false -v:q -nologo \
-          ) >> "$cg2pub" 2>&1 || true
-      if [ -f "$cg2dir/crossgen2" ]; then
-        info "in-tree R2R: in-build crossgen2 ready"
-      else
-        info "in-tree R2R: in-build crossgen2 publish failed - log tail:"
-        tail -12 "$cg2pub" 2>/dev/null || true
-      fi
-    fi
+    # The in-pass crossgen2_inbuild is published for the OHOS bootstrap layout
+    # (aarch64 apphost) under UseBootstrapLayout, so it cannot run on the x64
+    # build host (Exec format error, run 34787921027). Use the stock linux-x64
+    # crossgen2 for the in-tree pipeline and point the sfxproj's overridden
+    # ResolveReadyToRunCompilers at it via the Crossgen2InBuildDir global
+    # property. The in-build tool itself is probe-verified separately
+    # (sdk-ohos run 34784718506).
+    ensure_stock_crossgen2
+    info "in-tree R2R: sfxproj crossgen2 -> $STOCK_CROSSGEN2_DIR/tools/crossgen2"
   fi
   # Mirror the host linux-x64 runtime packs into the local NuGet feed (flat)
   # so the in-build tool restore (RestoreAdditionalProjectSources=$FEED) and
