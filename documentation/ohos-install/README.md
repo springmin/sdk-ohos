@@ -100,7 +100,7 @@ dotnet publish selfsign.csproj -c Release -p:PublishAot=false
 selfsign <input_elf> [output_elf] [--force] [--strip]
 ```
 
-> `selfsign` 是 SDK 内置 `OpenHarmonyCodesign` MSBuild task（`ElfSelfSigner`）的
+> `selfsign` 是 SDK 内置 `OpenHarmonyCodesign` MSBuild task（`ElfSigner`）的
 > 独立单文件版本，算法与官方 `binary-sign-tool` 字节级一致，可在设备上
 > 独立运行（不依赖 MSBuild）。已在 qemu（aarch64 OpenHarmony 环境）验证签名结果
 > 与官方工具字节级一致。
@@ -117,7 +117,7 @@ selfsign <input_elf> [output_elf] [--force] [--strip]
 sh sign-ohos-release.sh <dir-or-tarball> ...   # SELFSIGN=<path> 指定 selfsign
 ```
 
-> 两个版本实现同一 `ElfSelfSigner` 算法——输出**字节级一致**、确定性、
+> 两个版本实现同一 `ElfSigner` 算法——输出**字节级一致**、确定性、
 > 无设备依赖。宿主 x64 版本已在交叉编译机验证（签名 aarch64 ELF 正常）；
 > 设备端版本构建于 NativeAOT 交叉编译，真机运行需 `libc++_shared.so` +
 > `libstdc++.so.6` + `libgcc_s.so.1`（后两者随 runtime 的 ILCompiler pack 提供）。

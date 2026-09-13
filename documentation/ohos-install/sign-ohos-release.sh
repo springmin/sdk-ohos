@@ -4,7 +4,7 @@
 # Host-side (x64) pre-signer for OpenHarmony release tarballs.
 #
 # HarmonyOS only executes ELF binaries carrying a .codesign section. The
-# signing algorithm (ElfSelfSigner) is pure ELF byte manipulation — no device
+# signing algorithm (ElfSigner) is pure ELF byte manipulation — no device
 # dependency, fully deterministic, byte-identical to the on-device flow. This
 # script lets CI / release builds pre-sign artifacts on the cross-compilation
 # host so the device installer can skip signing.
