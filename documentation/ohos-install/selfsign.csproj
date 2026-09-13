@@ -17,5 +17,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="selfsign.cs" />
+    <!-- Signing algorithm shared with the SDK's OpenHarmonyCodesign MSBuild task. -->
+    <Compile Include="../../src/Tasks/Microsoft.NET.Build.Tasks/OpenHarmony/ElfSigner.cs" Link="ElfSigner.cs" />
   </ItemGroup>
 </Project>

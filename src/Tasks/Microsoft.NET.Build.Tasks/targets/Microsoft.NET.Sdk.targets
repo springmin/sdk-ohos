@@ -875,28 +875,30 @@ Copyright (c) .NET Foundation. All rights reserved.
 
   <!--
     ============================================================
-                                        _OpenHarmonyCodesignBuildOutputs
+                                        _OpenHarmonyCodeSignBuildOutputs
     OpenHarmony only executes ELF binaries carrying a valid .codesign section, and a signed
     binary whose content changed (e.g. the apphost, rewritten on every build) fails with EPERM.
-    Re-sign every ELF output under the target/publish directories when building on or for OHOS
-    so the results run on the device without external tooling. Non-ELF files are skipped by the
-    task. Matches RuntimeIdentifier for self-contained/file-based builds and the SDK's own RID
-    for portable builds executed on an OHOS SDK.
+    Re-sign ELF outputs under the target/publish directories when building on or for OHOS so the
+    results run on the device without external tooling. The task skips non-ELF files and files
+    whose existing signature is still valid, so incremental builds do not rewrite them. Mirrors
+    _EnableMacOSCodeSign: RuntimeIdentifier covers self-contained/file-based builds and
+    AppHostRuntimeIdentifier covers portable builds executed on an OHOS SDK; setting
+    _EnableOpenHarmonyCodeSign explicitly opts in/out.
     ============================================================
      -->
   <UsingTask TaskName="OpenHarmonyCodesign" AssemblyFile="$(MicrosoftNETBuildTasksAssembly)" />
   <PropertyGroup>
-    <_OpenHarmonyCodesignEnabled Condition="$([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('openharmony')) or $([System.String]::Copy('$(NETCoreSdkRuntimeIdentifier)').StartsWith('openharmony'))">true</_OpenHarmonyCodesignEnabled>
+    <_EnableOpenHarmonyCodeSign Condition="'$(_EnableOpenHarmonyCodeSign)' == '' and ($(RuntimeIdentifier.StartsWith('openharmony')) or $(AppHostRuntimeIdentifier.StartsWith('openharmony')))">true</_EnableOpenHarmonyCodeSign>
   </PropertyGroup>
-  <Target Name="_OpenHarmonyCodesignBuildOutputs"
+  <Target Name="_OpenHarmonyCodeSignBuildOutputs"
           AfterTargets="Build"
-          Condition="'$(_OpenHarmonyCodesignEnabled)' == 'true'">
+          Condition="'$(_EnableOpenHarmonyCodeSign)' == 'true'">
     <OpenHarmonyCodesign Directories="$(TargetDir)" />
   </Target>
 
-  <Target Name="_OpenHarmonyCodesignPublishOutputs"
+  <Target Name="_OpenHarmonyCodeSignPublishOutputs"
           AfterTargets="Publish"
-          Condition="'$(_OpenHarmonyCodesignEnabled)' == 'true'">
+          Condition="'$(_EnableOpenHarmonyCodeSign)' == 'true'">
     <OpenHarmonyCodesign Directories="$(PublishDir)" />
   </Target>
 
