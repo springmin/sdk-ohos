@@ -17,9 +17,11 @@
 #    (DotNetBuildAllRuntimePacks=true would also trigger Mono cross-AOT).
 #  - ReadyToRun: the OFFICIAL NuGet crossgen2 compiles the CoreLib and, since
 #    2026-09-13, the whole framework (OHOS_FRAMEWORK_R2R=1) with an overlay into
-#    the runtime pack; device-side self-contained + PublishReadyToRun publishes
-#    then only compile app assemblies (the SDK skips already-R2R framework dlls).
-#    OpenHarmony-only (fork crossgen2_inbuild hangs; no PGO data). Intentional deviation.
+#    the runtime pack + layout + runtime tarball (so the SDK redist's shared
+#    framework is R2R too); device-side self-contained + PublishReadyToRun
+#    publishes then only compile app assemblies (the SDK skips already-R2R
+#    framework dlls). OpenHarmony-only (fork crossgen2_inbuild hangs; no PGO
+#    data). Intentional deviation.
 #  - aspnetcore: os-name=openharmony passes through (no whitelist); PublishReadyToRun=false
 #    + NativeAotSupported=false are OpenHarmony kill switches; PublicBaseURL local server
 #    stands in for ci.dot.net feeds. Version overrides replace darc pins.
@@ -707,8 +709,22 @@ for x in glob.glob(dirp+'/*.nuspec'): shutil.copy(x, dirp+'/$HOSTPACK_ID.nuspec'
       --crossgen2 "$STOCK_CROSSGEN2_DIR/tools/crossgen2" \
       --libdir "$libdir" --refdir "$r2rrefs" --outdir "$r2rout" --jobs "$R2R_JOBS" \
       2>&1 | tee -a "$LOG" || die "framework R2R crossgen failed"
+    # the CoreLib R2R image (swapped into the pack above) also belongs to the
+    # overlay set so the tarball/SDK shared framework gets it too
+    cp -f "$clrbin/System.Private.CoreLib.dll" "$r2rout/" || die "framework R2R: CoreLib R2R image missing"
     python3 "$SCRIPT_DIR/overlay-pack.py" "$rtpk" "$r2rout" || die "framework R2R pack overlay failed"
     cp -f "$r2rout"/*.dll "$libdir/" 2>/dev/null || true
+    # the runtime tarball is created by the runtime build before this point; the
+    # SDK redist consumes it, so overlaying it makes the SDK shared framework
+    # R2R as well (FD apps no longer JIT the runtime framework).
+    local rttb
+    rttb=$(ls "$ship"/dotnet-runtime-*"$RID"*"$RT_VERSION"*.tar.gz 2>/dev/null | head -1)
+    if [ -n "$rttb" ]; then
+      python3 "$SCRIPT_DIR/overlay-tarball.py" "$rttb" "$r2rout" || die "framework R2R tarball overlay failed"
+      info "framework R2R: overlaid runtime tarball $(basename "$rttb")"
+    else
+      info "framework R2R: runtime tarball for $RT_VERSION not found yet (skipped)"
+    fi
     info "framework R2R: overlaid pack ($(stat -c%s "$rtpk") bytes) + layout"
   fi
   # refresh the local feed copy
