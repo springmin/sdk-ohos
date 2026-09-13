@@ -49,12 +49,14 @@ def is_r2r(path: str) -> bool:
     return False
 
 
-def compile_one(crossgen2, libdir, outdir, name, refs):
+def compile_one(crossgen2, libdir, outdir, name, refs, mibc=""):
     out = os.path.join(outdir, name)
     cmd = [crossgen2, f"-o:{out}"]
     cmd += [f"-r:{r}" for r in refs]
-    cmd += ["--targetarch:arm64", "--obj-format:pe", "--targetos:linux", "-O",
-            os.path.join(libdir, name)]
+    cmd += ["--targetarch:arm64", "--obj-format:pe", "--targetos:linux", "-O"]
+    if mibc:
+        cmd += [f"-m:{mibc}", "--embed-pgo-data"]
+    cmd.append(os.path.join(libdir, name))
     t0 = time.time()
     p = subprocess.run(cmd, capture_output=True, text=True,
                        cwd=os.path.dirname(crossgen2))
@@ -81,6 +83,8 @@ def main() -> int:
                          "that includes System.Private.CoreLib")
     ap.add_argument("--outdir", required=True, help="output dir for R2R images")
     ap.add_argument("--jobs", type=int, default=os.cpu_count() or 4)
+    ap.add_argument("--mibc", default="",
+                    help="PGO mibc applied to every compilation (-m:... --embed-pgo-data)")
     ap.add_argument("--only", default="", help="comma list (test/debug subset)")
     ap.add_argument("--skip", default="System.Private.CoreLib.dll")
     args = ap.parse_args()
@@ -102,11 +106,11 @@ def main() -> int:
         targets.append(name)
 
     print(f"framework R2R: {len(targets)} assemblies to compile "
-          f"({len(refs)} refs, jobs={args.jobs})", flush=True)
+          f"({len(refs)} refs, jobs={args.jobs}, mibc={'yes' if args.mibc else 'no'})", flush=True)
     compiled = failed = 0
     t0 = time.time()
     with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, args.jobs)) as ex:
-        futs = {ex.submit(compile_one, args.crossgen2, args.libdir, args.outdir, n, refs): n
+        futs = {ex.submit(compile_one, args.crossgen2, args.libdir, args.outdir, n, refs, args.mibc): n
                 for n in targets}
         for fut in concurrent.futures.as_completed(futs):
             name, ok, dt, rc, err = fut.result()

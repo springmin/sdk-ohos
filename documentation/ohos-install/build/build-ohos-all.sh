@@ -651,6 +651,17 @@ for x in glob.glob(dirp+'/*.nuspec'): shutil.copy(x, dirp+'/$HOSTPACK_ID.nuspec'
   local corelib_il="$RUNTIME_REPO/artifacts/obj/coreclr/System.Private.CoreLib/openharmony.$ARCH.$CONFIG/System.Private.CoreLib.dll"
   [ -s "$corelib_il" ] || die "CoreLib IL missing: $corelib_il"
   info "producing ReadyToRun CoreLib (official crossgen2, PGO if mibc present)..."
+  # PGO data: the committed reference runtime pack carries
+  # tools/StandardOptimizationData.mibc (profiles for the 26451.109 assemblies;
+  # verified applicable: PGO crossgen of System.Text.Json emits a PGO image).
+  # Seed it when the clean build did not produce its own.
+  if [ ! -s "$clrbin/StandardOptimizationData.mibc" ] && [ -f "$SCRIPT_DIR/reference-runtime-pack.nupkg" ]; then
+    (python3 -c "
+import zipfile
+z = zipfile.ZipFile('$SCRIPT_DIR/reference-runtime-pack.nupkg')
+open('$clrbin/StandardOptimizationData.mibc','wb').write(z.read('tools/StandardOptimizationData.mibc'))
+" && info "PGO mibc seeded from reference-runtime-pack.nupkg") || info "PGO mibc seed failed - continuing without PGO"
+  fi
   local mibc="$clrbin/StandardOptimizationData.mibc"
   local pgo_args=()
   [ -s "$mibc" ] && pgo_args=(-m:"$mibc" --embed-pgo-data) || info "no PGO mibc (clean build) — R2R without PGO"
@@ -692,6 +703,25 @@ for x in glob.glob(dirp+'/*.nuspec'): shutil.copy(x, dirp+'/$HOSTPACK_ID.nuspec'
   # turns device publishes into app-only compiles (previously ~180 assemblies,
   # hours on device). Same stock crossgen2 as the CoreLib step; per-assembly
   # failures (facades/no-IL) are tolerated and stay PureIL.
+  # --- diagnostic: in-build crossgen2 (host x64) on the OHOS CoreLib --------
+  # The official-shape tool (self-contained/trimmed/single-file) hung at
+  # startup in rounds 12/13; this bounded probe records the current status so
+  # the in-tree sfxproj PublishReadyToRun path can be evaluated.
+  local cg2inb=""
+  cg2inb=$(ls "$RUNTIME_REPO/artifacts/bin"/*/crossgen2/crossgen2 2>/dev/null | head -1) || true
+  if [ -n "$cg2inb" ]; then
+    local probe_out="$WORK/inbuild-crossgen2-probe.dll"
+    rm -f "$probe_out"
+    if DOTNET_ROOT="$RUNTIME_REPO/.dotnet" timeout 180 "$cg2inb" -o:"$probe_out" -r:"$corelib_il" \
+        --targetarch:arm64 --obj-format:pe --targetos:linux -O "$corelib_il" > "$WORK/inbuild-crossgen2-probe.log" 2>&1; then
+      info "crossgen2 probe: in-build tool OK (image $(stat -c%s "$probe_out" 2>/dev/null || echo 0) B, tool $(stat -c%s "$cg2inb" 2>/dev/null || echo 0) B)"
+    else
+      local probe_rc=$?
+      info "crossgen2 probe: in-build tool FAILED (rc=$probe_rc; 124=timeout) - log $WORK/inbuild-crossgen2-probe.log"
+    fi
+  else
+    info "crossgen2 probe: in-build crossgen2 binary not found"
+  fi
   if [ "$OHOS_FRAMEWORK_R2R" = "1" ]; then
     local libdir="$rtl/runtimes/$RID/lib/net11.0"
     local r2rout="$WORK/framework-r2r"
@@ -705,9 +735,12 @@ for x in glob.glob(dirp+'/*.nuspec'): shutil.copy(x, dirp+'/$HOSTPACK_ID.nuspec'
     cp -f "$libdir"/*.dll "$r2rrefs/" 2>/dev/null || true
     cp -f "$corelib_il" "$r2rrefs/System.Private.CoreLib.dll" || die "framework R2R: CoreLib ref missing"
     info "framework R2R: compiling $(find "$libdir" -maxdepth 1 -name '*.dll' | wc -l) assemblies (stock crossgen2, jobs=$R2R_JOBS)..."
+    local r2r_mibc=()
+    [ -s "$mibc" ] && r2r_mibc=(--mibc "$mibc") || info "framework R2R: no PGO mibc - compiling without PGO"
     DOTNET_ROOT="$RUNTIME_REPO/.dotnet" python3 "$SCRIPT_DIR/crossgen-framework.py" \
       --crossgen2 "$STOCK_CROSSGEN2_DIR/tools/crossgen2" \
       --libdir "$libdir" --refdir "$r2rrefs" --outdir "$r2rout" --jobs "$R2R_JOBS" \
+      "${r2r_mibc[@]}" \
       2>&1 | tee -a "$LOG" || die "framework R2R crossgen failed"
     # the CoreLib R2R image (swapped into the pack above) also belongs to the
     # overlay set so the tarball/SDK shared framework gets it too
