@@ -65,8 +65,9 @@ def compile_one(crossgen2, libdir, outdir, name, refs):
             os.remove(out)
         except OSError:
             pass
-        err = (p.stderr or p.stdout or "").strip().splitlines()
-        err = err[-1] if err else ""
+        lines = [l for l in (p.stderr or p.stdout or "").splitlines() if l.strip()]
+        err = next((l for l in lines if l.startswith("Error:")),
+                   lines[0] if lines else "")
         return name, False, dt, p.returncode, err[:200]
     return name, True, dt, 0, ""
 
@@ -75,6 +76,9 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--crossgen2", required=True, help="stock crossgen2 executable")
     ap.add_argument("--libdir", required=True, help="dir with the PureIL framework assemblies")
+    ap.add_argument("--refdir", default="",
+                    help="dir with reference assemblies (defaults to --libdir); pass a set "
+                         "that includes System.Private.CoreLib")
     ap.add_argument("--outdir", required=True, help="output dir for R2R images")
     ap.add_argument("--jobs", type=int, default=os.cpu_count() or 4)
     ap.add_argument("--only", default="", help="comma list (test/debug subset)")
@@ -82,8 +86,9 @@ def main() -> int:
     args = ap.parse_args()
 
     os.makedirs(args.outdir, exist_ok=True)
-    refs = [os.path.join(args.libdir, f)
-            for f in sorted(os.listdir(args.libdir)) if f.endswith(".dll")]
+    refdir = args.refdir or args.libdir
+    refs = [os.path.join(refdir, f)
+            for f in sorted(os.listdir(refdir)) if f.endswith(".dll")]
     skip = {s.strip() for s in args.skip.split(",") if s.strip()}
     only = {s.strip() for s in args.only.split(",") if s.strip()}
     targets = []

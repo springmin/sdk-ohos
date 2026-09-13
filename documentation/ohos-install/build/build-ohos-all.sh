@@ -693,12 +693,19 @@ for x in glob.glob(dirp+'/*.nuspec'): shutil.copy(x, dirp+'/$HOSTPACK_ID.nuspec'
   if [ "$OHOS_FRAMEWORK_R2R" = "1" ]; then
     local libdir="$rtl/runtimes/$RID/lib/net11.0"
     local r2rout="$WORK/framework-r2r"
+    local r2rrefs="$WORK/framework-r2r-refs"
     [ -d "$libdir" ] || die "framework R2R: layout lib dir missing: $libdir"
-    mkdir -p "$r2rout"
+    rm -rf "$r2rout" "$r2rrefs"
+    mkdir -p "$r2rout" "$r2rrefs"
+    # The sfxproj layout keeps System.Private.CoreLib out of lib/net11.0 (the
+    # pack assembly step adds it); crossgen2 needs it as the core reference, so
+    # add the IL image from the compiler obj dir to the ref set.
+    cp -f "$libdir"/*.dll "$r2rrefs/" 2>/dev/null || true
+    cp -f "$corelib_il" "$r2rrefs/System.Private.CoreLib.dll" || die "framework R2R: CoreLib ref missing"
     info "framework R2R: compiling $(find "$libdir" -maxdepth 1 -name '*.dll' | wc -l) assemblies (stock crossgen2, jobs=$R2R_JOBS)..."
     DOTNET_ROOT="$RUNTIME_REPO/.dotnet" python3 "$SCRIPT_DIR/crossgen-framework.py" \
       --crossgen2 "$STOCK_CROSSGEN2_DIR/tools/crossgen2" \
-      --libdir "$libdir" --outdir "$r2rout" --jobs "$R2R_JOBS" \
+      --libdir "$libdir" --refdir "$r2rrefs" --outdir "$r2rout" --jobs "$R2R_JOBS" \
       2>&1 | tee -a "$LOG" || die "framework R2R crossgen failed"
     python3 "$SCRIPT_DIR/overlay-pack.py" "$rtpk" "$r2rout" || die "framework R2R pack overlay failed"
     cp -f "$r2rout"/*.dll "$libdir/" 2>/dev/null || true
