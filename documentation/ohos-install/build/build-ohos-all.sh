@@ -703,12 +703,35 @@ open('$clrbin/StandardOptimizationData.mibc','wb').write(z.read('tools/StandardO
   # turns device publishes into app-only compiles (previously ~180 assemblies,
   # hours on device). Same stock crossgen2 as the CoreLib step; per-assembly
   # failures (facades/no-IL) are tolerated and stay PureIL.
-  # --- diagnostic: in-build crossgen2 (host x64) on the OHOS CoreLib --------
-  # The official-shape tool (self-contained/trimmed/single-file) hung at
-  # startup in rounds 12/13; this bounded probe records the current status so
-  # the in-tree sfxproj PublishReadyToRun path can be evaluated.
+  # --- diagnostic: in-build crossgen2 (host) on the OHOS CoreLib ------------
+  # Round 12/13 saw the official-shape tool hang at startup while the
+  # framework-dependent workarounds were in place; the TargetRid fix (host
+  # tools resolve the NuGet host pack, the local pack override is target-only)
+  # superseded those workarounds, so publish the official shape here for the
+  # build host and run a bounded probe. This records whether the in-tree
+  # sfxproj PublishReadyToRun path is viable (the round 12/13 hang was never
+  # re-tested after the fix).
   local cg2inb=""
+  local cg2_probe_rid=""
+  case "$(uname -m)" in
+    x86_64|amd64) cg2_probe_rid="linux-x64" ;;
+    aarch64|arm64) cg2_probe_rid="linux-arm64" ;;
+  esac
   cg2inb=$(ls "$RUNTIME_REPO/artifacts/bin"/*/crossgen2/crossgen2 2>/dev/null | head -1) || true
+  if [ -z "$cg2inb" ] && [ -n "$cg2_probe_rid" ]; then
+    local cg2out="$WORK/inbuild-crossgen2"
+    local cg2pub_log="$WORK/inbuild-crossgen2-publish.log"
+    rm -rf "$cg2out"
+    info "crossgen2 probe: publishing in-build crossgen2 (official shape, $cg2_probe_rid)"
+    ( cd "$RUNTIME_REPO" && \
+      timeout 900 "$RUNTIME_REPO/.dotnet/dotnet" publish \
+        src/coreclr/tools/aot/crossgen2/crossgen2_inbuild.csproj \
+        -c "$CONFIG" -r "$cg2_probe_rid" -o "$cg2out" \
+        /p:TargetOS=linux /p:CrossBuild=true \
+        /p:OfficialBuildId="$BUILDID" /p:PreReleaseVersionLabel="$LABEL" /p:PreReleaseVersion="$PRE" \
+        ) >> "$cg2pub_log" 2>&1 || true
+    [ -f "$cg2out/crossgen2" ] && cg2inb="$cg2out/crossgen2"
+  fi
   if [ -n "$cg2inb" ]; then
     local probe_out="$WORK/inbuild-crossgen2-probe.dll"
     rm -f "$probe_out"
@@ -719,6 +742,8 @@ open('$clrbin/StandardOptimizationData.mibc','wb').write(z.read('tools/StandardO
       local probe_rc=$?
       info "crossgen2 probe: in-build tool FAILED (rc=$probe_rc; 124=timeout) - log $WORK/inbuild-crossgen2-probe.log"
     fi
+  elif [ -f "$WORK/inbuild-crossgen2-publish.log" ]; then
+    info "crossgen2 probe: in-build tool publish failed - log $WORK/inbuild-crossgen2-publish.log"
   else
     info "crossgen2 probe: in-build crossgen2 binary not found"
   fi
