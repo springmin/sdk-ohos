@@ -72,6 +72,11 @@ sh build-ohos-all.sh \
   ILLink 会裁掉接口分派方法（`CustomAttributeTypeProvider.GetPrimitiveType`，dotnet/runtime #133296 同类），
   且 bootstrap 布局不携带框架——两者都会导致设备端 `PublishReadyToRun` 启动失败（2026-09-12 设备 E2E 通过）。
   `dotnet-crossgen2-*.tar.gz` 由同一布局刷新，签名循环已覆盖。
+- **框架级 ReadyToRun**（2026-09-13 起）：`build-ohos-all.sh` 用官方 NuGet crossgen2 对 layout 全部程序集编译 R2R
+  （`crossgen-framework.py`，CoreLib 沿用 R2R swap 并加入 overlay 集），并 overlay 进 runtime pack
+  （`overlay-pack.py`）、layout 与 runtime tarball（`overlay-tarball.py`）——SDK 共享框架因此也是 R2R。
+  设备端自包含 + `PublishReadyToRun` 发布变为"只编 app"（2026-09-13 实测 43 s；此前 >15 min 停滞）。
+  `OHOS_FRAMEWORK_R2R=0` 可关闭该步骤。
 - SDK redist 目录：`<sdk>/artifacts/bin/redist/Release/dotnet`（内嵌 real runtime 26451.109）
 - 设备部署：见 `DEVICE-DEPLOYMENT.md` 示例（hdc 推送 + 自包含应用直跑）。
 
