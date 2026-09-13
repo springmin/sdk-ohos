@@ -711,6 +711,10 @@ open('$clrbin/StandardOptimizationData.mibc','wb').write(z.read('tools/StandardO
   # build host and run a bounded probe. This records whether the in-tree
   # sfxproj PublishReadyToRun path is viable (the round 12/13 hang was never
   # re-tested after the fix).
+  # Diagnostic only: the script runs with 'set -euo pipefail', and a failed
+  # probe must never fail the build. Everything below runs with 'set +e'
+  # (restored at the end of the block), including the initial artifact lookup.
+  set +e
   local cg2inb=""
   local cg2_probe_rid=""
   case "$(uname -m)" in
@@ -718,10 +722,6 @@ open('$clrbin/StandardOptimizationData.mibc','wb').write(z.read('tools/StandardO
     aarch64|arm64) cg2_probe_rid="linux-arm64" ;;
   esac
   cg2inb=$(ls "$RUNTIME_REPO/artifacts/bin"/*/crossgen2/crossgen2 2>/dev/null | head -1)
-  # Diagnostic only: the script runs with 'set -euo pipefail', and a failed
-  # probe must never fail the build. Everything below runs with 'set +e'
-  # (restored afterwards) and guarded command substitutions.
-  set +e
   if [ -z "$cg2inb" ] && [ -n "$cg2_probe_rid" ]; then
     local cg2pub_log="$WORK/inbuild-crossgen2-publish.log"
     info "crossgen2 probe: publishing in-build crossgen2 (official shape, $cg2_probe_rid)"
