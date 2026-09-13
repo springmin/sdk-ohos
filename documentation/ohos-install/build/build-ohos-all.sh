@@ -719,18 +719,24 @@ open('$clrbin/StandardOptimizationData.mibc','wb').write(z.read('tools/StandardO
   esac
   cg2inb=$(ls "$RUNTIME_REPO/artifacts/bin"/*/crossgen2/crossgen2 2>/dev/null | head -1) || true
   if [ -z "$cg2inb" ] && [ -n "$cg2_probe_rid" ]; then
-    local cg2out="$WORK/inbuild-crossgen2"
     local cg2pub_log="$WORK/inbuild-crossgen2-publish.log"
-    rm -rf "$cg2out"
     info "crossgen2 probe: publishing in-build crossgen2 (official shape, $cg2_probe_rid)"
+    # Mirror the ilc/crossgen2 split-publish recipe (proven in CI): build from
+    # the repo root with the build's target properties, but for the build HOST
+    # RID and with the official tool shape untouched. The project's PublishDir
+    # puts the tool at artifacts/bin/<BuildArchitecture>/crossgen2/.
     ( cd "$RUNTIME_REPO" && \
-      timeout 900 "$RUNTIME_REPO/.dotnet/dotnet" publish \
-        src/coreclr/tools/aot/crossgen2/crossgen2_inbuild.csproj \
-        -c "$CONFIG" -r "$cg2_probe_rid" -o "$cg2out" \
-        /p:TargetOS=linux /p:CrossBuild=true \
-        /p:OfficialBuildId="$BUILDID" /p:PreReleaseVersionLabel="$LABEL" /p:PreReleaseVersion="$PRE" \
+      timeout 900 ./.dotnet/dotnet build src/coreclr/tools/aot/crossgen2/crossgen2_inbuild.csproj \
+        -c "$CONFIG" -r "$cg2_probe_rid" -t:Publish \
+        -p:TargetOS=openharmony -p:TargetArchitecture="$ARCH" -p:PortableOS=openharmony \
+        -p:UseBootstrap=true -p:CrossBuild=true \
+        "/p:RuntimeIdentifierGraphPath=$rsp" -p:IncludeSymbols=false -v:q -nologo \
         ) >> "$cg2pub_log" 2>&1 || true
-    [ -f "$cg2out/crossgen2" ] && cg2inb="$cg2out/crossgen2"
+    cg2inb=$(ls "$RUNTIME_REPO/artifacts/bin"/*/crossgen2/crossgen2 2>/dev/null | head -1) || true
+    if [ -z "$cg2inb" ]; then
+      echo "--- in-build crossgen2 publish log tail ---" | tee -a "$LOG"
+      tail -40 "$cg2pub_log" | tee -a "$LOG" || true
+    fi
   fi
   if [ -n "$cg2inb" ]; then
     local probe_out="$WORK/inbuild-crossgen2-probe.dll"
