@@ -717,7 +717,11 @@ open('$clrbin/StandardOptimizationData.mibc','wb').write(z.read('tools/StandardO
     x86_64|amd64) cg2_probe_rid="linux-x64" ;;
     aarch64|arm64) cg2_probe_rid="linux-arm64" ;;
   esac
-  cg2inb=$(ls "$RUNTIME_REPO/artifacts/bin"/*/crossgen2/crossgen2 2>/dev/null | head -1) || true
+  cg2inb=$(ls "$RUNTIME_REPO/artifacts/bin"/*/crossgen2/crossgen2 2>/dev/null | head -1)
+  # Diagnostic only: the script runs with 'set -euo pipefail', and a failed
+  # probe must never fail the build. Everything below runs with 'set +e'
+  # (restored afterwards) and guarded command substitutions.
+  set +e
   if [ -z "$cg2inb" ] && [ -n "$cg2_probe_rid" ]; then
     local cg2pub_log="$WORK/inbuild-crossgen2-publish.log"
     info "crossgen2 probe: publishing in-build crossgen2 (official shape, $cg2_probe_rid)"
@@ -739,16 +743,18 @@ open('$clrbin/StandardOptimizationData.mibc','wb').write(z.read('tools/StandardO
           /p:OfficialBuildId="$BUILDID" /p:PreReleaseVersionLabel="$LABEL" /p:PreReleaseVersion="$PRE" \
           $cg2_extra \
           "/p:RuntimeIdentifierGraphPath=$rsp" -p:IncludeSymbols=false -v:q -nologo \
-          ) >> "$cg2pub_log" 2>&1 || true
-      cg2inb=$(ls "$RUNTIME_REPO/artifacts/bin"/*/crossgen2/crossgen2 2>/dev/null | head -1) || true
+          ) >> "$cg2pub_log" 2>&1
+      cg2inb=$(ls "$RUNTIME_REPO/artifacts/bin"/*/crossgen2/crossgen2 2>/dev/null | head -1)
       if [ -n "$cg2inb" ]; then break; fi
       local cg2_err=""
-      cg2_err=$(grep -aE "error |error$|Build FAILED|MSB[0-9]{4}|NETSDK[0-9]{4}|NU[0-9]{4}" "$cg2pub_log" | head -1)
-      info "crossgen2 probe: publish variant '$cg2_variant' failed: ${cg2_err:-no error line found; last lines:}"
-      if [ -z "$cg2_err" ]; then
-        tail -8 "$cg2pub_log" | sed 's/^/    /' || true
-      fi
+      cg2_err=$(grep -aE "error|Error|FAILED|MSB[0-9]{4}|NETSDK[0-9]{4}|NU[0-9]{4}" "$cg2pub_log" 2>/dev/null | head -1)
+      info "crossgen2 probe: publish variant '$cg2_variant' failed: ${cg2_err:-no recognizable error; tail follows}"
+      tail -12 "$cg2pub_log" 2>/dev/null
     done
+    # In-build tool publishes can leave MSBuild nodes that clobber later
+    # outputs; mirror the ilc re-publish cleanup.
+    pkill -9 -f "MSBuild.*nodem" 2>/dev/null
+    sleep 2
   fi
   if [ -n "$cg2inb" ]; then
     local probe_out="$WORK/inbuild-crossgen2-probe.dll"
@@ -765,6 +771,7 @@ open('$clrbin/StandardOptimizationData.mibc','wb').write(z.read('tools/StandardO
   else
     info "crossgen2 probe: in-build crossgen2 binary not found"
   fi
+  set -e
   if [ "$OHOS_FRAMEWORK_R2R" = "1" ]; then
     local libdir="$rtl/runtimes/$RID/lib/net11.0"
     local r2rout="$WORK/framework-r2r"
