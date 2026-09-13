@@ -718,7 +718,7 @@ for x in glob.glob(dirp+'/*.nuspec'): shutil.copy(x, dirp+'/$HOSTPACK_ID.nuspec'
     # SDK redist consumes it, so overlaying it makes the SDK shared framework
     # R2R as well (FD apps no longer JIT the runtime framework).
     local rttb
-    rttb=$(ls "$ship"/dotnet-runtime-*"$RID"*"$RT_VERSION"*.tar.gz 2>/dev/null | head -1)
+    rttb=$(ls "$ship"/dotnet-runtime-*"$RT_VERSION"*.tar.gz 2>/dev/null | head -1) || true
     if [ -n "$rttb" ]; then
       python3 "$SCRIPT_DIR/overlay-tarball.py" "$rttb" "$r2rout" || die "framework R2R tarball overlay failed"
       info "framework R2R: overlaid runtime tarball $(basename "$rttb")"
