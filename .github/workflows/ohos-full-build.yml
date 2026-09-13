@@ -188,8 +188,8 @@ jobs:
             --buildid="$BUILDID" --rid="$RID" > /tmp/build.log 2>&1
           rc=$?
           tail -400 /tmp/build.log
-          echo "--- build markers (crossgen2 probe / framework R2R / PGO) ---"
-          grep -aE "crossgen2 probe|framework R2R|PGO mibc|re-versioning host pack" /tmp/build.log | tail -40 || true
+          echo "--- build markers (crossgen2 probe / framework R2R / aspnetcore R2R / PGO) ---"
+          grep -aE "crossgen2 probe|framework R2R|aspnetcore R2R|PGO mibc|re-versioning host pack" /tmp/build.log | tail -40 || true
           exit $rc
 
       - name: Upload build artifacts

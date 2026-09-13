@@ -867,6 +867,55 @@ stage3() {
     /p:PreReleaseVersionLabel="$LABEL" /p:PreReleaseVersion="$PRE" /p:OfficialBuildId="$BUILDID" \
     2>&1 | tee -a "$LOG" || die "aspnetcore build failed"
   local aship="$ASCORE_REPO/artifacts/packages/$CONFIG/Shipping"
+  # --- aspnetcore ReadyToRun overlay (mac model, 2026-09-13) -----------------
+  # Same stock crossgen2 + PGO mibc as the runtime framework overlay: the
+  # AspNetCore shared framework is pure IL in the pack, so every ASP.NET app
+  # would JIT it on device. Compile/overlay here, before the pre-sign step, so
+  # the R2R images are signed together with the rest of the pack and tarball.
+  if [ "$OHOS_FRAMEWORK_R2R" = "1" ]; then
+    local asppk asptb asplib aspout asprefs
+    asppk=$(ls "$aship"/Microsoft.AspNetCore.App.Runtime*"$RID"*"$RT_VERSION"*.nupkg 2>/dev/null | grep -v symbols | head -1 || true)
+    asptb=$(ls "$aship"/aspnetcore-runtime-*"$RID"*.tar.gz 2>/dev/null | head -1 || true)
+    if [ -n "$asppk" ]; then
+      asplib="$WORK/aspnet-r2r-lib"
+      aspout="$WORK/aspnet-r2r"
+      asprefs="$WORK/aspnet-r2r-refs"
+      rm -rf "$asplib" "$aspout" "$asprefs"
+      mkdir -p "$asplib" "$aspout" "$asprefs"
+      python3 - "$asppk" "$asplib" "$RID" <<'PY' || die "aspnetcore R2R: pack extraction failed"
+import os, sys, zipfile
+nupkg, outdir, rid = sys.argv[1], sys.argv[2], sys.argv[3]
+prefix = "runtimes/%s/lib/net" % rid
+count = 0
+with zipfile.ZipFile(nupkg) as z:
+    for name in z.namelist():
+        if name.startswith(prefix) and name.endswith(".dll"):
+            with z.open(name) as src, open(os.path.join(outdir, os.path.basename(name)), "wb") as dst:
+                dst.write(src.read())
+            count += 1
+print("aspnetcore R2R: extracted %d assemblies" % count)
+PY
+      cp -f "$asplib"/*.dll "$asprefs/" 2>/dev/null || true
+      cp -f "$RUNTIME_REPO/artifacts/bin/microsoft.netcore.app.runtime.$RID/$CONFIG/runtimes/$RID/lib/net11.0"/*.dll "$asprefs/" 2>/dev/null || true
+      cp -f "$RUNTIME_REPO/artifacts/obj/coreclr/System.Private.CoreLib/openharmony.$ARCH.$CONFIG/System.Private.CoreLib.dll" "$asprefs/System.Private.CoreLib.dll" || die "aspnetcore R2R: CoreLib ref missing"
+      local as_mibc=()
+      local as_mibc_file="$RUNTIME_REPO/artifacts/bin/coreclr/openharmony.$ARCH.$CONFIG/StandardOptimizationData.mibc"
+      [ -s "$as_mibc_file" ] && as_mibc=(--mibc "$as_mibc_file") || info "aspnetcore R2R: no PGO mibc - compiling without PGO"
+      info "aspnetcore R2R: compiling $(find "$asplib" -maxdepth 1 -name '*.dll' | wc -l) assemblies (stock crossgen2, jobs=$R2R_JOBS)..."
+      DOTNET_ROOT="$RUNTIME_REPO/.dotnet" python3 "$SCRIPT_DIR/crossgen-framework.py" \
+        --crossgen2 "$STOCK_CROSSGEN2_DIR/tools/crossgen2" \
+        --libdir "$asplib" --refdir "$asprefs" --outdir "$aspout" --jobs "$R2R_JOBS" \
+        "${as_mibc[@]}" \
+        2>&1 | tee -a "$LOG" || die "aspnetcore R2R crossgen failed"
+      python3 "$SCRIPT_DIR/overlay-pack.py" "$asppk" "$aspout" || die "aspnetcore R2R pack overlay failed"
+      if [ -n "$asptb" ]; then
+        python3 "$SCRIPT_DIR/overlay-tarball.py" "$asptb" "$aspout" || die "aspnetcore R2R tarball overlay failed"
+      fi
+      info "aspnetcore R2R: overlaid pack ($(stat -c%s "$asppk") bytes)${asptb:+, tarball $(stat -c%s "$asptb") bytes}"
+    else
+      info "aspnetcore R2R: no App.Runtime pack found - skipped"
+    fi
+  fi
   # pre-sign aspnetcore App.Runtime ELF (shared framework loaded on device)
   for pk in "$aship"/Microsoft.AspNetCore.App.Runtime*"$RID"*"$RT_VERSION"*.nupkg; do
     [ -f "$pk" ] && sign_all "$pk"
