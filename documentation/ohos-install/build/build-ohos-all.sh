@@ -724,19 +724,31 @@ open('$clrbin/StandardOptimizationData.mibc','wb').write(z.read('tools/StandardO
     # Mirror the ilc/crossgen2 split-publish recipe (proven in CI): build from
     # the repo root with the build's target properties, but for the build HOST
     # RID and with the official tool shape untouched. The project's PublishDir
-    # puts the tool at artifacts/bin/<BuildArchitecture>/crossgen2/.
-    ( cd "$RUNTIME_REPO" && \
-      timeout 900 ./.dotnet/dotnet build src/coreclr/tools/aot/crossgen2/crossgen2_inbuild.csproj \
-        -c "$CONFIG" -r "$cg2_probe_rid" -t:Publish \
-        -p:TargetOS=openharmony -p:TargetArchitecture="$ARCH" -p:PortableOS=openharmony \
-        -p:UseBootstrap=true -p:CrossBuild=true \
-        "/p:RuntimeIdentifierGraphPath=$rsp" -p:IncludeSymbols=false -v:q -nologo \
-        ) >> "$cg2pub_log" 2>&1 || true
-    cg2inb=$(ls "$RUNTIME_REPO/artifacts/bin"/*/crossgen2/crossgen2 2>/dev/null | head -1) || true
-    if [ -z "$cg2inb" ]; then
-      echo "--- in-build crossgen2 publish log tail ---" | tee -a "$LOG"
-      tail -40 "$cg2pub_log" | tee -a "$LOG" || true
-    fi
+    # puts the tool at artifacts/bin/<BuildArchitecture>/crossgen2/. The
+    # 'hostver' variant additionally pins the host runtime pack version that the
+    # build re-versions into the local feeds (11.0.0).
+    for cg2_variant in base hostver; do
+      local cg2_extra=""
+      if [ "$cg2_variant" = "hostver" ]; then cg2_extra="/p:RuntimeFrameworkVersion=11.0.0"; fi
+      : > "$cg2pub_log"
+      ( cd "$RUNTIME_REPO" && \
+        timeout 900 ./.dotnet/dotnet build src/coreclr/tools/aot/crossgen2/crossgen2_inbuild.csproj \
+          -c "$CONFIG" -r "$cg2_probe_rid" -t:Publish \
+          -p:TargetOS=openharmony -p:TargetArchitecture="$ARCH" -p:PortableOS=openharmony \
+          -p:UseBootstrap=true -p:CrossBuild=true \
+          /p:OfficialBuildId="$BUILDID" /p:PreReleaseVersionLabel="$LABEL" /p:PreReleaseVersion="$PRE" \
+          $cg2_extra \
+          "/p:RuntimeIdentifierGraphPath=$rsp" -p:IncludeSymbols=false -v:q -nologo \
+          ) >> "$cg2pub_log" 2>&1 || true
+      cg2inb=$(ls "$RUNTIME_REPO/artifacts/bin"/*/crossgen2/crossgen2 2>/dev/null | head -1) || true
+      if [ -n "$cg2inb" ]; then break; fi
+      local cg2_err=""
+      cg2_err=$(grep -aE "error |error$|Build FAILED|MSB[0-9]{4}|NETSDK[0-9]{4}|NU[0-9]{4}" "$cg2pub_log" | head -1)
+      info "crossgen2 probe: publish variant '$cg2_variant' failed: ${cg2_err:-no error line found; last lines:}"
+      if [ -z "$cg2_err" ]; then
+        tail -8 "$cg2pub_log" | sed 's/^/    /' || true
+      fi
+    done
   fi
   if [ -n "$cg2inb" ]; then
     local probe_out="$WORK/inbuild-crossgen2-probe.dll"
