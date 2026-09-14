@@ -168,7 +168,7 @@ namespace Microsoft.NET.Build.Tasks
             return true;
         }
 
-        private static bool IsElf64(byte[] data) =>
+        internal static bool IsElf64(byte[] data) =>
             data.Length >= 64 &&
             data[0] == 0x7f && data[1] == (byte)'E' && data[2] == (byte)'L' && data[3] == (byte)'F' &&
             data[4] == 2; // ELFCLASS64

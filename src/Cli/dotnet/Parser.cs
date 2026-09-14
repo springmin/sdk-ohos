@@ -15,6 +15,7 @@ using Microsoft.DotNet.Cli.Commands.MSBuild;
 using Microsoft.DotNet.Cli.Commands.NuGet;
 using Microsoft.DotNet.Cli.Commands.Run;
 using Microsoft.DotNet.Cli.Commands.Sdk;
+using Microsoft.DotNet.Cli.Commands.SelfSign;
 using Microsoft.DotNet.Cli.Commands.Solution;
 using Microsoft.DotNet.Cli.Commands.Test;
 using Microsoft.DotNet.Cli.Commands.Tool;
@@ -185,6 +186,7 @@ public static class Parser
         VSTestCommandParser.ConfigureCommand(rootCommand.VSTestCommand);
         HelpCommandParser.ConfigureCommand(rootCommand.HelpCommand);
         SdkCommandParser.ConfigureCommand(rootCommand.SdkCommand);
+        SelfSignCommandParser.ConfigureCommand(rootCommand.SelfSignCommand);
         InternalReportInstallSuccessCommandParser.ConfigureCommand(rootCommand.InternalReportInstallSuccessCommand);
         WorkloadCommandParser.ConfigureCommand(rootCommand.WorkloadCommand);
         CompletionsCommandParser.ConfigureCommand(rootCommand.CompletionsCommand);
