@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Overlay ReadyToRun images into a runtime tarball (.tar.gz).
 
-Replaces members under shared/Microsoft.NETCore.App or lib/net whose basename
-matches a file in the overlay directory, preserving member metadata. Used by
-build-ohos-all.sh so the runtime tarball (and the SDK redist that consumes it)
-carries the R2R framework, mirroring the pack overlay.
+Replaces members under shared/Microsoft.NETCore.App, shared/Microsoft.AspNetCore.App
+or lib/net whose basename matches a file in the overlay directory, preserving member
+metadata. Used by build-ohos-all.sh so the runtime tarball (and the SDK redist that
+consumes it) carries the R2R framework, mirroring the pack overlay; the
+AspNetCore.App prefix covers the aspnetcore tarball whose assemblies live under
+shared/Microsoft.AspNetCore.App/<version>/ (previously silently unmatched).
 
 Usage: overlay-tarball.py <tarball.tar.gz> <overlay-dir>
 """
@@ -28,7 +30,9 @@ def main() -> int:
             tarfile.open(tmp, "w:gz") as tout:
         for m in tin:
             name = os.path.basename(m.name)
-            is_lib = ("shared/Microsoft.NETCore.App" in m.name) or ("/lib/net" in m.name)
+            is_lib = (("shared/Microsoft.NETCore.App" in m.name)
+                      or ("shared/Microsoft.AspNetCore.App" in m.name)
+                      or ("/lib/net" in m.name))
             if m.isfile() and name in overlay and is_lib:
                 with open(overlay[name], "rb") as f:
                     data = f.read()
