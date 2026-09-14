@@ -1,0 +1,64 @@
+name: OHOS release mirror (post-rename)
+
+# Fork-local helper: mirrors the latest Shipping assets of a frozen pipeline
+# release (the `-ohos` tags, which also feed the build) into the post-rename
+# `-openharmony` distribution releases, from a fast GitHub runner.
+# Idempotent: assets are re-uploaded with --clobber and verified by sha256.
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  mirror:
+    name: mirror ${{ matrix.repo }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - repo: runtime-ohos
+            source_tag: v11.0.0-rc.1.26451.109-ohos
+            target_tag: v11.0.0-rc.1.26451.109-openharmony
+          - repo: aspnetcore-ohos
+            source_tag: v11.0.0-rc.1.26451.109-ohos
+            target_tag: v11.0.0-rc.1.26451.109-openharmony
+          - repo: sdk-ohos
+            source_tag: v11.0.100-rc.1.26451.109-ohos
+            target_tag: v11.0.100-rc.1.26451.109-openharmony
+    env:
+      GH_TOKEN: ${{ secrets.OHOS_RELEASE_TOKEN }}
+      REPO: ${{ matrix.repo }}
+      SRC: ${{ matrix.source_tag }}
+      DST: ${{ matrix.target_tag }}
+      ASSET_PREFIX: "2026-09-14T03:17"
+    steps:
+      - name: Mirror the latest Shipping assets to the post-rename release
+        run: |
+          set -euo pipefail
+          mkdir -p dl
+          gh api "repos/springmin/$REPO/releases/tags/$SRC" \
+            --jq ".assets[] | select(.updated_at | startswith(\"$ASSET_PREFIX\")) | [.name, (.size|tostring), (.digest // \"none\")] | @tsv" \
+            > assets.tsv
+          echo "assets to mirror: $(wc -l < assets.tsv)"
+          while IFS=$'\t' read -r name size digest; do
+            [ -n "$name" ] || continue
+            echo "--- $name ($size bytes)"
+            gh release download "$SRC" --repo "springmin/$REPO" --pattern "$name" --dir dl --clobber
+            actual=$(stat -c %s "dl/$name")
+            if [ "$actual" != "$size" ]; then
+              echo "SIZE-FAIL $name: $actual != $size"
+              exit 1
+            fi
+            if [ "$digest" != "none" ]; then
+              want="${digest#sha256:}"
+              got=$(sha256sum "dl/$name" | cut -d' ' -f1)
+              if [ "$got" != "$want" ]; then
+                echo "HASH-FAIL $name"
+                exit 1
+              fi
+            fi
+            gh release upload "$DST" "dl/$name" --repo "springmin/$REPO" --clobber
+            rm -f "dl/$name"
+            echo "OK $name"
+          done < assets.tsv
+          echo "MIRROR DONE: $REPO -> $DST"
