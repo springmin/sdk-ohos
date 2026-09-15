@@ -2,7 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 // Standalone OpenHarmony ELF signer. The signing algorithm is shared with the SDK's
-// OpenHarmonyCodesign MSBuild task; both compile src/Tasks/Microsoft.NET.Build.Tasks/OpenHarmony/ElfSigner.cs.
+// OpenHarmonyCodesign MSBuild task; both compile src/Tasks/Microsoft.NET.Build.Tasks/ElfSigner.cs.
 using System;
 using System.Collections.Generic;
 using System.IO;

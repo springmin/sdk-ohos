@@ -11,7 +11,7 @@ namespace Microsoft.DotNet.Cli.Commands.SelfSign;
 /// <summary>
 /// Signs (or strips signatures from) OpenHarmony ELF binaries in place. The algorithm is
 /// shared with the SDK's OpenHarmonyCodesign MSBuild task and the standalone selfsign tool
-/// (src/Tasks/Microsoft.NET.Build.Tasks/OpenHarmony/ElfSigner.cs); files whose existing
+/// (src/Tasks/Microsoft.NET.Build.Tasks/ElfSigner.cs); files whose existing
 /// .codesign section is still valid are skipped unless --force is used.
 /// </summary>
 internal static class SelfSignCommand

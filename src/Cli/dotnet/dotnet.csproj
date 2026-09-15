@@ -32,7 +32,7 @@
   <ItemGroup>
     <Compile Include="..\..\Resolvers\Microsoft.DotNet.MSBuildSdkResolver\FXVersion.cs" LinkBase="Commands/New" />
     <!-- OpenHarmony ELF signing algorithm, shared with the OpenHarmonyCodesign MSBuild task and the standalone selfsign tool. -->
-    <Compile Include="$(RepoRoot)src\Tasks\Microsoft.NET.Build.Tasks\OpenHarmony\ElfSigner.cs" Link="Commands/SelfSign/ElfSigner.cs" />
+    <Compile Include="$(RepoRoot)src\Tasks\Microsoft.NET.Build.Tasks\ElfSigner.cs" Link="Commands/SelfSign/ElfSigner.cs" />
     <Compile Include="$(RepoRoot)src\Common\CompileOptions.cs" LinkBase="Common" />
     <Compile Include="$(RepoRoot)src\Common\EnvironmentVariableNames.cs" LinkBase="Common" />
     <Compile Include="$(RepoRoot)src\Common\MSBuildPropertyNames.cs" LinkBase="Common" />
