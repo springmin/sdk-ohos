@@ -741,6 +741,16 @@ The following are names of parameters or literal values and should not be transl
         <target state="translated">NETSDK1151: le projet référencé « {0} » est un exécutable autonome.  Un exécutable autonome ne peut pas être référencé par un exécutable non autonome. Pour plus d’informations, voir https://aka.ms/netsdk1151</target>
         <note>{StrBegins="NETSDK1151: "}</note>
       </trans-unit>
+      <trans-unit id="OpenHarmonyCodesignFailedToEnumerate">
+        <source>NETSDK1247: Failed to enumerate '{0}' while signing OpenHarmony outputs: {1}</source>
+        <target state="new">NETSDK1247: Failed to enumerate '{0}' while signing OpenHarmony outputs: {1}</target>
+        <note>{StrBegins="NETSDK1247: "}</note>
+      </trans-unit>
+      <trans-unit id="OpenHarmonyCodesignFailedToSign">
+        <source>NETSDK1248: Failed to sign '{0}': {1}</source>
+        <target state="new">NETSDK1248: Failed to sign '{0}': {1}</target>
+        <note>{StrBegins="NETSDK1248: "}</note>
+      </trans-unit>
       <trans-unit id="PDBGeneratorInputExecutableNotFound">
         <source>NETSDK1162: PDB generation: R2R executable '{0}' not found.</source>
         <target state="translated">NETSDK1162: génération de PDB{0}: exécutable R2R '' introuvable.</target>

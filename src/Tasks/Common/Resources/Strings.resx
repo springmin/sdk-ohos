@@ -1054,5 +1054,13 @@ You may need to build the project on another operating system or architecture, o
     <value>NETSDK1244: 'IncludeAllContentForSelfExtract' enables a legacy compatibility mode that extracts all managed assemblies to disk at startup. Prefer the default in-memory single-file behavior by removing the 'IncludeAllContentForSelfExtract' property from your project.</value>
     <comment>{StrBegins="NETSDK1244: "}{Locked="IncludeAllContentForSelfExtract"}</comment>
   </data>
-  <!-- The latest message added is IncludeAllContentForSelfExtractIsLegacy. Please update this value with each PR to catch parallel PRs both adding a new message -->
+  <data name="OpenHarmonyCodesignFailedToEnumerate" xml:space="preserve">
+    <value>NETSDK1247: Failed to enumerate '{0}' while signing OpenHarmony outputs: {1}</value>
+    <comment>{StrBegins="NETSDK1247: "}</comment>
+  </data>
+  <data name="OpenHarmonyCodesignFailedToSign" xml:space="preserve">
+    <value>NETSDK1248: Failed to sign '{0}': {1}</value>
+    <comment>{StrBegins="NETSDK1248: "}</comment>
+  </data>
+  <!-- The latest message added is OpenHarmonyCodesignFailedToSign. Please update this value with each PR to catch parallel PRs both adding a new message -->
 </root>

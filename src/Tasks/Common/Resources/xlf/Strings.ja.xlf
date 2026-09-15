@@ -741,6 +741,16 @@ The following are names of parameters or literal values and should not be transl
         <target state="translated">NETSDK1151: 参照先プロジェクト '{0}'  は自己完結型実行可能ファイルです。 自己完結型の実行可能ファイルは、自己完結型以外の実行可能ファイルでは参照できません。詳細については、「https://aka.ms/netsdk1151」を参照してください</target>
         <note>{StrBegins="NETSDK1151: "}</note>
       </trans-unit>
+      <trans-unit id="OpenHarmonyCodesignFailedToEnumerate">
+        <source>NETSDK1247: Failed to enumerate '{0}' while signing OpenHarmony outputs: {1}</source>
+        <target state="new">NETSDK1247: Failed to enumerate '{0}' while signing OpenHarmony outputs: {1}</target>
+        <note>{StrBegins="NETSDK1247: "}</note>
+      </trans-unit>
+      <trans-unit id="OpenHarmonyCodesignFailedToSign">
+        <source>NETSDK1248: Failed to sign '{0}': {1}</source>
+        <target state="new">NETSDK1248: Failed to sign '{0}': {1}</target>
+        <note>{StrBegins="NETSDK1248: "}</note>
+      </trans-unit>
       <trans-unit id="PDBGeneratorInputExecutableNotFound">
         <source>NETSDK1162: PDB generation: R2R executable '{0}' not found.</source>
         <target state="translated">NETSDK1162: PDB 生成: R2R 実行可能ファイル '{0}' が見つかりません。</target>

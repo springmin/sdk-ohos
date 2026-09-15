@@ -28,7 +28,7 @@ namespace Microsoft.NET.Build.Tasks
         private const int EShstrndx = 0x3e;
 
         // ".codesign\0" including the trailing NUL (10 bytes)
-        private static readonly byte[] CodesignName = new byte[] { (byte)'.', (byte)'c', (byte)'o', (byte)'d', (byte)'e', (byte)'s', (byte)'i', (byte)'g', (byte)'n', 0 };
+        private static readonly byte[] s_codesignName = new byte[] { (byte)'.', (byte)'c', (byte)'o', (byte)'d', (byte)'e', (byte)'s', (byte)'i', (byte)'g', (byte)'n', 0 };
 
         /// <summary>Result of an in-place signing request.</summary>
         public enum SignOutcome
@@ -132,7 +132,7 @@ namespace Microsoft.NET.Build.Tasks
             csOff = 0;
             csLen = 0;
             (ulong eShOff, ushort eShnum, ushort eShstrndx) = ParseElfHeader(elf);
-            long csEntryOff = FindSectionByName(elf, eShOff, eShnum, eShstrndx, CodesignName);
+            long csEntryOff = FindSectionByName(elf, eShOff, eShnum, eShstrndx, s_codesignName);
             if (csEntryOff < 0)
             {
                 return false;
@@ -289,7 +289,7 @@ namespace Microsoft.NET.Build.Tasks
         private static bool HasCodesignSection(byte[] elf)
         {
             (ulong eShOff, ushort eShnum, ushort eShstrndx) = ParseElfHeader(elf);
-            return FindSectionByName(elf, eShOff, eShnum, eShstrndx, CodesignName) >= 0;
+            return FindSectionByName(elf, eShOff, eShnum, eShstrndx, s_codesignName) >= 0;
         }
 
         private static ushort NewShstrndx(ushort oldShstrndx, int csIdx) =>
@@ -300,7 +300,7 @@ namespace Microsoft.NET.Build.Tasks
             removed = false;
             (ulong eShOff, ushort eShnum, ushort eShstrndx) = ParseElfHeader(buf);
 
-            long csEntryOff = FindSectionByName(buf, eShOff, eShnum, eShstrndx, CodesignName);
+            long csEntryOff = FindSectionByName(buf, eShOff, eShnum, eShstrndx, s_codesignName);
             if (csEntryOff < 0)
             {
                 return buf;
@@ -318,7 +318,7 @@ namespace Microsoft.NET.Build.Tasks
             }
 
             uint csNameOff = ReadU32(buf, (int)csEntryOff);
-            int csNameLen = CodesignName.Length;
+            int csNameLen = s_codesignName.Length;
             int shstrStart = (int)shstrOff;
             byte[] newShstr = new byte[shstrSz - (ulong)csNameLen];
             Buffer.BlockCopy(buf, shstrStart, newShstr, 0, (int)csNameOff);
@@ -416,9 +416,9 @@ namespace Microsoft.NET.Build.Tasks
             int csOff = (int)csOffAligned;
 
             int shstrStart = (int)shstrOff;
-            byte[] newShstr = new byte[shstrSz + (ulong)CodesignName.Length];
+            byte[] newShstr = new byte[shstrSz + (ulong)s_codesignName.Length];
             Buffer.BlockCopy(elf, shstrStart, newShstr, 0, (int)shstrSz);
-            Buffer.BlockCopy(CodesignName, 0, newShstr, (int)shstrSz, CodesignName.Length);
+            Buffer.BlockCopy(s_codesignName, 0, newShstr, (int)shstrSz, s_codesignName.Length);
             int newShstrSz = newShstr.Length;
             uint csShname = (uint)shstrSz;
 
@@ -578,7 +578,7 @@ namespace Microsoft.NET.Build.Tasks
             }
 
             (ulong eShOff, ushort eShnum, ushort eShstrndx) = ParseElfHeader(signed);
-            if (FindSectionByName(signed, eShOff, eShnum, eShstrndx, CodesignName) < 0)
+            if (FindSectionByName(signed, eShOff, eShnum, eShstrndx, s_codesignName) < 0)
             {
                 throw new InvalidDataException("signed output is missing the .codesign section");
             }

@@ -8,12 +8,10 @@ using Microsoft.Build.Framework;
 namespace Microsoft.NET.Build.Tasks
 {
     /// <summary>
-    /// Applies an OpenHarmony self-signature (.codesign section) to ELF64 binaries in place under
-    /// the target/publish directories. OpenHarmony only executes ELF files that carry a valid
-    /// .codesign section; a file that was modified after signing (e.g. the apphost, which the SDK
-    /// rewrites on every build) fails with EPERM. Files whose existing signature is still valid are
-    /// skipped without being rewritten. The signing algorithm lives in the shared source
-    /// src/Tasks/Microsoft.NET.Build.Tasks/OpenHarmony/ElfSigner.cs, shared with the standalone selfsign tool.
+    /// Applies an OpenHarmony self-signature (.codesign section) to ELF64 binaries under the
+    /// target/publish directories. OpenHarmony only executes signed ELF files, and a signed file
+    /// whose content changed (e.g. the apphost, rewritten on every build) fails with EPERM; files
+    /// with a still-valid signature are skipped.
     /// </summary>
     public sealed class OpenHarmonyCodesign : TaskBase
     {
@@ -42,13 +40,13 @@ namespace Microsoft.NET.Build.Tasks
                         }
                         catch (Exception ex)
                         {
-                            Log.LogError("OpenHarmonyCodesign: failed to sign {0}: {1}", path, ex.Message);
+                            Log.LogError(Strings.OpenHarmonyCodesignFailedToSign, path, ex.Message);
                         }
                     }
                 }
                 catch (Exception ex)
                 {
-                    Log.LogError("OpenHarmonyCodesign: failed to enumerate {0}: {1}", directory, ex.Message);
+                    Log.LogError(Strings.OpenHarmonyCodesignFailedToEnumerate, directory, ex.Message);
                 }
             }
         }
