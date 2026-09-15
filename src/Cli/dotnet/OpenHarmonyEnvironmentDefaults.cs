@@ -7,13 +7,25 @@ namespace Microsoft.DotNet.Cli;
 /// OpenHarmony sandbox defaults for processes spawned by the CLI. The sandbox blocks JIT W^X
 /// mprotect and ships no ICU; baked runtimeconfig options cover the SDK's own processes,
 /// and these environment defaults cover every child process (MSBuild, csc, apphosts) that
-/// inherits the CLI's environment. Only active on OpenHarmony. TMPDIR is deliberately not
-/// set here: the runtime reads it through Path.GetTempPath(), and the sandbox host (the
-/// install script persists it into the shell profiles) points it at a writable directory —
-/// the same contract as on other Unix platforms.
+/// inherits the CLI's environment. Only active on OpenHarmony.
 /// </summary>
 internal static class OpenHarmonyEnvironmentDefaults
 {
+    /// <summary>
+    /// The defaults applied to every process the CLI spawns. Pinned by
+    /// OpenHarmonyEnvironmentDefaultsTests so the child-process contract cannot drift.
+    /// TMPDIR is deliberately absent: Path.GetTempPath() honors the host-provided TMPDIR
+    /// (falling back to /tmp), matching the runtime contract; the install script persists a
+    /// writable value for the on-device shells.
+    /// </summary>
+    internal static (string Name, string Value)[] Defaults { get; } =
+    {
+        ("DOTNET_EnableWriteXorExecute", "0"),
+        ("DOTNET_SYSTEM_GLOBALIZATION_INVARIANT", "1"),
+        (EnvironmentVariableNames.TELEMETRY_OPTOUT, "1"),
+        (EnvironmentVariableNames.DOTNET_NOLOGO, "1"),
+    };
+
     public static void Apply()
     {
         if (!OperatingSystem.IsOSPlatform("openharmony"))
@@ -21,13 +33,10 @@ internal static class OpenHarmonyEnvironmentDefaults
             return;
         }
 
-        // TMPDIR is intentionally not set: Path.GetTempPath() honors the host-provided
-        // TMPDIR (falling back to /tmp), matching the runtime contract; the install script
-        // persists a writable value for the on-device shells.
-        SetDefault("DOTNET_EnableWriteXorExecute", "0");
-        SetDefault("DOTNET_SYSTEM_GLOBALIZATION_INVARIANT", "1");
-        SetDefault(EnvironmentVariableNames.TELEMETRY_OPTOUT, "1");
-        SetDefault(EnvironmentVariableNames.DOTNET_NOLOGO, "1");
+        foreach ((string name, string value) in Defaults)
+        {
+            SetDefault(name, value);
+        }
     }
 
     private static void SetDefault(string name, string value)
