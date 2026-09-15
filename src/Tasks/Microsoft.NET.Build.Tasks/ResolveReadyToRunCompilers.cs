@@ -216,16 +216,15 @@ namespace Microsoft.NET.Build.Tasks
             string portablePlatform = NuGetUtils.GetBestMatchingRid(
                     runtimeGraph,
                     _targetRuntimeIdentifier,
-                    ["linux", "android", "osx", "win", "ios", "iossimulator", "tvos", "tvossimulator", "maccatalyst", "freebsd", "openbsd", "illumos", "solaris", "haiku", "browser", "wasi", "ohos", "openharmony"],
+                    ["linux", "android", "osx", "win", "ios", "iossimulator", "tvos", "tvossimulator", "maccatalyst", "freebsd", "openbsd", "illumos", "solaris", "haiku", "browser", "wasi", "openharmony"],
                     out _);
 
             targetOS = portablePlatform switch
             {
                 "linux" => "linux",
-                // The fork's RID graph keeps ohos/openharmony standalone (no linux inheritance),
-                // so map them to the linux token that crossgen2/ILC accept (same mapping as the
-                // ILCompiler targets' _targetOS handling).
-                "ohos" => "linux",
+                // OpenHarmony's RID graph keeps the RID standalone (no linux inheritance), so map
+                // it to the linux token that crossgen2/ILC accept (same mapping as the ILCompiler
+                // targets' _targetOS handling).
                 "openharmony" => "linux",
                 "android" => "android",
                 "osx" => "osx",
