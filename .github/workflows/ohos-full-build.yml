@@ -84,15 +84,15 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.ohos-ci-env
-          key: ohos-ci-env-${{ inputs.rid }}-${{ hashFiles('sdk/documentation/ohos-install/build/ohos-ci-env.sh') }}
+          key: ohos-ci-env-${{ inputs.rid }}-${{ hashFiles('sdk/eng/ohos-install/build/ohos-ci-env.sh') }}
 
       - name: Prepare NDK + OpenSSL + ICU
         if: steps.cache-env.outputs.cache-hit != 'true'
-        run: bash sdk/documentation/ohos-install/build/ohos-ci-env.sh --prefix "$HOME/.ohos-ci-env"
+        run: bash sdk/eng/ohos-install/build/ohos-ci-env.sh --prefix "$HOME/.ohos-ci-env"
 
       - name: Export env
         run: |
-          eval "$(bash sdk/documentation/ohos-install/build/ohos-ci-env.sh --prefix "$HOME/.ohos-ci-env")"
+          eval "$(bash sdk/eng/ohos-install/build/ohos-ci-env.sh --prefix "$HOME/.ohos-ci-env")"
           echo "OHOS_NDK_HOME=$OHOS_NDK_HOME" >> "$GITHUB_ENV"
           echo "OPENSSL_DIR=$OPENSSL_DIR" >> "$GITHUB_ENV"
           echo "ICU_DIR=$ICU_DIR" >> "$GITHUB_ENV"
@@ -189,7 +189,7 @@ jobs:
       - name: Build runtime -> aspnetcore -> sdk
         run: |
           set +e
-          bash sdk/documentation/ohos-install/build/build-ohos-all.sh \
+          bash sdk/eng/ohos-install/build/build-ohos-all.sh \
             --buildid="$BUILDID" --rid="$RID" > /tmp/build.log 2>&1
           rc=$?
           tail -400 /tmp/build.log

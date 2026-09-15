@@ -15,7 +15,7 @@ avoid re-treading this ground. Applies to the SDK repo's signing chain:
 - Two implementations exist and must stay in sync:
   - `src/Tasks/Microsoft.NET.Build.Tasks/OpenHarmonyCodesign.cs` — MSBuild
     task; auto-signs build outputs (`_OpenHarmonyCodesignBuildOutputs`).
-  - `documentation/ohos-install/selfsign.cs` — standalone AOT tool used by CI
+  - `eng/ohos-install/selfsign.cs` — standalone AOT tool used by CI
     pre-signing (`sign-ohos-pre.py`, linux-x64 build) and device-side
     re-signing (`install-dotnet-ohos.sh`, ohos-arm64 build).
 - The two files are algorithm-identical (diff: only wrapper/namespace).
@@ -71,7 +71,7 @@ signatures — verified three ways on hardware:
    FILE_NOT_FOUND).
 5. **Device-side selfsign build recipe** (when rebuilding the arm64 tool):
    ```sh
-   cd documentation/ohos-install
+   cd eng/ohos-install
    DOTNET_ROOT=$HOME/.dotnet PATH=$DOTNET_ROOT:$PATH \
      dotnet publish selfsign.csproj -c Release -r ohos-arm64 \
      -p:PublishAot=true -p:StripSymbols=false -p:CompressSymbols=false

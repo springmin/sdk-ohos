@@ -3,7 +3,7 @@
 一键在 OpenHarmony 设备上安装 .NET Runtime（来自官方 tar.gz 二进制包），
 并自动完成 OHOS 特有的代码签名步骤。
 
-- 脚本：`install-dotnet-runtime.sh`
+- 脚本：`eng/ohos-install/install-dotnet-runtime.sh`
 - 安装位置：默认 `$HOME/.dotnet`
 - 逻辑依据：微软官方文档 [在 Linux 上手动安装 .NET](https://learn.microsoft.com/zh-cn/dotnet/core/install/linux-scripted-manual#manual-install)
 
@@ -25,10 +25,10 @@
 
 ```sh
 # 基本用法
-sh install-dotnet-runtime.sh ~/Download/dotnet-runtime-11.0.0-rc.1.26451.1-ohos-arm64.tar.gz
+sh eng/ohos-install/install-dotnet-runtime.sh ~/Download/dotnet-runtime-11.0.0-rc.1.26451.1-ohos-arm64.tar.gz
 
 # 指定安装目录（默认 $HOME/.dotnet）
-sh install-dotnet-runtime.sh ~/Download/dotnet-runtime-11.0.0-rc.1.26451.1-ohos-arm64.tar.gz /data/xxx/dotnet
+sh eng/ohos-install/install-dotnet-runtime.sh ~/Download/dotnet-runtime-11.0.0-rc.1.26451.1-ohos-arm64.tar.gz /data/xxx/dotnet
 ```
 
 运行成功后，重新打开终端（或 `source ~/.bashrc`），即可使用：
@@ -56,7 +56,7 @@ rm -rf ~/.dotnet
 # 并从 ~/.bashrc ~/.zshrc ~/.profile 中删除 DOTNET_ROOT / PATH 两行
 
 # 重新安装：直接重跑脚本即可（幂等，可安全重复执行）
-sh install-dotnet-runtime.sh ~/Download/dotnet-runtime-11.0.0-rc.1.26451.1-ohos-arm64.tar.gz
+sh eng/ohos-install/install-dotnet-runtime.sh ~/Download/dotnet-runtime-11.0.0-rc.1.26451.1-ohos-arm64.tar.gz
 ```
 
 ## 5. 为什么需要签名（OHOS 特有）
@@ -98,6 +98,6 @@ OpenHarmony 只允许执行带有 `.codesign` 段的 ELF 二进制。未签名�
 > 自动签名 + ASP.NET Core 内嵌）：
 >
 > 📄 [`documentation/ohos-install/`](../documentation/ohos-install/) —
-> `install-dotnet-ohos.sh` + `README.md` + `selfsign.cs`
+> `eng/ohos-install/install-dotnet-ohos.sh` + `README.md` + `eng/ohos-install/selfsign.cs`
 >
-> 本脚本（`install-dotnet-runtime.sh`）保留用于旧版 runtime 包安装。
+> 本脚本（`eng/ohos-install/install-dotnet-runtime.sh`）保留用于旧版 runtime 包安装。

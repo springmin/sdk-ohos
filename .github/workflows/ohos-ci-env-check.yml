@@ -31,15 +31,15 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.ohos-ci-env
-          key: ohos-ci-env-openharmony-arm64-${{ hashFiles('sdk/documentation/ohos-install/build/ohos-ci-env.sh') }}
+          key: ohos-ci-env-openharmony-arm64-${{ hashFiles('sdk/eng/ohos-install/build/ohos-ci-env.sh') }}
 
       - name: Prepare NDK + OpenSSL + ICU
         if: steps.cache-env.outputs.cache-hit != 'true'
-        run: bash sdk/documentation/ohos-install/build/ohos-ci-env.sh --prefix "$HOME/.ohos-ci-env"
+        run: bash sdk/eng/ohos-install/build/ohos-ci-env.sh --prefix "$HOME/.ohos-ci-env"
 
       - name: Verify env
         run: |
-          eval "$(bash sdk/documentation/ohos-install/build/ohos-ci-env.sh --prefix "$HOME/.ohos-ci-env")"
+          eval "$(bash sdk/eng/ohos-install/build/ohos-ci-env.sh --prefix "$HOME/.ohos-ci-env")"
           echo "OHOS_NDK_HOME=$OHOS_NDK_HOME"
           ls "$OHOS_NDK_HOME/native/llvm/bin/" | grep -cE "aarch64-unknown-linux-ohos-clang" | xargs echo "NDK ohos clang wrappers:"
           ls -la "$OHOS_NDK_HOME/native/llvm/bin/aarch64-unknown-linux-ohos-clang"

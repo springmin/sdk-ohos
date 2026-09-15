@@ -42,7 +42,7 @@
 3. 签完 14 个 ELF 后 runtime 正常运行
 
 **产出**：
-- `install-dotnet-runtime.sh`（幂等可重跑，修了管道子 shell 计数器 bug）
+- `eng/ohos-install/install-dotnet-runtime.sh`（幂等可重跑，修了管道子 shell 计数器 bug）
 - `README-install-dotnet-runtime.md`
 
 ---
@@ -113,7 +113,7 @@
 ### 6.2 安装步骤
 
 ```sh
-sh install-dotnet-runtime.sh <aspnetcore-runtime-*.tar.gz>
+sh eng/ohos-install/install-dotnet-runtime.sh <aspnetcore-runtime-*.tar.gz>
 ```
 
 自动完成：解压 → 签名 → 环境变量 → 验证。结果：**26 个新 ELF 签名，36 个已签名跳过，0 失败**。

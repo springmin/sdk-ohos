@@ -163,9 +163,9 @@ ensure_stock_crossgen2() {
 ensure_selfsign() {
   local selfsign="$WORK/selfsign"
   if [ ! -x "$selfsign" ]; then
-    info "building selfsign (sdk documentation/ohos-install)..."
+    info "building selfsign (sdk eng/ohos-install)..."
     local dotnet_bin="${DOTNET:-$RUNTIME_REPO/.dotnet/dotnet}"
-    (cd "$SDK_REPO/documentation/ohos-install" && \
+    (cd "$SDK_REPO/eng/ohos-install" && \
       "$dotnet_bin" publish selfsign.csproj -c Release -r linux-x64 -p:PublishAot=true \
         -o "$WORK/selfsign-out") 2>&1 | tail -1 || die "selfsign build failed"
     cp -f "$WORK/selfsign-out/selfsign" "$selfsign" && chmod +x "$selfsign"

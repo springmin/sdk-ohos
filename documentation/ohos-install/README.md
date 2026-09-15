@@ -33,17 +33,17 @@ OpenHarmony 特有的代码签名。
 #    从 sdk-ohos 仓库获取，或本地已有
 
 # 2. 安装最新 SDK（含 ASP.NET Core）
-sh install-dotnet-ohos.sh sdk
+sh eng/ohos-install/install-dotnet-ohos.sh sdk
 
 # 3. 或安装最新 Runtime
-sh install-dotnet-ohos.sh runtime
+sh eng/ohos-install/install-dotnet-ohos.sh runtime
 
 # 4. 或用本地文件 / 自定义 URL
-sh install-dotnet-ohos.sh ~/Download/dotnet-sdk-11.0.100-rc.1.26451.10909-openharmony-arm64.tar.gz
-sh install-dotnet-ohos.sh https://github.com/springmin/sdk-ohos/releases/download/v11.0.100-rc.1.26451.10909-ohos/dotnet-sdk-11.0.100-rc.1.26451.10909-openharmony-arm64.tar.gz
+sh eng/ohos-install/install-dotnet-ohos.sh ~/Download/dotnet-sdk-11.0.100-rc.1.26451.10909-openharmony-arm64.tar.gz
+sh eng/ohos-install/install-dotnet-ohos.sh https://github.com/springmin/sdk-ohos/releases/download/v11.0.100-rc.1.26451.10909-ohos/dotnet-sdk-11.0.100-rc.1.26451.10909-openharmony-arm64.tar.gz
 
 # 5. 自定义安装目录
-INSTALL_DIR=/data/xxx/dotnet sh install-dotnet-ohos.sh sdk
+INSTALL_DIR=/data/xxx/dotnet sh eng/ohos-install/install-dotnet-ohos.sh sdk
 ```
 
 脚本自动完成：
@@ -87,7 +87,7 @@ OpenHarmony 只执行带 `.codesign` 段的 ELF。**Release 产物未预签名**
 > 为其自举签名（未签名 ELF 无法执行，selfsign 不能签自己）；两者皆无时
 > 脚本会移除该 selfsign 并回退 binary-sign-tool，或报错提示。
 
-`selfsign` 使用说明（源码见本目录 `selfsign.cs` + `selfsign.csproj`）：
+`selfsign` 使用说明（源码见 `eng/ohos-install/selfsign.cs` + `selfsign.csproj`）：
 
 ```sh
 # 在设备上构建（需要 .NET SDK）：
@@ -114,7 +114,7 @@ selfsign <input_elf> [output_elf] [--force] [--strip]
 #   https://github.com/springmin/sdk-ohos/releases/download/v11.0.100-rc.1.26451.10909-ohos/selfsign-ohos-arm64
 
 # 宿主批量预签名（配合 sign-ohos-release.sh）：
-sh sign-ohos-release.sh <dir-or-tarball> ...   # SELFSIGN=<path> 指定 selfsign
+sh eng/ohos-install/sign-ohos-release.sh <dir-or-tarball> ...   # SELFSIGN=<path> 指定 selfsign
 ```
 
 > 两个版本实现同一 `ElfSigner` 算法——输出**字节级一致**、确定性、
@@ -147,7 +147,7 @@ SDK/Runtime 已内嵌全部 OpenHarmony 沙箱修复，**不再需要**外部 wr
 | 构建产物签名 | `OpenHarmonyCodesign` MSBuild task（Build/Publish 后自动） |
 | 子进程环境 | `OpenHarmonyEnvironmentDefaults`（W^X/invariant/遥测/nologo） |
 
-详见同目录 [`../../../installonohos/OHOS-内嵌修复-变更记录.md`](../../installonohos/OHOS-内嵌修复-变更记录.md)。
+详见同目录 [`OHOS-内嵌修复-变更记录.md`](OHOS-内嵌修复-变更记录.md)。
 
 ## 6. 常见问题
 
@@ -162,7 +162,7 @@ OHOS SDK / harmonybrew（提供 binary-sign-tool），或把预构建
 `$INSTALL_DIR/selfsign` 后重跑。
 
 **Q: `dotnet --version` 提示 "No SDKs were found"**
-装的是 Runtime 包。运行/编译应用需安装 SDK 包（`sh install-dotnet-ohos.sh sdk`）。
+装的是 Runtime 包。运行/编译应用需安装 SDK 包（`sh eng/ohos-install/install-dotnet-ohos.sh sdk`）。
 
 **Q: 签名报 `failed=N`**
 个别文件签名失败不会中断（仅警告），但 `failed > 0` 会终止安装。重跑脚本即可。

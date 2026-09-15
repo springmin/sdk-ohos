@@ -2,7 +2,7 @@
 # dotnet wrapper for OpenHarmony sandbox (LEGACY — superseded by embedded fixes)
 #
 # Since 2026-08-26 the SDK/runtime embed all fixes natively (see
-# OHOS-内嵌修复-变更记录.md):
+# documentation/ohos-install/OHOS-内嵌修复-变更记录.md):
 #   - SIGSYS (get_mempolicy)  -> runtime numasupport.cpp TARGET_OPENHARMONY guard
 #   - W^X / ICU               -> baked into SDK runtimeconfig (EnableWriteXorExecute, Invariant)
 #   - /tmp shared memory      -> runtime SharedMemoryManager honors TMPDIR
