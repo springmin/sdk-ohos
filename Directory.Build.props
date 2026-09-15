@@ -35,12 +35,9 @@
   </PropertyGroup>
 
   <!--
-    openharmony has no NativeAOT toolchain wired into this build: the vendored
-    NativeAotSupported.props (eng/common/native) only rejects browser/haiku/illumos/netbsd/solaris,
-    so this single override keeps _ShouldPublishDotnetAot (Layout) and BundleNativeAotCompiler
-    (source build) off. Without it, dotnet-aot would set RuntimeIdentifier=openharmony-arm64 and
-    restore would fail NETSDK1203. linux-musl stays enabled: upstream AOT-builds dotnet-aot on it
-    (official ILCompiler pack exists).
+    openharmony has no NativeAOT toolchain in this build: the vendored NativeAotSupported.props
+    (eng/common/native) does not reject it. Without this override, dotnet-aot would restore
+    openharmony runtime packs that do not exist (NETSDK1203). linux-musl stays enabled.
   -->
   <PropertyGroup>
     <NativeAotSupported Condition="'$(OSName)' == 'openharmony'">false</NativeAotSupported>

@@ -7,12 +7,8 @@
     <AssemblyName>dn</AssemblyName>
     <OutputType>Exe</OutputType>
     <RootNamespace>Microsoft.DotNet.Cli</RootNamespace>
-    <!--
-      dn is a dev-only NativeAOT debug host. NativeAOT is not supported on every platform
-      (e.g. linux-musl, openharmony, browser, ...), so only enable PublishAot where
-      NativeAotSupported props allow it; otherwise the sdk.slnx build would attempt to
-      AOT-compile dn with a missing ILCompiler toolchain and fail.
-    -->
+    <!-- NativeAOT is not available on every platform (linux-musl, openharmony, ...); only
+         enable PublishAot where the vendored NativeAotSupported.props allows it. -->
     <PublishAot Condition="'$(NativeAotSupported)' == 'true'">true</PublishAot>
     <IsAotCompatible Condition="'$(NativeAotSupported)' == 'true'">true</IsAotCompatible>
     <StrongNameKeyId>MicrosoftAspNetCore</StrongNameKeyId>

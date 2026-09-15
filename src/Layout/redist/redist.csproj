@@ -124,12 +124,8 @@
     </Content>
   </ItemGroup>
 
-  <!--
-    OpenHarmony runtime defaults for the SDK's own processes (dotnet, MSBuild, NuGet):
-    the sandbox blocks JIT W^X mprotect and ships no ICU. Baked into the redist
-    runtimeconfig.json, which GenerateCliRuntimeConfigurationFiles copies to every
-    bundled tool, so the SDK runs on OHOS without external environment variables.
-  -->
+  <!-- OpenHarmony runtime defaults for the SDK's own processes (JIT W^X, ICU), baked into the
+       redist runtimeconfig which GenerateCliRuntimeConfigurationFiles copies to every tool. -->
   <ItemGroup Condition="'$(OSName)' == 'openharmony'">
     <RuntimeHostConfigurationOption Include="System.Runtime.EnableWriteXorExecute" Value="false" />
     <RuntimeHostConfigurationOption Include="System.Globalization.Invariant" Value="true" />

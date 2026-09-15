@@ -222,9 +222,8 @@ namespace Microsoft.NET.Build.Tasks
             targetOS = portablePlatform switch
             {
                 "linux" => "linux",
-                // OpenHarmony's RID graph keeps the RID standalone (no linux inheritance), so map
-                // it to the linux token that crossgen2/ILC accept (same mapping as the ILCompiler
-                // targets' _targetOS handling).
+                // The openharmony RID is standalone in the RID graph; map it to the linux token
+                // that crossgen2/ILC accept.
                 "openharmony" => "linux",
                 "android" => "android",
                 "osx" => "osx",

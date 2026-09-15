@@ -11,13 +11,11 @@
     </PropertyGroup>
 
     <!--
-      The RID graph is normally copied verbatim from the Microsoft.NETCore.Platforms package. For
-      in-repo/unofficial target platforms (e.g. openharmony) whose RIDs are not yet in the shipped
-      graph, allow overriding the graph sources with locally injected files:
+      The RID graph normally comes from the Microsoft.NETCore.Platforms package. Allow replacing
+      it for target platforms whose RIDs are not in the shipped graph yet:
         * $(RidGraphOverrideRuntimeJson) -> replaces runtime.json
         * $(RidGraphOverridePortableJson) -> replaces PortableRuntimeIdentifierGraph.json
-      When set, the overrides are copied instead of the package files, and the Platforms package is
-      still restored (for its other assets) but its graph files are not used.
+      The package is still restored for its other assets.
     -->
     <PropertyGroup>
       <RuntimeJsonSourceFile Condition="'$(RidGraphOverrideRuntimeJson)' != ''">$(RidGraphOverrideRuntimeJson)</RuntimeJsonSourceFile>

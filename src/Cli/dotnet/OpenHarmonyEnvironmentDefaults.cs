@@ -12,11 +12,9 @@ namespace Microsoft.DotNet.Cli;
 internal static class OpenHarmonyEnvironmentDefaults
 {
     /// <summary>
-    /// The defaults applied to every process the CLI spawns. Pinned by
-    /// OpenHarmonyEnvironmentDefaultsTests so the child-process contract cannot drift.
-    /// TMPDIR is deliberately absent: Path.GetTempPath() honors the host-provided TMPDIR
-    /// (falling back to /tmp), matching the runtime contract; the install script persists a
-    /// writable value for the on-device shells.
+    /// The defaults applied to every process the CLI spawns (pinned by tests). TMPDIR is
+    /// deliberately absent: Path.GetTempPath() honors the host-provided value, matching the
+    /// runtime contract; the install script persists a writable one for the on-device shells.
     /// </summary>
     internal static (string Name, string Value)[] Defaults { get; } =
     {
