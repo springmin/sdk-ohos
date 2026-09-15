@@ -211,7 +211,15 @@ namespace Microsoft.NET.Build.Tasks
 
         private static ulong AlignUp(ulong v, ulong a) => (v + a - 1) / a * a;
 
-        private static byte[] Sha256(byte[] data) => SHA256.HashData(data);
+        // NOTE: SHA256.HashData is not available on net472, which this multi-targeted task
+        // project also builds for (Microsoft.NET.Build.Tasks.csproj -> TargetFrameworks).
+        private static byte[] Sha256(byte[] data)
+        {
+            using (SHA256 sha = SHA256.Create())
+            {
+                return sha.ComputeHash(data);
+            }
+        }
 
         private static (ulong eShOff, ushort eShnum, ushort eShstrndx) ParseElfHeader(byte[] elf)
         {
