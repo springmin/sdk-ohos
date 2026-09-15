@@ -171,7 +171,8 @@ namespace Microsoft.NET.Build.Tasks
         internal static bool IsElf64(byte[] data) =>
             data.Length >= 64 &&
             data[0] == 0x7f && data[1] == (byte)'E' && data[2] == (byte)'L' && data[3] == (byte)'F' &&
-            data[4] == 2; // ELFCLASS64
+            data[4] == 2 && // ELFCLASS64
+            data[5] == 1;   // ELFDATA2LSB: the signer reads/writes little-endian fields
 
         private static ushort ReadU16(byte[] b, int off) => (ushort)(b[off] | (b[off + 1] << 8));
 
@@ -210,13 +211,7 @@ namespace Microsoft.NET.Build.Tasks
 
         private static ulong AlignUp(ulong v, ulong a) => (v + a - 1) / a * a;
 
-        private static byte[] Sha256(byte[] data)
-        {
-            using (SHA256 sha = SHA256.Create())
-            {
-                return sha.ComputeHash(data);
-            }
-        }
+        private static byte[] Sha256(byte[] data) => SHA256.HashData(data);
 
         private static (ulong eShOff, ushort eShnum, ushort eShstrndx) ParseElfHeader(byte[] elf)
         {
@@ -404,7 +399,13 @@ namespace Microsoft.NET.Build.Tasks
                 curEnd = (ulong)elf.Length;
             }
 
-            int csOff = (int)AlignUp(curEnd, PageSize);
+            ulong csOffAligned = AlignUp(curEnd, PageSize);
+            if (csOffAligned > int.MaxValue)
+            {
+                throw new InvalidDataException("ELF too large to sign");
+            }
+
+            int csOff = (int)csOffAligned;
 
             int shstrStart = (int)shstrOff;
             byte[] newShstr = new byte[shstrSz + (ulong)CodesignName.Length];
