@@ -60,7 +60,7 @@
 **F. 应用烘焙 + env 默认值（问题 2、3、子进程）**
 
 - `Microsoft.NET.Sdk.targets` `DefaultRuntimeHostConfigurationOptions` 增加 `EnableWriteXorExecute` MSBuild 属性 → `System.Runtime.EnableWriteXorExecute` 映射（仿 `InvariantGlobalization`）
-- `src/Cli/dotnet/OpenHarmonyEnvironmentDefaults.cs` 新增 `Apply()`：RID 为 `ohos` 时设置 `TMPDIR=/data/storage/el2/base/tmp`、`DOTNET_EnableWriteXorExecute=0`、`DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1`、遥测 optout、nologo 默认值。接入 managed `Program` 静态构造函数与 NativeAOT `NativeEntryPoint.ExecuteCore`，供子进程（MSBuild、csc、apphost）继承。
+- `src/Cli/dotnet/OpenHarmonyEnvironmentDefaults.cs` 新增 `Apply()`：在 OpenHarmony 上设置 `DOTNET_EnableWriteXorExecute=0`、`DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1`、遥测 optout、nologo 默认值。接入 managed `Program` 静态构造函数与 NativeAOT `NativeEntryPoint.ExecuteCore`，供子进程（MSBuild、csc、apphost）继承。`TMPDIR` 不在此设置：runtime 走 `Path.GetTempPath()` 契约（宿主提供），安装脚本会把可写默认值写入 shell profile。
 
 ## 3. 修复后安装流程（不再需要 wrapper/shim）
 
@@ -69,7 +69,7 @@
 # 2. 一次性签名全部 ELF（tarball 内已是签名产物，可跳过；解压不改变文件内容）
 # 3. 直接使用 dotnet：
 export DOTNET_ROOT=~/.dotnet
-export TMPDIR=/data/storage/el2/base/tmp   # 可选；SDK 会自动设置默认值
+export TMPDIR=/data/storage/el2/base/tmp   # 需要可写值；安装脚本会写入 profile 默认值
 ~/.dotnet/dotnet --version
 ~/.dotnet/dotnet build hello.cs             # 产物自动 codesign
 ~/.dotnet/dotnet run hello.cs

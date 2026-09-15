@@ -143,9 +143,9 @@ SDK/Runtime 已内嵌全部 OpenHarmony 沙箱修复，**不再需要**外部 wr
 | SIGSYS（get_mempolicy 被 seccomp 拦截） | runtime `numasupport.cpp` `TARGET_OPENHARMONY` 排除（编译期消灭） |
 | JIT W^X 被沙箱拒绝 | SDK runtimeconfig 烘焙 `EnableWriteXorExecute=false` |
 | 无 ICU | SDK runtimeconfig 烘焙 `Invariant=true` |
-| `/tmp` 只读 | runtime 共享内存改走 `Path.GetTempPath()`（TMPDIR） |
+| `/tmp` 只读 | runtime 共享内存改走 `Path.GetTempPath()`（TMPDIR 由安装脚本/宿主提供） |
 | 构建产物签名 | `OpenHarmonyCodesign` MSBuild task（Build/Publish 后自动） |
-| 子进程环境 | `OpenHarmonyEnvironmentDefaults`（TMPDIR/遥测/nologo） |
+| 子进程环境 | `OpenHarmonyEnvironmentDefaults`（W^X/invariant/遥测/nologo） |
 
 详见同目录 [`../../../installonohos/OHOS-内嵌修复-变更记录.md`](../../installonohos/OHOS-内嵌修复-变更记录.md)。
 

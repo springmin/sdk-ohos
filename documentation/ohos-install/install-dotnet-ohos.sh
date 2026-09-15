@@ -279,12 +279,21 @@ sign_all() {
 setup_profile() {
     pf="$1"
     [ -f "$pf" ] || return 0
-    grep -q 'export DOTNET_ROOT=' "$pf" 2>/dev/null && return 0
+    if grep -q 'export DOTNET_ROOT=' "$pf" 2>/dev/null; then
+        grep -q 'export TMPDIR=' "$pf" 2>/dev/null || cat >> "$pf" <<EOF
+
+# OpenHarmony sandbox: /tmp is read-only; the runtime reads TMPDIR via Path.GetTempPath().
+export TMPDIR="\${TMPDIR:-/data/storage/el2/base/tmp}"
+EOF
+        return 0
+    fi
     cat >> "$pf" <<EOF
 
 # .NET (OpenHarmony install)
 export DOTNET_ROOT=\$HOME/.dotnet
 export PATH=\$PATH:\$DOTNET_ROOT:\$DOTNET_ROOT/tools
+# OpenHarmony sandbox: /tmp is read-only; the runtime reads TMPDIR via Path.GetTempPath().
+export TMPDIR="\${TMPDIR:-/data/storage/el2/base/tmp}"
 EOF
     info "env vars added to ${pf}"
 }
