@@ -29,19 +29,26 @@ namespace Microsoft.NET.Build.Tasks
                     continue;
                 }
 
-                foreach (string path in Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories))
+                try
                 {
-                    try
+                    foreach (string path in Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories))
                     {
-                        if (ElfSigner.SignFileInPlace(path) == ElfSigner.SignOutcome.Signed)
+                        try
                         {
-                            Log.LogMessage(MessageImportance.Low, "OpenHarmonyCodesign: signed {0}", path);
+                            if (ElfSigner.SignFileInPlace(path) == ElfSigner.SignOutcome.Signed)
+                            {
+                                Log.LogMessage(MessageImportance.Low, "OpenHarmonyCodesign: signed {0}", path);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Log.LogError("OpenHarmonyCodesign: failed to sign {0}: {1}", path, ex.Message);
                         }
                     }
-                    catch (Exception ex)
-                    {
-                        Log.LogError("OpenHarmonyCodesign: failed to sign {0}: {1}", path, ex.Message);
-                    }
+                }
+                catch (Exception ex)
+                {
+                    Log.LogError("OpenHarmonyCodesign: failed to enumerate {0}: {1}", directory, ex.Message);
                 }
             }
         }

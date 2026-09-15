@@ -29,9 +29,17 @@ internal static class SelfSignCommand
         {
             if (Directory.Exists(path))
             {
-                foreach (string file in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
+                try
                 {
-                    Process(file);
+                    foreach (string file in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
+                    {
+                        Process(file);
+                    }
+                }
+                catch (Exception e)
+                {
+                    failed++;
+                    Console.Error.WriteLine($"selfsign failed: {path}: {e.Message}");
                 }
             }
             else
