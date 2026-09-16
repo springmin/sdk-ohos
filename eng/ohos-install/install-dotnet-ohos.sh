@@ -212,10 +212,13 @@ install_workload() {
     tmp=""
     if [ -z "$bundle" ]; then
         # a bundle installed next to the SDK (or shipped with it)
-        tb="$(ls "${INSTALL_DIR}"/workload/ohos-workload-*.tar.gz 2>/dev/null | tail -1 || true)"
-        if [ -z "$tb" ]; then
-            tb="$(ls "${SCRIPT_DIR}"/ohos-workload-*.tar.gz 2>/dev/null | tail -1 || true)"
-        fi
+        for pat in openharmony-workload ohos-workload; do
+            [ -n "$tb" ] && break
+            tb="$(ls "${INSTALL_DIR}"/workload/"$pat"-*.tar.gz 2>/dev/null | tail -1 || true)"
+            if [ -z "$tb" ]; then
+                tb="$(ls "${SCRIPT_DIR}"/"$pat"-*.tar.gz 2>/dev/null | tail -1 || true)"
+            fi
+        done
         if [ -z "$tb" ]; then
             # try the release the SDK came from (asset name is versioned, so list first)
             # Prefer the release the SDK tarball came from, so the bundle is looked up
@@ -225,8 +228,13 @@ install_workload() {
                 tag="$(printf '%s' "${RESOLVED_URL:-}" | sed -nE 's|.*/releases/download/([^/]+)/.*|\1|p')"
             fi
             tag="${tag:-v11.0.100-rc.1.26451.109-ohos}"
-            asset="$(curl -fsSL "https://api.github.com/repos/${GH_USER}/sdk-ohos/releases/tags/${tag}" 2>/dev/null \
-                     | grep -o '"name": *"ohos-workload-[^"]*\.tar\.gz"' | head -1 | sed -E 's/.*"(ohos-workload-[^"]*\.tar\.gz)".*/\1/' || true)"
+            assets="$(curl -fsSL "https://api.github.com/repos/${GH_USER}/sdk-ohos/releases/tags/${tag}" 2>/dev/null || true)"
+            asset=""
+            for pat in openharmony-workload ohos-workload; do
+                [ -n "$asset" ] && break
+                asset="$(printf '%s' "$assets" | grep -o '"name": *"'"$pat"'-[^"]*\.tar\.gz"' | head -1 \
+                         | sed -E 's/.*"('"$pat"'-[^"]*\.tar\.gz)".*/\1/')"
+            done
             if [ -n "$asset" ]; then
                 mkdir -p "${INSTALL_DIR}/workload"
                 tb="${INSTALL_DIR}/workload/${asset}"
