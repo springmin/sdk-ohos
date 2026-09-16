@@ -218,7 +218,13 @@ install_workload() {
         fi
         if [ -z "$tb" ]; then
             # try the release the SDK came from (asset name is versioned, so list first)
-            tag="${WORKLOAD_RELEASE_TAG:-v11.0.100-rc.1.26451.109-ohos}"
+            # Prefer the release the SDK tarball came from, so the bundle is looked up
+            # next to the SDK artifact; fall back to the recorded SDK release tag.
+            tag="${WORKLOAD_RELEASE_TAG:-}"
+            if [ -z "$tag" ]; then
+                tag="$(printf '%s' "${RESOLVED_URL:-}" | sed -nE 's|.*/releases/download/([^/]+)/.*|\1|p')"
+            fi
+            tag="${tag:-v11.0.100-rc.1.26451.109-ohos}"
             asset="$(curl -fsSL "https://api.github.com/repos/${GH_USER}/sdk-ohos/releases/tags/${tag}" 2>/dev/null \
                      | grep -o '"name": *"ohos-workload-[^"]*\.tar\.gz"' | head -1 | sed -E 's/.*"(ohos-workload-[^"]*\.tar\.gz)".*/\1/' || true)"
             if [ -n "$asset" ]; then
