@@ -79,7 +79,17 @@ ICU_DIR="${ICU_DIR:-/tmp/icu-ohos-install}"
 # official CI's crossgen2 runs against the previously-published host runtime.
 STOCK_CROSSGEN2_VERSION="${STOCK_CROSSGEN2_VERSION:-11.0.0-rc.1.26427.131}"
 STOCK_CROSSGEN2_DIR="$WORK/stock-crossgen2/$STOCK_CROSSGEN2_VERSION"
-STOCK_CROSSGEN2_SHA256="${STOCK_CROSSGEN2_SHA256:-c8d42378a12889a45d1b68e89d1fd74cbc5075879e3630c0276fbdfd7197340e}"
+# sha256 pins for the stock crossgen2 builds in use (the dnceng flat2 feed
+# serves immutable package versions). 26427.131 is the local default; CI passes
+# crossgen2_version=26451.109. Add a pin (or set STOCK_CROSSGEN2_SHA256) when
+# the version changes; the download is refused without one.
+case "$STOCK_CROSSGEN2_VERSION" in
+  11.0.0-rc.1.26427.131) _xc2_sha="c8d42378a12889a45d1b68e89d1fd74cbc5075879e3630c0276fbdfd7197340e" ;;
+  11.0.0-rc.1.26451.109) _xc2_sha="5da0dafca92667d2f48c79d69059ef4924cefc87de7fa07cc6a1d8299ad798aa" ;;
+  *) _xc2_sha="" ;;
+esac
+STOCK_CROSSGEN2_SHA256="${STOCK_CROSSGEN2_SHA256:-$_xc2_sha}"
+unset _xc2_sha
 # Reference runtime pack: metadata + PGO mibc source (the ohos-arm64 R2R-PGO
 # build of 26451.109). Downloaded on demand, sha256-pinned; a manually placed
 # $SCRIPT_DIR/reference-runtime-pack.nupkg still takes precedence.
@@ -185,6 +195,8 @@ ensure_stock_crossgen2() {
     [ -d "$cache" ] && nupkg=$(ls "$cache"/*.nupkg 2>/dev/null | grep -v symbols | head -1)
   fi
   if [ -z "$nupkg" ]; then
+    [ -n "$STOCK_CROSSGEN2_SHA256" ] \
+      || die "no sha256 pinned for stock crossgen2 $STOCK_CROSSGEN2_VERSION; set STOCK_CROSSGEN2_SHA256 or bundle the nupkg under $SCRIPT_DIR/third-party/"
     nupkg="$HOME/.nuget/packages/microsoft.netcore.app.crossgen2.linux-x64/$STOCK_CROSSGEN2_VERSION/microsoft.netcore.app.crossgen2.linux-x64.$STOCK_CROSSGEN2_VERSION.nupkg"
     fetch_verified \
       "https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet12/nuget/v3/flat2/microsoft.netcore.app.crossgen2.linux-x64/$STOCK_CROSSGEN2_VERSION/microsoft.netcore.app.crossgen2.linux-x64.$STOCK_CROSSGEN2_VERSION.nupkg" \
