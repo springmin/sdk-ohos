@@ -1113,6 +1113,19 @@ stage5() {
   find "$SDK_REPO/artifacts" -maxdepth 5 -name "dotnet-sdk-*-$RID.tar.gz" -exec cp -f {} "$out/" \; 2>/dev/null || true
   # aspnetcore tarball
   find "$ASCORE_REPO/artifacts/packages/$CONFIG/Shipping" -maxdepth 1 -name "aspnetcore-runtime-*$RID.tar.gz" -exec cp -f {} "$out/" \; 2>/dev/null || true
+  # OpenHarmony platform workload bundle (produced by the ohos-workload repo:
+  # scripts/pack-workload-bundle.sh). The SDK installer picks it up from the same
+  # release (install-dotnet-ohos.sh -> install_workload) or from a local path.
+  local wb="${OHOS_WORKLOAD_BUNDLE:-}"
+  if [ -z "$wb" ]; then
+    wb="$(ls -t "$HOME"/springsources/ohos-workload/dist/ohos-workload-*.tar.gz 2>/dev/null | head -1 || true)"
+  fi
+  if [ -n "$wb" ] && [ -f "$wb" ]; then
+    cp -f "$wb" "$out/"
+    info "workload bundle: $(basename "$wb")"
+  else
+    info "workload bundle not found (set OHOS_WORKLOAD_BUNDLE=... to include it in the outputs)"
+  fi
   info "Outputs: $(ls "$out" | wc -l) files in $out"
   echo "--- artifacts ---" | tee -a "$LOG"
   ls -la "$out" | tee -a "$LOG"

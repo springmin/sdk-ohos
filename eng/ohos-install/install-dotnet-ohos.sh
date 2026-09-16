@@ -46,6 +46,13 @@ ASPNETCORE_TAG="v11.0.0-rc.1.26451.109-ohos"
 ASPNETCORE_FILE="aspnetcore-runtime-11.0.0-rc.1.26451.109-openharmony-arm64.tar.gz"
 
 INSTALL_DIR="${INSTALL_DIR:-${HOME}/.dotnet}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# OpenHarmony platform workload (net11.0-openharmony<api>). Ships as a bundle
+# (ohos-workload-<version>.tar.gz: manifests/ + feed/ + install-ohos-workload.sh)
+# next to the SDK tarball. INSTALL_WORKLOAD=0 disables the step; WORKLOAD_BUNDLE
+# points at a local bundle (directory or tarball); WORKLOAD_RELEASE_TAG selects the
+# release whose assets are searched for the bundle.
 
 info() { printf '==> %s\n' "$*"; }
 die()  { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
@@ -194,6 +201,63 @@ deploy_selfsign() {
     fi
 }
 
+# -------------------------------------------------------------- workload
+# Installs the OpenHarmony platform workload so that net11.0-openharmony<api>
+# projects build without DOTNETSDK_WORKLOAD_* environment variables.
+install_workload() {
+    [ "${INSTALL_WORKLOAD:-1}" = "1" ] || { info "workload install skipped (INSTALL_WORKLOAD=0)"; return 0; }
+    [ -x "${INSTALL_DIR}/dotnet" ] || { info "no dotnet in ${INSTALL_DIR}; skipping the workload"; return 0; }
+
+    bundle="${WORKLOAD_BUNDLE:-}"
+    tmp=""
+    if [ -z "$bundle" ]; then
+        # a bundle installed next to the SDK (or shipped with it)
+        tb="$(ls "${INSTALL_DIR}"/workload/ohos-workload-*.tar.gz 2>/dev/null | tail -1 || true)"
+        if [ -z "$tb" ]; then
+            tb="$(ls "${SCRIPT_DIR}"/ohos-workload-*.tar.gz 2>/dev/null | tail -1 || true)"
+        fi
+        if [ -z "$tb" ]; then
+            # try the release the SDK came from (asset name is versioned, so list first)
+            tag="${WORKLOAD_RELEASE_TAG:-v11.0.100-rc.1.26451.109-ohos}"
+            asset="$(curl -fsSL "https://api.github.com/repos/${GH_USER}/sdk-ohos/releases/tags/${tag}" 2>/dev/null \
+                     | grep -o '"name": *"ohos-workload-[^"]*\.tar\.gz"' | head -1 | sed -E 's/.*"(ohos-workload-[^"]*\.tar\.gz)".*/\1/' || true)"
+            if [ -n "$asset" ]; then
+                mkdir -p "${INSTALL_DIR}/workload"
+                tb="${INSTALL_DIR}/workload/${asset}"
+                if [ ! -f "$tb" ]; then
+                    download "https://github.com/${GH_USER}/sdk-ohos/releases/download/${tag}/${asset}" "$tb" || tb=""
+                fi
+            fi
+        fi
+        if [ -n "$tb" ]; then
+            tmp="$(mktemp -d)"
+            tar zxf "$tb" -C "$tmp" || { info "WARNING: could not extract $tb"; rm -rf "$tmp"; return 0; }
+            bundle="$(find "$tmp" -mindepth 1 -maxdepth 1 -type d | head -1)"
+        fi
+    fi
+
+    if [ -z "$bundle" ]; then
+        info "no workload bundle found (set WORKLOAD_BUNDLE=<dir|tar.gz> to install the OpenHarmony workload)"
+        return 0
+    fi
+    if [ -f "$bundle" ]; then
+        tmp="$(mktemp -d)"
+        tar zxf "$bundle" -C "$tmp" || { info "WARNING: could not extract $bundle"; rm -rf "$tmp"; return 0; }
+        bundle="$(find "$tmp" -mindepth 1 -maxdepth 1 -type d | head -1)"
+    fi
+
+    info "installing the OpenHarmony platform workload from ${bundle}"
+    dry=""
+    [ "${WORKLOAD_DRY_RUN:-0}" = "1" ] && dry="--dry-run"
+    if sh "${bundle}/install-ohos-workload.sh" $dry --dotnet "${INSTALL_DIR}/dotnet" "$bundle"; then
+        info "workload installed (dotnet workload list)"
+    else
+        info "WARNING: OpenHarmony workload installation failed (continuing without it)"
+    fi
+    [ -n "$tmp" ] && rm -rf "$tmp"
+    return 0
+}
+
 # ------------------------------------------------------------------ cxx runtime
 # The NativeAOT toolchain (ilc) links GNU libstdc++.so.6 + libgcc_s.so.1 which the
 # device (HarmonyOS) does not ship (it only has LLVM libc++). The ILCompiler pack
@@ -307,6 +371,11 @@ done
 # resolve artifact (default: sdk)
 ARG="${1:-sdk}"
 case "$ARG" in
+    workload)
+        install_workload
+        exit $?
+        ;;
+
     sdk|runtime|http://*|https://*)
         resolve_choice "$ARG"
         ;;
@@ -357,6 +426,9 @@ sign_all
 setup_profile "${HOME}/.bashrc"
 setup_profile "${HOME}/.zshrc"
 setup_profile "${HOME}/.profile"
+
+# ----------------------------------------------------------------- workload
+install_workload
 
 # ----------------------------------------------------------------- verify
 info "verifying ..."
