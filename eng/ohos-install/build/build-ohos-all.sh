@@ -79,6 +79,13 @@ ICU_DIR="${ICU_DIR:-/tmp/icu-ohos-install}"
 # official CI's crossgen2 runs against the previously-published host runtime.
 STOCK_CROSSGEN2_VERSION="${STOCK_CROSSGEN2_VERSION:-11.0.0-rc.1.26427.131}"
 STOCK_CROSSGEN2_DIR="$WORK/stock-crossgen2/$STOCK_CROSSGEN2_VERSION"
+STOCK_CROSSGEN2_SHA256="${STOCK_CROSSGEN2_SHA256:-c8d42378a12889a45d1b68e89d1fd74cbc5075879e3630c0276fbdfd7197340e}"
+# Reference runtime pack: metadata + PGO mibc source (the ohos-arm64 R2R-PGO
+# build of 26451.109). Downloaded on demand, sha256-pinned; a manually placed
+# $SCRIPT_DIR/reference-runtime-pack.nupkg still takes precedence.
+REFERENCE_RUNTIME_PACK_URL="${REFERENCE_RUNTIME_PACK_URL:-https://github.com/springmin/runtime-ohos/releases/download/v11.0.0-rc.1.26451.109-ohos/Microsoft.NETCore.App.Runtime.ohos-arm64.11.0.0-rc.1.26451.109-R2R-PGO.nupkg}"
+REFERENCE_RUNTIME_PACK_SHA256="${REFERENCE_RUNTIME_PACK_SHA256:-54d093f5bf3d522917cbe51a42ab2450ecd77b78be83214fe52ca6e5aac92163}"
+REFERENCE_RUNTIME_PACK=""
 # Framework-wide R2R overlay (mac model): 1 = compile all PureIL framework
 # assemblies at pack build and overlay them (device SCD+R2R becomes app-only).
 OHOS_FRAMEWORK_R2R="${OHOS_FRAMEWORK_R2R:-1}"
@@ -130,13 +137,46 @@ stage0() {
 }
 
 # ensure the OFFICIAL NuGet crossgen2 (downloads if not cached)
+# fetch <url> <dest> <sha256> <what>; verifies the digest before moving into place.
+fetch_verified() {
+  local url="$1" dest="$2" sha="$3" what="$4"
+  local tmp="$dest.download.$$"
+  mkdir -p "$(dirname "$dest")"
+  info "downloading $what ..."
+  if ! curl -sL --fail --retry 3 -o "$tmp" "$url"; then
+    rm -f "$tmp"; info "download failed: $what"; return 1
+  fi
+  local got
+  got=$(sha256sum "$tmp" | cut -d' ' -f1)
+  if [ "$got" != "$sha" ]; then
+    rm -f "$tmp"; info "sha256 mismatch for $what: $got"; return 1
+  fi
+  mv -f "$tmp" "$dest"
+}
+
+# Resolve the reference runtime pack (on-demand download, sha256-pinned).
+resolve_reference_runtime_pack() {
+  [ -n "$REFERENCE_RUNTIME_PACK" ] && return 0
+  if [ -f "$SCRIPT_DIR/reference-runtime-pack.nupkg" ]; then
+    REFERENCE_RUNTIME_PACK="$SCRIPT_DIR/reference-runtime-pack.nupkg"
+    return 0
+  fi
+  local dest="$SCRIPT_DIR/third-party/Microsoft.NETCore.App.Runtime.ohos-arm64.11.0.0-rc.1.26451.109-R2R-PGO.nupkg"
+  if [ ! -s "$dest" ] || [ "$(sha256sum "$dest" | cut -d' ' -f1)" != "$REFERENCE_RUNTIME_PACK_SHA256" ]; then
+    fetch_verified "$REFERENCE_RUNTIME_PACK_URL" "$dest" "$REFERENCE_RUNTIME_PACK_SHA256" "reference runtime pack (R2R-PGO)" || return 1
+  fi
+  REFERENCE_RUNTIME_PACK="$dest"
+  return 0
+}
+
 ensure_stock_crossgen2() {
   if [ -x "$STOCK_CROSSGEN2_DIR/tools/crossgen2" ]; then
     info "stock crossgen2 ready: $STOCK_CROSSGEN2_VERSION"
     return 0
   fi
   # resolution order: repo-bundled -> NuGet cache -> dnceng public feed
-  # (this is an internal-dev build: NOT on nuget.org, which returns 404)
+  # (this is an internal-dev build: NOT on nuget.org, which returns 404);
+  # downloads are sha256-pinned
   local nupkg=""
   local bundled="$SCRIPT_DIR/third-party/microsoft.netcore.app.crossgen2.linux-x64.$STOCK_CROSSGEN2_VERSION.nupkg"
   [ -f "$bundled" ] && nupkg="$bundled"
@@ -145,11 +185,10 @@ ensure_stock_crossgen2() {
     [ -d "$cache" ] && nupkg=$(ls "$cache"/*.nupkg 2>/dev/null | grep -v symbols | head -1)
   fi
   if [ -z "$nupkg" ]; then
-    mkdir -p "$HOME/.nuget/packages/microsoft.netcore.app.crossgen2.linux-x64/$STOCK_CROSSGEN2_VERSION"
     nupkg="$HOME/.nuget/packages/microsoft.netcore.app.crossgen2.linux-x64/$STOCK_CROSSGEN2_VERSION/microsoft.netcore.app.crossgen2.linux-x64.$STOCK_CROSSGEN2_VERSION.nupkg"
-    info "downloading official crossgen2 $STOCK_CROSSGEN2_VERSION (dnceng dotnet12 feed)..."
-    curl -sL --fail --retry 3 -o "$nupkg" \
+    fetch_verified \
       "https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet12/nuget/v3/flat2/microsoft.netcore.app.crossgen2.linux-x64/$STOCK_CROSSGEN2_VERSION/microsoft.netcore.app.crossgen2.linux-x64.$STOCK_CROSSGEN2_VERSION.nupkg" \
+      "$nupkg" "$STOCK_CROSSGEN2_SHA256" "official crossgen2 $STOCK_CROSSGEN2_VERSION (dnceng dotnet12 feed)" \
       || die "download official crossgen2 failed (place the nupkg at $SCRIPT_DIR/third-party/ to go offline)"
   fi
   mkdir -p "$STOCK_CROSSGEN2_DIR"
@@ -251,10 +290,10 @@ build_clr_libs_packs() {
   if [ "$OHOS_IN_TREE_R2R" = "1" ]; then
     local clrbin_early="$RUNTIME_REPO/artifacts/bin/coreclr/openharmony.$ARCH.$CONFIG"
     mkdir -p "$clrbin_early"
-    if [ ! -s "$clrbin_early/StandardOptimizationData.mibc" ] && [ -f "$SCRIPT_DIR/reference-runtime-pack.nupkg" ]; then
+    if [ ! -s "$clrbin_early/StandardOptimizationData.mibc" ] && resolve_reference_runtime_pack; then
       (python3 -c "
 import zipfile
-z = zipfile.ZipFile('$SCRIPT_DIR/reference-runtime-pack.nupkg')
+z = zipfile.ZipFile('$REFERENCE_RUNTIME_PACK')
 open('$clrbin_early/StandardOptimizationData.mibc','wb').write(z.read('tools/StandardOptimizationData.mibc'))
 " && info "in-tree R2R: PGO mibc seeded before the packs build") || info "in-tree R2R: mibc seed failed - continuing without PGO"
     fi
@@ -688,16 +727,16 @@ for x in glob.glob(dirp+'/*.nuspec'): shutil.copy(x, dirp+'/$HOSTPACK_ID.nuspec'
   local corelib_il="$RUNTIME_REPO/artifacts/obj/coreclr/System.Private.CoreLib/openharmony.$ARCH.$CONFIG/System.Private.CoreLib.dll"
   [ -s "$corelib_il" ] || die "CoreLib IL missing: $corelib_il"
   info "producing ReadyToRun CoreLib (official crossgen2, PGO if mibc present)..."
-  # PGO data: the committed reference runtime pack carries
+  # PGO data: the reference runtime pack (downloaded on demand) carries
   # tools/StandardOptimizationData.mibc (profiles for the 26451.109 assemblies;
   # verified applicable: PGO crossgen of System.Text.Json emits a PGO image).
   # Seed it when the clean build did not produce its own.
-  if [ ! -s "$clrbin/StandardOptimizationData.mibc" ] && [ -f "$SCRIPT_DIR/reference-runtime-pack.nupkg" ]; then
+  if [ ! -s "$clrbin/StandardOptimizationData.mibc" ] && resolve_reference_runtime_pack; then
     (python3 -c "
 import zipfile
-z = zipfile.ZipFile('$SCRIPT_DIR/reference-runtime-pack.nupkg')
+z = zipfile.ZipFile('$REFERENCE_RUNTIME_PACK')
 open('$clrbin/StandardOptimizationData.mibc','wb').write(z.read('tools/StandardOptimizationData.mibc'))
-" && info "PGO mibc seeded from reference-runtime-pack.nupkg") || info "PGO mibc seed failed - continuing without PGO"
+" && info "PGO mibc seeded from the reference runtime pack") || info "PGO mibc seed failed - continuing without PGO"
   fi
   local mibc="$clrbin/StandardOptimizationData.mibc"
   local pgo_args=()
@@ -717,7 +756,8 @@ open('$clrbin/StandardOptimizationData.mibc','wb').write(z.read('tools/StandardO
   # (the CoreLib swap below still runs on it).
   if [ ! -s "$rtpk" ] || ! python3 -c "import zipfile,sys; sys.exit(0 if len(zipfile.ZipFile('$rtpk').namelist()) else 1)" 2>/dev/null; then
     info "Runtime pack empty/corrupt — reassembling from layout"
-    local refpk="$SCRIPT_DIR/reference-runtime-pack.nupkg"
+    resolve_reference_runtime_pack || die "reference runtime pack unavailable (needed to reassemble the runtime pack)"
+    local refpk="$REFERENCE_RUNTIME_PACK"
     python3 "$SCRIPT_DIR/pack-runtime.py" "$rtl" "$refpk" "$rtpk" || die "manual runtime pack failed"
   fi
   # swap the PureIL CoreLib in the pack for the R2R image (native/ location).

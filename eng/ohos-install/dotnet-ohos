@@ -10,7 +10,9 @@
 #   - child-process env       -> OpenHarmonyEnvironmentDefaults in Program/ExecuteCore
 #
 # This wrapper is kept only for compatibility with SDKs built before those
-# changes. For current builds, invoke ~/.dotnet/dotnet directly:
+# changes. The libnuma-shim.so seccomp shim was retired on 2026-09-16 (the
+# embedded numasupport.cpp fix covers it), so no LD_PRELOAD is injected.
+# For current builds, invoke ~/.dotnet/dotnet directly:
 #
 #   export DOTNET_ROOT=~/.dotnet
 #   ~/.dotnet/dotnet build hello.cs    # outputs auto-codesigned
@@ -20,7 +22,6 @@
 
 DOTNET_ROOT="${DOTNET_ROOT:-$HOME/.dotnet}"
 TMPDIR="${TMPDIR:-/data/storage/el2/base/tmp}"
-SHIM="$DOTNET_ROOT/libnuma-shim.so"
 RUNDIR="${XDG_DATA_HOME:-$HOME/.local/share}/dotnet/runfile"
 
 SIGN_TOOL="${BINARY_SIGN_TOOL:-}"
@@ -40,14 +41,6 @@ export DOTNET_EnableWriteXorExecute=0
 export DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
 export DOTNET_CLI_TELEMETRY_OPTOUT=1
 export DOTNET_NOLOGO=1
-
-if [ -f "$SHIM" ]; then
-    case ":${LD_PRELOAD:-}:" in
-        *":$SHIM:"*) ;;
-        *) LD_PRELOAD="$SHIM${LD_PRELOAD:+:$LD_PRELOAD}" ;;
-    esac
-    export LD_PRELOAD
-fi
 
 # sign every ELF under runfile that lacks a .codesign section
 sign_runfile() {

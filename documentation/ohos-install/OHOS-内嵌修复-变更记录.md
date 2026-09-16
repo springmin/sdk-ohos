@@ -79,7 +79,7 @@ export TMPDIR=/data/storage/el2/base/tmp   # 需要可写值；安装脚本会�
 - **SDK 自身进程**：runtimeconfig 已烘焙 W^X=off + Invariant=true，无需 env
 - **构建产物（apphost/自包含）**：`Build`/`Publish` 后自动 codesign，无需 `sign_runfile`
 - **file-based app**：`dotnet run file.cs` 产物同样自动签名
-- **`dotnet-ohos` wrapper 与 `libnuma-shim.so` 不再需要**（但作为旧版本兼容仍保留在 `eng/ohos-install/legacy/`）
+- **`dotnet-ohos` wrapper 与 `libnuma-shim.so` 不再需要**：shim 与源码已于 2026-09-16 移除；wrapper 保留但不再注入 LD_PRELOAD，仅用于旧 SDK 的环境变量与签名兼容
 
 ## 4. 验证记录
 

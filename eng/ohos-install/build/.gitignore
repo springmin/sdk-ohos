@@ -1,2 +1,4 @@
 .work/
 http-server.log
+reference-runtime-pack.nupkg
+third-party/*.nupkg
