@@ -223,6 +223,19 @@ install_workload() {
             fi
         done
         if [ -z "$tb" ]; then
+            # Rolling release with a stable asset name: no GitHub API needed (works without
+            # gh and avoids anonymous rate limits). Cached for 7 days.
+            latest_url="https://github.com/${GH_USER}/sdk-ohos/releases/download/workload-latest/openharmony-workload-latest.tar.gz"
+            latest_tb="${INSTALL_DIR}/workload/openharmony-workload-latest.tar.gz"
+            if [ ! -f "$latest_tb" ] || [ -n "$(find "$latest_tb" -mtime +7 2>/dev/null)" ]; then
+                mkdir -p "${INSTALL_DIR}/workload"
+                if curl -fsIL --connect-timeout 20 "$latest_url" >/dev/null 2>&1; then
+                    download "$latest_url" "$latest_tb" || rm -f "$latest_tb"
+                fi
+            fi
+            [ -f "$latest_tb" ] && tb="$latest_tb"
+        fi
+        if [ -z "$tb" ]; then
             # Look for a published bundle: an explicit workload release first, then the
             # newest workload-* release (the workload has its own version line), then the
             # release the SDK came from. A versioned workload release is a plain GitHub
