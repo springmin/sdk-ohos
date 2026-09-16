@@ -33,14 +33,6 @@ def is_elf(path):
         return False
 
 
-def has_codesign(path):
-    try:
-        out = subprocess.run(["readelf", "-S", path], capture_output=True, text=True).stdout
-        return ".codesign" in out
-    except (OSError, subprocess.SubprocessError):
-        return False
-
-
 def sign_elf(path):
     # Force re-sign: an existing .codesign section may carry a signature from
     # older tooling that the device rejects with EPERM (the signature covers
