@@ -31,6 +31,22 @@ on:
         description: Stock crossgen2 version for R2R CoreLib (empty uses versions.env)
         required: false
         default: ''
+      dotnet_install_sha256:
+        description: sha256 pin for the dot.net dotnet-install.sh bootstrap script (empty uses the in-repo pin)
+        required: false
+        default: ''
+      ndk_sha256:
+        description: sha256 pin for the NDK tarball (empty resolves the published <url>.sha256)
+        required: false
+        default: ''
+      openssl_sha256:
+        description: sha256 pin for the OpenSSL source tarball (empty resolves the release .sha256)
+        required: false
+        default: ''
+      icu_sha256:
+        description: sha256 pin for the ICU source tarball (empty resolves SHASUM512.txt)
+        required: false
+        default: ''
       in_tree_r2r:
         description: 'A/B: R2R the runtime framework in-tree (OpenHarmonyInTreeR2R, in-build crossgen2) instead of the out-of-tree overlay'
         type: boolean
@@ -46,6 +62,14 @@ jobs:
     env:
       CI: 'true'
       OHOS_IN_TREE_R2R: ${{ inputs.in_tree_r2r == true && '1' || '0' }}
+      # Pinned digests (C6). dotnet-install.sh is MUTABLE upstream: when the
+      # download pin mismatches, review https://dot.net/v1/dotnet-install.sh and
+      # pass the new digest via the dotnet_install_sha256 input (or edit here).
+      # Measured 2026-09-21 from https://dot.net/v1/dotnet-install.sh.
+      DOTNET_INSTALL_SHA256: ${{ inputs.dotnet_install_sha256 || '082f7685e156738a1b2e2ed8381a621870d4ce8e8c59278034556f05c186eb2e' }}
+      # dnceng dotnet11 host runtime pack 11.0.0-rc.1.26420.103 is immutable on
+      # the feed; measured 2026-09-21 from the flat2 URL.
+      HOST_PACK_DNCENG_DOTNET11_SHA256: '9ad5bb3b9b72646c952b583a4a8c6097967aadd3697045e4433e864301285d66'
     steps:
       - name: Checkout sdk-ohos (scripts + selfsign)
         uses: actions/checkout@v4
@@ -106,12 +130,39 @@ jobs:
             python3 python3-pip curl git llvm make perl \
             libicu-dev libssl-dev zlib1g-dev >/dev/null
 
+      - name: Resolve CI-env checksums (verified downloads + cache key)
+        id: env-digests
+        env:
+          PIN_NDK: ${{ inputs.ndk_sha256 }}
+          PIN_OPENSSL: ${{ inputs.openssl_sha256 }}
+          PIN_ICU: ${{ inputs.icu_sha256 }}
+        run: |
+          set -euo pipefail
+          resolve() { # <pin> <artifact>: explicit pin wins, else resolve the published digest
+            if [ -n "$1" ]; then printf '%s' "$1"; else bash sdk/eng/ohos-install/build/ohos-ci-env.sh --print-digest "$2"; fi
+          }
+          ndk="$(resolve "$PIN_NDK" ndk)"
+          openssl="$(resolve "$PIN_OPENSSL" openssl)"
+          icu="$(resolve "$PIN_ICU" icu)"
+          {
+            echo "NDK_SHA256=$ndk"
+            echo "OPENSSL_SHA256=$openssl"
+            echo "ICU_SHA256=$icu"
+          } >> "$GITHUB_ENV"
+          {
+            echo "ndk=$ndk"
+            echo "openssl=$openssl"
+            echo "icu=$icu"
+          } >> "$GITHUB_OUTPUT"
+          echo "CI-env digests: ndk=$ndk openssl=$openssl icu=$icu"
+
       - name: Cache NDK/OpenSSL/ICU env
         id: cache-env
         uses: actions/cache@v4
         with:
           path: ~/.ohos-ci-env
-          key: ohos-ci-env-${{ inputs.rid }}-${{ hashFiles('sdk/eng/ohos-install/build/ohos-ci-env.sh') }}
+          # key includes the exact verified artifact digests + script/versions
+          key: ohos-ci-env-${{ inputs.rid }}-${{ steps.env-digests.outputs.ndk }}-${{ steps.env-digests.outputs.openssl }}-${{ steps.env-digests.outputs.icu }}-${{ hashFiles('sdk/eng/ohos-install/build/ohos-ci-env.sh', 'sdk/eng/ohos-install/versions.env') }}
 
       - name: Prepare NDK + OpenSSL + ICU
         if: steps.cache-env.outputs.cache-hit != 'true'
@@ -129,58 +180,68 @@ jobs:
 
       - name: Install host linux-x64 runtime packs into SDK packs dir
         run: |
+          set -euo pipefail
           # SDK's FrameworkReference resolution finds host runtime packs under
           # the SDK packs root (.dotnet/packs), not ~/.nuget. Install the
           # linux-x64 runtime pack there so in-build tools (crossgen2/ILCompiler
-          # inbuild, self-contained at the host RID) resolve it.
+          # inbuild, self-contained at the host RID) resolve it. Every download
+          # goes through the sha256-verified fetch_verified helper (C6).
           PKROOT="$GITHUB_WORKSPACE/runtime/.dotnet/packs/Microsoft.NETCore.App.Runtime.linux-x64"
           mkdir -p "$PKROOT"
           for v in "$BOOTSTRAP_RUNTIME_VERSION" "$HOST_PACK_BRANCH_VERSION" "$REFERENCE_RUNTIME_PACK_VERSION"; do
             d="$PKROOT/$v"
-            [ -d "$d/runtimes" ] && continue
+            if [ -d "$d/runtimes" ]; then continue; fi
             id="microsoft.netcore.app.runtime.linux-x64"
+            sha=""
             case "$v" in
               "$HOST_PACK_DNCENG_DOTNET11_VERSION")
-                src="https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet11/nuget/v3/flat2/$id/$v/$id.$v.nupkg" ;;
+                src="https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet11/nuget/v3/flat2/$id/$v/$id.$v.nupkg"
+                sha="$HOST_PACK_DNCENG_DOTNET11_SHA256" ;;
               *)
                 src="https://github.com/${GH_USER}/runtime-ohos/releases/download/v${REFERENCE_RUNTIME_PACK_VERSION}-ohos/$id.$v.nupkg" ;;
             esac
             mkdir -p "$d" "/tmp/hostfeed/$id/$v"
-            curl -fsSL --retry 3 -o /tmp/hostpack.nupkg "$src" || { echo "FAILED fetch $v"; continue; }
+            bash sdk/eng/ohos-install/build/build-ohos-all.sh --fetch-verified "$src" /tmp/hostpack.nupkg "$sha" \
+              || { echo "FAILED fetch/verify $v"; exit 1; }
             cp /tmp/hostpack.nupkg "/tmp/hostfeed/$id/$v/$id.$v.nupkg"
             (cd "$d" && python3 -c "import zipfile; zipfile.ZipFile('/tmp/hostpack.nupkg').extractall('.')")
-            test -d "$d/runtimes" && echo "installed $v to SDK packs + hostfeed" || echo "FAILED install $v"
+            test -d "$d/runtimes" || { echo "FAILED install $v"; exit 1; }
+            echo "installed $v to SDK packs + hostfeed (sha256 verified)"
           done
           ls "$PKROOT" 2>&1 | head -5
           find /tmp/hostfeed -name "*.nupkg" | head -4
 
       - name: Pre-seed NETStandard.Library (netstandard2.x libs compile)
         run: |
-          for v in 1.6.1 2.0.3; do
-            id="netstandard.library"
-            dir="$HOME/.nuget/packages/$id/$v"
-            [ -d "$dir" ] && continue
+          set -euo pipefail
+          # nuget.org packages are immutable; digests measured from the flat
+          # container on 2026-09-21. Update the pins if the versions change.
+          seed() { # <id> <ver> <sha256> <tmp-name>
+            local id="$1" ver="$2" sha="$3" tmp="/tmp/$4"
+            local dir="$HOME/.nuget/packages/$id/$ver"
+            if [ -d "$dir" ]; then echo "$id $ver already present"; return 0; fi
+            bash sdk/eng/ohos-install/build/build-ohos-all.sh --fetch-verified \
+              "https://api.nuget.org/v3-flatcontainer/$id/$ver/$id.$ver.nupkg" "$tmp" "$sha" \
+              || { echo "FAILED fetch/verify $id $ver"; exit 1; }
             mkdir -p "$dir"
-            curl -fsSL --retry 3 -o /tmp/ns.nupkg "https://api.nuget.org/v3-flatcontainer/$id/$v/$id.$v.nupkg" || { echo "FAILED $id $v"; continue; }
-            cp /tmp/ns.nupkg "$dir/$id.$v.nupkg"
-            python3 -c "import hashlib,base64,json,zipfile,glob,shutil; p='$dir/$id.$v.nupkg'; h=base64.b64encode(hashlib.sha512(open(p,'rb').read()).digest()).decode(); open('$dir/$id.$v.nupkg.sha512','w').write(h); open('$dir/.nupkg.metadata','w').write(json.dumps({'version':2,'contentHash':h,'source':'nuget.org'})); zipfile.ZipFile(p).extractall('$dir'); [shutil.copy(n,'$dir/$id.nuspec') for n in glob.glob('$dir/*.nuspec')]"
-            echo "seeded $id $v"
-          done
+            cp "$tmp" "$dir/$id.$ver.nupkg"
+            python3 -c "import hashlib,base64,json,zipfile,glob,shutil; p='$dir/$id.$ver.nupkg'; h=base64.b64encode(hashlib.sha512(open(p,'rb').read()).digest()).decode(); open('$dir/$id.$ver.nupkg.sha512','w').write(h); open('$dir/.nupkg.metadata','w').write(json.dumps({'version':2,'contentHash':h,'source':'nuget.org'})); zipfile.ZipFile(p).extractall('$dir'); [shutil.copy(n,'$dir/$id.nuspec') for n in glob.glob('$dir/*.nuspec')]"
+            echo "seeded $id $ver (sha256 verified)"
+          }
+          seed netstandard.library 1.6.1 88d6a7d62c7b46d9dc1960bd023019dac93bd03a313ac9843a0435d1f5e6e0fc ns.nupkg
+          seed netstandard.library 2.0.3 3eb87644f79bcffb3c0331dbdac3c7837265f2cdf58a7bfd93e431776f77c9ba ns.nupkg
           # netstandard2.1 libs need NETStandard.Library.Ref 2.1.0 (SDK NETStandard21RefPath)
-          for v in 2.1.0; do
-            id="netstandard.library.ref"
-            dir="$HOME/.nuget/packages/$id/$v"
-            [ -d "$dir" ] && continue
-            mkdir -p "$dir"
-            curl -fsSL --retry 3 -o /tmp/nsr.nupkg "https://api.nuget.org/v3-flatcontainer/$id/$v/$id.$v.nupkg" || { echo "FAILED $id $v"; continue; }
-            cp /tmp/nsr.nupkg "$dir/$id.$v.nupkg"
-            python3 -c "import hashlib,base64,json,zipfile,glob,shutil; p='$dir/$id.$v.nupkg'; h=base64.b64encode(hashlib.sha512(open(p,'rb').read()).digest()).decode(); open('$dir/$id.$v.nupkg.sha512','w').write(h); open('$dir/.nupkg.metadata','w').write(json.dumps({'version':2,'contentHash':h,'source':'nuget.org'})); zipfile.ZipFile(p).extractall('$dir'); [shutil.copy(n,'$dir/$id.nuspec') for n in glob.glob('$dir/*.nuspec')]"
-            echo "seeded $id $v"
-          done
+          seed netstandard.library.ref 2.1.0 46ea2fcbd10a817685b85af7ce0c397d12944bdc81209e272de1e05efd33c78a nsr.nupkg
 
       - name: Bootstrap runtime + aspnetcore SDK (RID graphs + shims)
         run: |
-          curl -sSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh
+          set -euo pipefail
+          # dotnet-install.sh is executed, so pin and verify its sha256 (C6).
+          # The upstream script is mutable: on mismatch review it, then pass the
+          # new digest via the dotnet_install_sha256 workflow input.
+          bash sdk/eng/ohos-install/build/build-ohos-all.sh --fetch-verified \
+            https://dot.net/v1/dotnet-install.sh /tmp/dotnet-install.sh "$DOTNET_INSTALL_SHA256" \
+            || { echo "ERROR: dotnet-install.sh failed sha256 verification"; exit 1; }
           # runtime global.json SDK (actual build SDK)
           bash /tmp/dotnet-install.sh --version "$BOOTSTRAP_SDK_VERSION" \
             --install-dir "$GITHUB_WORKSPACE/runtime/.dotnet" --no-path
@@ -202,14 +263,19 @@ jobs:
 
       - name: Install fork Ref pack (has CompositeMLKem etc.)
         run: |
+          set -euo pipefail
           PKROOT="$GITHUB_WORKSPACE/runtime/.dotnet/packs/Microsoft.NETCore.App.Ref"
           mkdir -p "$PKROOT"
           d="$PKROOT/$REFERENCE_RUNTIME_PACK_VERSION"
           if [ ! -f "$d/data/FrameworkList.xml" ]; then
             mkdir -p "$d"
-            curl -fsSL --retry 3 -o /tmp/ref.nupkg "https://github.com/${GH_USER}/runtime-ohos/releases/download/v${REFERENCE_RUNTIME_PACK_VERSION}-ohos/Microsoft.NETCore.App.Ref.${REFERENCE_RUNTIME_PACK_VERSION}.nupkg"
+            ref_url="https://github.com/${GH_USER}/runtime-ohos/releases/download/v${REFERENCE_RUNTIME_PACK_VERSION}-ohos/Microsoft.NETCore.App.Ref.${REFERENCE_RUNTIME_PACK_VERSION}.nupkg"
+            bash sdk/eng/ohos-install/build/build-ohos-all.sh --fetch-verified \
+              "$ref_url" /tmp/ref.nupkg "${REF_PACK_SHA256:-}" \
+              || { echo "ERROR: fork Ref pack failed sha256 verification"; exit 1; }
             (cd "$d" && python3 -c "import zipfile; zipfile.ZipFile('/tmp/ref.nupkg').extractall('.')")
-            test -f "$d/data/FrameworkList.xml" && echo "installed fork Ref $REFERENCE_RUNTIME_PACK_VERSION" || echo "FAILED Ref install"
+            test -f "$d/data/FrameworkList.xml" || { echo "FAILED Ref install"; exit 1; }
+            echo "installed fork Ref $REFERENCE_RUNTIME_PACK_VERSION (sha256 verified)"
           fi
           ls "$PKROOT" 2>&1 | head -4
 
@@ -245,6 +311,16 @@ jobs:
           SDK_VERSION=$(basename "$SDK_TAR" | sed 's/dotnet-sdk-//; s/-openharmony-arm64\.tar\.gz//')
           echo "Publishing runtime/aspnetcore at $RT_VERSION, sdk redist at $SDK_VERSION"
           gh auth status
+          # Publish SHA256SUMS next to the assets (C2/C6 follow-up): installers
+          # verify against the sibling SHA256SUMS from the same release.
+          write_sums() { # <dir>
+            local dir="$1"
+            (cd "$dir" && find . -maxdepth 1 -type f ! -name SHA256SUMS -printf '%f\0' | sort -z | xargs -0 -r sha256sum) > "$dir/SHA256SUMS"
+            echo "SHA256SUMS: $dir ($(wc -l < "$dir/SHA256SUMS") files)"
+          }
+          write_sums runtime/artifacts/packages/Release/Shipping
+          write_sums aspnetcore/artifacts/packages/Release/Shipping
+          write_sums sdk/artifacts/packages/Release/Shipping
           gh release create "v$RT_VERSION-ohos" --repo "${{ github.repository_owner }}/runtime-ohos" \
             --notes "CI build (workflow_dispatch $BUILDID)" || true
           gh release upload "v$RT_VERSION-ohos" --repo "${{ github.repository_owner }}/runtime-ohos" --clobber \

@@ -36,6 +36,13 @@
 #   sh build-ohos-all.sh [--arch arm64] [--rid openharmony-arm64] [--config Release]
 #                        [--buildid 20260901.1] [--skip-runtime|--skip-aspnetcore|--skip-sdk]
 #                        [--stage-only 1|3]        # run only one stage (1=runtime …)
+#   sh build-ohos-all.sh --fetch-verified <url> <dest> [sha256]   # CI helper: verify+download, exit
+#
+# Verification (C6): the stock crossgen2, reference runtime pack and host
+# runtime packs are sha256-verified before use. Digests come from explicit pins
+# (versions.env, HOST_PACK_SHA256) or the same release (SHA256SUMS / <url>.sha256
+# / GitHub release-asset digest). Unverifiable downloads are refused unless
+# ALLOW_UNVERIFIED=1 (insecure).
 #
 # Required env:
 #   OHOS_NDK_HOME     OpenHarmony NDK root (e.g. $HOME/hmos-tools/sdk/default/openharmony)
@@ -118,17 +125,25 @@ R2R_JOBS="${R2R_JOBS:-4}"
 
 RUN_RUNTIME=1; RUN_ASCORE=1; RUN_SDK=1
 STAGE_ONLY=""
-for a in "$@"; do
-  case "$a" in
-    --arch=*)   ARCH="${a#*=}"; RID="openharmony-$ARCH" ;;
-    --rid=*)    RID="${a#*=}" ;;
-    --config=*) CONFIG="${a#*=}" ;;
-    --buildid=*) BUILDID="${a#*=}" ;;
-    --skip-runtime) RUN_RUNTIME=0 ;;
-    --skip-aspnetcore) RUN_ASCORE=0 ;;
-    --skip-sdk) RUN_SDK=0 ;;
-    --stage-only=*) STAGE_ONLY="${a#*=}" ;;
-    *) echo "unknown arg: $a" >&2; exit 2 ;;
+FETCH_MODE=0; FETCH_URL=""; FETCH_DEST=""; FETCH_SHA=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --arch=*)   ARCH="${1#*=}"; RID="openharmony-$ARCH"; shift ;;
+    --rid=*)    RID="${1#*=}"; shift ;;
+    --config=*) CONFIG="${1#*=}"; shift ;;
+    --buildid=*) BUILDID="${1#*=}"; shift ;;
+    --skip-runtime) RUN_RUNTIME=0; shift ;;
+    --skip-aspnetcore) RUN_ASCORE=0; shift ;;
+    --skip-sdk) RUN_SDK=0; shift ;;
+    --stage-only=*) STAGE_ONLY="${1#*=}"; shift ;;
+    --fetch-verified)
+      # single verified download used by CI: <url> <dest> [sha256]; exit after.
+      FETCH_MODE=1; shift
+      if [ $# -gt 0 ]; then FETCH_URL="$1"; shift; fi
+      if [ $# -gt 0 ]; then FETCH_DEST="$1"; shift; fi
+      if [ $# -gt 0 ]; then FETCH_SHA="$1"; shift; fi
+      ;;
+    *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
 done
 
@@ -152,23 +167,107 @@ stage0() {
   info "Repos ready: runtime=$(git -C "$RUNTIME_REPO" log --oneline -1 | cut -c1-40)"
 }
 
-# ensure the OFFICIAL NuGet crossgen2 (downloads if not cached)
-# fetch <url> <dest> <sha256> <what>; verifies the digest before moving into place.
+# ---- download verification (C6) ---------------------------------------------
+# Every download goes through fetch_verified(): the digest is either pinned by
+# the caller or resolved from the same release (<url>.sha256, SHA256SUMS, or the
+# GitHub release-asset digest). Downloads with no resolvable digest are refused
+# unless ALLOW_UNVERIFIED=1 is set explicitly (insecure).
+ALLOW_UNVERIFIED="${ALLOW_UNVERIFIED:-0}"
+
+github_asset_sha256() { # <owner> <repo> <tag> <asset> -> hex
+  local body
+  body="$(curl -fsSL --retry 2 --connect-timeout 20 --max-time 60 \
+      "https://api.github.com/repos/$1/releases/tags/$2" 2>/dev/null)" || return 1
+  printf '%s\n' "$body" | awk -v want="$3" '
+    /"name": / { hit = (index($0, "\"name\": \"" want "\"") > 0) ? 1 : 0; next }
+    hit && /"digest": "sha256:/ { s = $0; sub(/.*"digest": "sha256:/, "", s); sub(/".*/, "", s); print s; exit }'
+}
+
+resolve_url_sha256() { # <url> <asset-name> -> hex or empty
+  local url="$1" name="$2" dir tmp v rest owner repo tag
+  dir="${url%/*}"
+  tmp="$(mktemp)" || return 1
+  if curl -fsSL --retry 1 --connect-timeout 20 --max-time 60 -o "$tmp" "${url}.sha256" 2>/dev/null; then
+    v="$(grep -oE '[0-9a-fA-F]{64}' "$tmp" | head -1 || true)"
+    rm -f "$tmp"
+    if [ -n "$v" ]; then printf '%s' "$v" | tr 'A-F' 'a-f'; return 0; fi
+  else
+    rm -f "$tmp"
+  fi
+  tmp="$(mktemp)" || return 1
+  if curl -fsSL --retry 1 --connect-timeout 20 --max-time 60 -o "$tmp" "$dir/SHA256SUMS" 2>/dev/null; then
+    v="$(awk -v a="$name" '$NF == a || $NF == "*" a { print $1; exit }' "$tmp")"
+    v="$(printf '%s' "$v" | grep -oE '^[0-9a-fA-F]{64}$' || true)"
+    rm -f "$tmp"
+    if [ -n "$v" ]; then printf '%s' "$v" | tr 'A-F' 'a-f'; return 0; fi
+  else
+    rm -f "$tmp"
+  fi
+  case "$url" in
+    https://github.com/*/releases/download/*)
+      rest="${url#https://github.com/}"
+      owner="${rest%%/*}"; rest="${rest#*/}"
+      repo="${rest%%/*}"; rest="${rest#*/}"
+      rest="${rest#releases/download/}"; tag="${rest%%/*}"
+      github_asset_sha256 "$owner" "$repo" "$tag" "$name" && return 0
+      ;;
+  esac
+  return 1
+}
+
+# sha256 for immutable package versions on the dnceng flat2 feeds (Azure
+# Artifacts rejects re-uploads, so the digest is stable). Measured from the
+# feed on 2026-09-21; HOST_PACK_SHA256 env overrides, and a pin must be added
+# here (or via the env override) when a new version is selected.
+dnceng_pkg_sha256() { # <package-id> <version> -> hex or empty
+  case "$1/$2" in
+    microsoft.netcore.app.runtime.linux-x64/11.0.0-rc.1.26420.103)
+      printf '%s' "9ad5bb3b9b72646c952b583a4a8c6097967aadd3697045e4433e864301285d66" ;;
+    *) printf '%s' "" ;;
+  esac
+}
+
+# fetch <url> <dest> <sha256|-> <what>; verifies the digest before moving into place.
 fetch_verified() {
-  local url="$1" dest="$2" sha="$3" what="$4"
+  local url="$1" dest="$2" sha="${3:-}" what="$4"
   local tmp="$dest.download.$$"
+  local got
   mkdir -p "$(dirname "$dest")"
+  if [ -z "$sha" ] || [ "$sha" = "-" ]; then
+    sha="$(resolve_url_sha256 "$url" "$(basename "${url%%\?*}")" || true)"
+  fi
+  if [ -z "$sha" ]; then
+    if [ "${ALLOW_UNVERIFIED:-0}" = "1" ]; then
+      info "WARNING: ALLOW_UNVERIFIED=1 - $what is NOT checksum-verified (insecure)"
+    else
+      info "refusing unverified download for $what (no sha256; publish SHA256SUMS next to the artifact or set ALLOW_UNVERIFIED=1)"
+      return 1
+    fi
+  fi
   info "downloading $what ..."
   if ! curl -sL --fail --retry 3 -o "$tmp" "$url"; then
     rm -f "$tmp"; info "download failed: $what"; return 1
   fi
-  local got
-  got=$(sha256sum "$tmp" | cut -d' ' -f1)
-  if [ "$got" != "$sha" ]; then
-    rm -f "$tmp"; info "sha256 mismatch for $what: $got"; return 1
+  if [ -n "$sha" ]; then
+    got=$(sha256sum "$tmp" | cut -d' ' -f1)
+    if [ "$got" != "$sha" ]; then
+      rm -f "$tmp"; info "sha256 mismatch for $what: got ${got} want ${sha}"; return 1
+    fi
+    info "sha256 OK: $what"
   fi
   mv -f "$tmp" "$dest"
 }
+
+# --fetch-verified <url> <dest> [sha256]: single verified download for CI
+# (used by .github/workflows/ohos-full-build.yml). Set ALLOW_UNVERIFIED=1 to
+# bypass, which is insecure. Exits 0 on success, 1 on download/verify failure.
+if [ "$FETCH_MODE" = "1" ]; then
+  [ -n "$FETCH_URL" ] && [ -n "$FETCH_DEST" ] \
+    || { echo "usage: build-ohos-all.sh --fetch-verified <url> <dest> [sha256]" >&2; exit 2; }
+  LOG=/dev/stdout   # progress/banners go to the step log
+  fetch_verified "$FETCH_URL" "$FETCH_DEST" "${FETCH_SHA:--}" "fetch $(basename "${FETCH_URL%%\?*}")" || exit 1
+  exit 0
+fi
 
 # Resolve the reference runtime pack (on-demand download, sha256-pinned).
 resolve_reference_runtime_pack() {
@@ -482,6 +581,8 @@ for tfm, fr in proj.get('frameworks',{}).items():
 # the host pack for the in-build toolchain from the feed in some cmake/nuget
 # combos — NETSDK1112). ILCompiler_inbuild is SelfContained at the SDK runtime
 # version (nuget.org), so try that first, then dnceng dotnet12 candidates.
+# Downloads are sha256-verified (fetch_verified); dnceng versions use the
+# dnceng_pkg_sha256 pins, GitHub-hosted ones resolve the release digest.
 ensure_nuget_runtime_pack() {
   local rid="$1"
   local id="microsoft.netcore.app.runtime.$rid"
@@ -502,7 +603,14 @@ ensure_nuget_runtime_pack() {
     fi
     info "pre-seeding $id $ver..."
     local tmp="$(mktemp -d)"
-    if curl -fsSL --retry 2 -o "$tmp/p.nupkg" "$url"; then
+    # The dnceng feeds are immutable per version, so their content digest is
+    # pinned (dnceng_pkg_sha256 / HOST_PACK_SHA256); the GitHub-hosted packs
+    # resolve their digest from the release. Unverifiable downloads are refused.
+    local sha=""
+    case "$url" in
+      *pkgs.dev.azure.com*) sha="${HOST_PACK_SHA256:-$(dnceng_pkg_sha256 "$id" "$ver")}" ;;
+    esac
+    if fetch_verified "$url" "$tmp/p.nupkg" "$sha" "host runtime pack $id $ver"; then
       mkdir -p "$dir"
       cp "$tmp/p.nupkg" "$dir/$id.$ver.nupkg"
       python3 -c "import hashlib,base64,json; h=base64.b64encode(hashlib.sha512(open('$tmp/p.nupkg','rb').read()).digest()).decode(); open('$dir/$id.$ver.nupkg.sha512','w').write(h); open('$dir/.nupkg.metadata','w').write(json.dumps({'version':2,'contentHash':h,'source':'local'}))"
@@ -512,7 +620,7 @@ ensure_nuget_runtime_pack() {
       if ls "$dir"/*.nuspec >/dev/null 2>&1; then info "pre-seeded $id $ver"; return 0; fi
     else
       rm -rf "$tmp"
-      info "  (not found: $id $ver)"
+      info "  (not found or unverified: $id $ver)"
     fi
   done
   return 1

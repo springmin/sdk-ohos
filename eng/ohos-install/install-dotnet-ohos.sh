@@ -29,6 +29,25 @@
 # Options:
 #   INSTALL_DIR=<dir>  override install dir (default $HOME/.dotnet)
 #
+# Verification (C2): every downloaded artifact (selfsign binary, SDK/runtime
+# tarball, workload bundle) is sha256-verified before it is extracted or
+# executed; downloads land in a mktemp file and only move into place after the
+# digest matches. The expected digest comes from, in order:
+#   1) an explicit env pin:
+#        SELFSIGN_SHA256   selfsign-ohos-arm64
+#        TARBALL_SHA256    the sdk/runtime tarball (also local-file installs)
+#        WORKLOAD_SHA256   the workload bundle
+#   2) a SHA256SUMS sibling asset in the same GitHub release
+#   3) a <asset>.sha256 sibling asset in the same release
+#   4) the GitHub release-asset digest (sha256) of that release
+# When no digest resolves the artifact is refused. ALLOW_UNVERIFIED=1 bypasses
+# that (insecure; offline/legacy installs only) and prints a warning.
+# Local tarballs are verified against <file>.sha256 or TARBALL_SHA256 and are
+# refused without one unless ALLOW_UNVERIFIED=1. A cached rolling workload
+# bundle is re-verified before reuse and discarded when it cannot be.
+# Release publishers should upload SHA256SUMS next to the artifacts (the
+# ohos-full-build workflow does this for new releases).
+#
 # Idempotent: safe to re-run (re-extract, re-sign, profile entries deduped).
 # ============================================================================
 
@@ -59,6 +78,8 @@ ASPNETCORE_TAG="v${RT_VERSION}-ohos"
 ASPNETCORE_FILE="aspnetcore-runtime-${RT_VERSION}-${RID}.tar.gz"
 
 INSTALL_DIR="${INSTALL_DIR:-${HOME}/.dotnet}"
+# Explicit opt-out from download verification (insecure; offline/legacy only).
+ALLOW_UNVERIFIED="${ALLOW_UNVERIFIED:-0}"
 
 # OpenHarmony platform workload (${TFM}-openharmony<api>). Ships as a bundle
 # (ohos-workload-<version>.tar.gz: manifests/ + feed/ + install-ohos-workload.sh)
@@ -131,6 +152,124 @@ download() { # url -> file
     [ -s "$out" ] || { printf 'ERROR: download produced empty file: %s\n' "$out" >&2; return 1; }
 }
 
+# ---------------------------------------------------------- verification (C2)
+# sha256 + expected-digest helpers; see the Verification section in the header.
+sha256_of() { # <file> -> hex on stdout
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$1" | cut -d' ' -f1
+    elif command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "$1" | cut -d' ' -f1
+    elif command -v openssl >/dev/null 2>&1; then
+        openssl dgst -sha256 "$1" | sed 's/.*[ =]//'
+    else
+        return 1
+    fi
+}
+
+verify_sha256() { # <file> <expected-hex> <what>
+    VF_FILE="$1"; VF_WANT="$2"; VF_WHAT="$3"
+    if [ -z "$VF_WANT" ]; then
+        printf 'ERROR: no sha256 to verify %s against\n' "$VF_WHAT" >&2
+        return 1
+    fi
+    VF_GOT="$(sha256_of "$VF_FILE")" || {
+        printf 'ERROR: no sha256 tool (sha256sum/shasum/openssl) to verify %s\n' "$VF_WHAT" >&2
+        return 1
+    }
+    VF_WANT="$(printf '%s' "$VF_WANT" | tr 'A-F' 'a-f')"
+    if [ "$VF_GOT" != "$VF_WANT" ]; then
+        printf 'ERROR: sha256 mismatch for %s\n  expected: %s\n  actual:   %s\n' \
+            "$VF_WHAT" "$VF_WANT" "$VF_GOT" >&2
+        return 1
+    fi
+    info "sha256 OK: ${VF_WHAT}"
+    return 0
+}
+
+fetch_text() { # <url> -> stdout; nonzero when unreachable
+    FETCH_TMP="$(mktemp "${TMPDIR:-/tmp}/dotnet-sha.XXXXXX")" || return 1
+    if download "$1" "$FETCH_TMP" >/dev/null 2>&1; then
+        cat "$FETCH_TMP"; rm -f "$FETCH_TMP"; return 0
+    fi
+    rm -f "$FETCH_TMP"; return 1
+}
+
+resolve_expected_sha256() { # <url> <asset-name> -> hex or empty
+    RE_URL="$1"; RE_NAME="$2"
+    # 1) SHA256SUMS sibling in the same release
+    if RE_TXT="$(fetch_text "${RE_URL%/*}/SHA256SUMS")"; then
+        RE_SHA="$(printf '%s\n' "$RE_TXT" | awk -v a="$RE_NAME" '$NF == a || $NF == "*" a { print $1; exit }')"
+        RE_SHA="$(printf '%s' "$RE_SHA" | grep -oE '^[0-9a-fA-F]{64}$' || true)"
+        if [ -n "$RE_SHA" ]; then printf '%s' "$RE_SHA" | tr 'A-F' 'a-f'; return 0; fi
+    fi
+    # 2) <url>.sha256 sibling
+    if RE_TXT="$(fetch_text "${RE_URL}.sha256")"; then
+        RE_SHA="$(printf '%s\n' "$RE_TXT" | grep -oE '[0-9a-fA-F]{64}' | head -1 || true)"
+        if [ -n "$RE_SHA" ]; then printf '%s' "$RE_SHA" | tr 'A-F' 'a-f'; return 0; fi
+    fi
+    # 3) GitHub API release-asset digest (same-release trust, like SHA256SUMS)
+    case "$RE_URL" in
+        https://github.com/*/releases/download/*)
+            RE_REST="${RE_URL#https://github.com/}"
+            RE_OWNER="${RE_REST%%/*}"; RE_REST="${RE_REST#*/}"
+            RE_REPO="${RE_REST%%/*}"; RE_REST="${RE_REST#*/}"
+            RE_REST="${RE_REST#releases/download/}"; RE_TAG="${RE_REST%%/*}"
+            RE_TXT="$(fetch_text "https://api.github.com/repos/${RE_OWNER}/${RE_REPO}/releases/tags/${RE_TAG}")" || return 1
+            printf '%s\n' "$RE_TXT" | awk -v want="$RE_NAME" '
+                /"name": / { hit = (index($0, "\"name\": \"" want "\"") > 0) ? 1 : 0; next }
+                hit && /"digest": "sha256:/ { s = $0; sub(/.*"digest": "sha256:/, "", s); sub(/".*/, "", s); print s; exit }'
+            return 0
+            ;;
+    esac
+    return 1
+}
+
+download_verified() { # <url> <out> <what> [expected-sha256]
+    DV_URL="$1"; DV_OUT="$2"; DV_WHAT="$3"; DV_SHA="${4:-}"
+    DV_TMP="$(mktemp "${TMPDIR:-/tmp}/dotnet-dl.XXXXXX")" || {
+        printf 'ERROR: mktemp failed for %s\n' "$DV_WHAT" >&2; return 1
+    }
+    if ! download "$DV_URL" "$DV_TMP"; then
+        rm -f "$DV_TMP"
+        printf 'ERROR: download failed: %s\n' "$DV_URL" >&2
+        return 1
+    fi
+    if [ -z "$DV_SHA" ]; then
+        DV_SHA="$(resolve_expected_sha256 "$DV_URL" "$(basename "$DV_URL")")" || DV_SHA=""
+    fi
+    if [ -z "$DV_SHA" ]; then
+        if [ "$ALLOW_UNVERIFIED" = "1" ]; then
+            warn_echo "WARN: ALLOW_UNVERIFIED=1 — accepting unverified ${DV_WHAT}"
+        else
+            rm -f "$DV_TMP"
+            printf 'ERROR: no sha256 available for %s\n  refusing unverified download: %s\n  Set the matching *_SHA256 pin (see script header) or ALLOW_UNVERIFIED=1 (insecure).\n' \
+                "$DV_WHAT" "$DV_URL" >&2
+            return 1
+        fi
+    else
+        verify_sha256 "$DV_TMP" "$DV_SHA" "$DV_WHAT" || { rm -f "$DV_TMP"; return 1; }
+    fi
+    mv -f "$DV_TMP" "$DV_OUT" || { rm -f "$DV_TMP"; return 1; }
+    return 0
+}
+
+verify_local_file() { # <file> <pin> <what-prefix> -> 0 verified/opted-out, 1 unavailable
+    LF_FILE="$1"; LF_PIN="${2:-}"; LF_WHAT="$3"
+    if [ -z "$LF_PIN" ] && [ -f "${LF_FILE}.sha256" ]; then
+        LF_PIN="$(grep -oE '[0-9a-fA-F]{64}' "${LF_FILE}.sha256" | head -1 || true)"
+    fi
+    if [ -z "$LF_PIN" ]; then
+        if [ "$ALLOW_UNVERIFIED" = "1" ]; then
+            warn_echo "WARN: ALLOW_UNVERIFIED=1 — accepting unverified ${LF_WHAT}"
+            return 0
+        fi
+        printf 'ERROR: no sha256 for %s\n  add %s.sha256, or set the matching *_SHA256 pin, or ALLOW_UNVERIFIED=1 (insecure)\n' \
+            "$LF_WHAT" "$LF_FILE" >&2
+        return 1
+    fi
+    verify_sha256 "$LF_FILE" "$LF_PIN" "$LF_WHAT"
+}
+
 # ------------------------------------------------------- resolve artifact
 RESOLVED_FILE=""
 resolve_choice() { # "sdk"|"runtime"|local path|url
@@ -180,18 +319,21 @@ SDK_TAG="$(printf '%s\n' "$RELEASES" | sed -n 's/^ *sdk|sdk-ohos|\([^|]*\)|.*/\1
 SELFSIGN_URL="https://github.com/${GH_USER}/sdk-ohos/releases/download/${SDK_TAG}/${SELFSIGN_ASSET}"
 deploy_selfsign() {
     [ -x "${INSTALL_DIR}/selfsign" ] && { info "selfsign already at ${INSTALL_DIR}/selfsign"; return 0; }
-    TMP="${TMPDIR:-/tmp}/selfsign-ohos-$$"
-    if ! download "$SELFSIGN_URL" "$TMP" 2>/dev/null; then
-        rm -f "$TMP"
-        warn_echo "  WARN: selfsign download failed (offline?); will use binary-sign-tool if present"
+    SELFSIGN_TMP="$(mktemp "${TMPDIR:-/tmp}/selfsign-ohos.XXXXXX")" || {
+        warn_echo "  WARN: mktemp failed; cannot download selfsign"
+        return 1
+    }
+    if ! download_verified "$SELFSIGN_URL" "$SELFSIGN_TMP" "selfsign (${SELFSIGN_ASSET})" "${SELFSIGN_SHA256:-}"; then
+        rm -f "$SELFSIGN_TMP"
+        warn_echo "  WARN: selfsign download/verification failed (offline or no sha256?); will use binary-sign-tool if present"
         return 1
     fi
-    if ! file "$TMP" 2>/dev/null | grep -q "ELF"; then
-        rm -f "$TMP"
+    if ! file "$SELFSIGN_TMP" 2>/dev/null | grep -q "ELF"; then
+        rm -f "$SELFSIGN_TMP"
         warn_echo "  WARN: downloaded selfsign is not an ELF (release asset missing?); using binary-sign-tool if present"
         return 1
     fi
-    mv -f "$TMP" "${INSTALL_DIR}/selfsign" || { rm -f "$TMP"; return 1; }
+    mv -f "$SELFSIGN_TMP" "${INSTALL_DIR}/selfsign" || { rm -f "$SELFSIGN_TMP"; return 1; }
     chmod +x "${INSTALL_DIR}/selfsign"
     info "deployed selfsign -> ${INSTALL_DIR}/selfsign (preferred signer, parallel to dotnet/dnx)"
     # The just-deployed selfsign must itself carry .codesign before it can exec
@@ -225,23 +367,42 @@ install_workload() {
     asset=""
     rel_tag=""
     if [ -z "$bundle" ]; then
-        # a bundle installed next to the SDK (or shipped with it)
+        # a bundle installed next to the SDK (or shipped with it); a local bundle
+        # is only used after verification via <file>.sha256 / WORKLOAD_SHA256
         for pat in openharmony-workload ohos-workload; do
             [ -n "$tb" ] && break
             tb="$(ls "${INSTALL_DIR}"/workload/"$pat"-*.tar.gz 2>/dev/null | tail -1 || true)"
             if [ -z "$tb" ]; then
                 tb="$(ls "${SCRIPT_DIR}"/"$pat"-*.tar.gz 2>/dev/null | tail -1 || true)"
             fi
+            if [ -n "$tb" ]; then
+                if [ -f "${tb}.sha256" ] || [ -n "${WORKLOAD_SHA256:-}" ] || [ "$ALLOW_UNVERIFIED" = "1" ]; then
+                    verify_local_file "$tb" "${WORKLOAD_SHA256:-}" "workload bundle $(basename "$tb")" || tb=""
+                else
+                    info "ignoring local workload bundle without checksum: $tb"
+                    tb=""
+                fi
+            fi
         done
         if [ -z "$tb" ]; then
             # Rolling release with a stable asset name: no GitHub API needed (works without
-            # gh and avoids anonymous rate limits). Cached for 7 days.
+            # gh and avoids anonymous rate limits). Cached for 7 days and re-verified
+            # against its published digest before reuse.
             latest_url="https://github.com/${GH_USER}/sdk-ohos/releases/download/workload-latest/openharmony-workload-latest.tar.gz"
             latest_tb="${INSTALL_DIR}/workload/openharmony-workload-latest.tar.gz"
+            if [ -f "$latest_tb" ]; then
+                latest_sha="${WORKLOAD_SHA256:-}"
+                if [ -z "$latest_sha" ]; then latest_sha="$(resolve_expected_sha256 "$latest_url" "openharmony-workload-latest.tar.gz")" || latest_sha=""; fi
+                if [ -z "$latest_sha" ] || ! verify_sha256 "$latest_tb" "$latest_sha" "cached workload bundle"; then
+                    info "dropping cached workload bundle (no verifiable checksum)"
+                    rm -f "$latest_tb"
+                fi
+            fi
             if [ ! -f "$latest_tb" ] || [ -n "$(find "$latest_tb" -mtime +7 2>/dev/null)" ]; then
                 mkdir -p "${INSTALL_DIR}/workload"
                 if curl -fsIL --connect-timeout 20 "$latest_url" >/dev/null 2>&1; then
-                    download "$latest_url" "$latest_tb" || rm -f "$latest_tb"
+                    download_verified "$latest_url" "$latest_tb" "workload bundle (workload-latest)" "${WORKLOAD_SHA256:-}" \
+                        || rm -f "$latest_tb"
                 fi
             fi
             [ -f "$latest_tb" ] && tb="$latest_tb"
@@ -274,8 +435,17 @@ install_workload() {
             if [ -n "$asset" ]; then
                 mkdir -p "${INSTALL_DIR}/workload"
                 tb="${INSTALL_DIR}/workload/${asset}"
+                wurl="https://github.com/${GH_USER}/sdk-ohos/releases/download/${rel_tag}/${asset}"
+                if [ -f "$tb" ]; then
+                    wsha="${WORKLOAD_SHA256:-}"
+                    if [ -z "$wsha" ]; then wsha="$(resolve_expected_sha256 "$wurl" "$asset")" || wsha=""; fi
+                    if [ -z "$wsha" ] || ! verify_sha256 "$tb" "$wsha" "cached workload bundle $asset"; then
+                        info "dropping cached workload bundle $asset (no verifiable checksum)"
+                        rm -f "$tb"
+                    fi
+                fi
                 if [ ! -f "$tb" ]; then
-                    download "https://github.com/${GH_USER}/sdk-ohos/releases/download/${rel_tag}/${asset}" "$tb" || tb=""
+                    download_verified "$wurl" "$tb" "workload bundle $asset" "${WORKLOAD_SHA256:-}" || tb=""
                 fi
             fi
         fi
@@ -291,6 +461,8 @@ install_workload() {
         return 0
     fi
     if [ -f "$bundle" ]; then
+        verify_local_file "$bundle" "${WORKLOAD_SHA256:-}" "workload bundle $(basename "$bundle")" \
+            || { info "WARNING: refusing unverified workload bundle $bundle"; return 0; }
         tmp="$(mktemp -d)"
         tar zxf "$bundle" -C "$tmp" || { info "WARNING: could not extract $bundle"; rm -rf "$tmp"; return 0; }
         bundle="$(find "$tmp" -mindepth 1 -maxdepth 1 -type d | head -1)"
@@ -416,7 +588,7 @@ EOF
 
 # ------------------------------------------------------------------- main
 # prerequisite tools
-for tool in tar file readelf; do
+for tool in tar file readelf mktemp; do
     command -v "$tool" >/dev/null 2>&1 || die "required tool not found: $tool"
 done
 
@@ -438,12 +610,15 @@ esac
 
 TARBALL=""
 if [ -n "${RESOLVED_URL:-}" ]; then
-    TMP="${TMPDIR:-/tmp}/dotnet-ohos-$$"
-    mkdir -p "$TMP"
+    TMP="$(mktemp -d "${TMPDIR:-/tmp}/dotnet-ohos.XXXXXX")" || die "mktemp -d failed"
     TARBALL="$TMP/$RESOLVED_FILE"
-    download "$RESOLVED_URL" "$TARBALL" || die "download failed: ${RESOLVED_URL}"
+    download_verified "$RESOLVED_URL" "$TARBALL" "tarball $RESOLVED_FILE" "${TARBALL_SHA256:-}" \
+        || die "download failed or unverified: ${RESOLVED_URL}
+  (set TARBALL_SHA256=<sha256>, or ALLOW_UNVERIFIED=1 to accept unverified — insecure)"
 else
     TARBALL="$RESOLVED_FILE"
+    verify_local_file "$TARBALL" "${TARBALL_SHA256:-}" "local tarball $(basename "$TARBALL")" \
+        || die "refusing unverified local tarball: ${TARBALL}"
 fi
 
 install_tarball "$TARBALL"
