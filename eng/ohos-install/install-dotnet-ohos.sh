@@ -215,9 +215,13 @@ resolve_expected_sha256() { # <url> <asset-name> -> hex or empty
             RE_REPO="${RE_REST%%/*}"; RE_REST="${RE_REST#*/}"
             RE_REST="${RE_REST#releases/download/}"; RE_TAG="${RE_REST%%/*}"
             RE_TXT="$(fetch_text "https://api.github.com/repos/${RE_OWNER}/${RE_REPO}/releases/tags/${RE_TAG}")" || return 1
-            printf '%s\n' "$RE_TXT" | awk -v want="$RE_NAME" '
-                /"name": / { hit = (index($0, "\"name\": \"" want "\"") > 0) ? 1 : 0; next }
-                hit && /"digest": "sha256:/ { s = $0; sub(/.*"digest": "sha256:/, "", s); sub(/".*/, "", s); print s; exit }'
+            # The API returns minified JSON: split the asset array on "},{" first.
+            RE_LINE="$(printf '%s' "$RE_TXT" | tr -d ' \n' | sed 's/},{/}\n{/g' \
+                | grep -F "\"name\":\"${RE_NAME}\"" | head -n 1 || true)"
+            [ -n "$RE_LINE" ] || return 1
+            RE_SHA="$(printf '%s' "$RE_LINE" | sed -n 's/.*"digest":"sha256:\([0-9a-f]\{64\}\).*/\1/p')"
+            [ -n "$RE_SHA" ] || return 1
+            printf '%s' "$RE_SHA"
             return 0
             ;;
     esac

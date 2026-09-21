@@ -175,12 +175,18 @@ stage0() {
 ALLOW_UNVERIFIED="${ALLOW_UNVERIFIED:-0}"
 
 github_asset_sha256() { # <owner> <repo> <tag> <asset> -> hex
-  local body
+  local body line v
   body="$(curl -fsSL --retry 2 --connect-timeout 20 --max-time 60 \
-      "https://api.github.com/repos/$1/releases/tags/$2" 2>/dev/null)" || return 1
-  printf '%s\n' "$body" | awk -v want="$3" '
-    /"name": / { hit = (index($0, "\"name\": \"" want "\"") > 0) ? 1 : 0; next }
-    hit && /"digest": "sha256:/ { s = $0; sub(/.*"digest": "sha256:/, "", s); sub(/".*/, "", s); print s; exit }'
+      "https://api.github.com/repos/$1/$2/releases/tags/$3" 2>/dev/null)" || return 1
+  # The API returns minified JSON: split the asset array on "},{" before
+  # matching the asset by name, then pull its sha256 digest (empty when the
+  # asset predates GitHub's digest field).
+  line="$(printf '%s' "$body" | tr -d ' \n' | sed 's/},{/}\n{/g' \
+      | grep -F "\"name\":\"$4\"" | head -n 1 || true)"
+  [ -n "$line" ] || return 1
+  v="$(printf '%s' "$line" | sed -n 's/.*"digest":"sha256:\([0-9a-f]\{64\}\).*/\1/p')"
+  [ -n "$v" ] || return 1
+  printf '%s' "$v"
 }
 
 resolve_url_sha256() { # <url> <asset-name> -> hex or empty

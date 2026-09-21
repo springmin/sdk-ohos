@@ -115,13 +115,16 @@ fetch_url_text() { # <url> -> stdout (no logging); nonzero when unreachable
 }
 
 github_asset_digest() { # <owner> <repo> <tag> <asset> -> sha256:<hex>
-  local owner="$1" repo="$2" tag="$3" asset="$4" body
+  local owner="$1" repo="$2" tag="$3" asset="$4" body line v
   body="$(fetch_url_text "https://api.github.com/repos/$owner/$repo/releases/tags/$tag")" || return 1
-  printf '%s\n' "$body" | awk -v want="$asset" '
-    /"name": / { hit = (index($0, "\"name\": \"" want "\"") > 0) ? 1 : 0; next }
-    hit && /"digest": "sha256:/ {
-      s = $0; sub(/.*"digest": "sha256:/, "", s); sub(/".*/, "", s); print "sha256:" s; exit
-    }'
+  # The API returns minified JSON: split the asset array on "},{" before
+  # matching the asset by name, then pull its sha256 digest.
+  line="$(printf '%s' "$body" | tr -d ' \n' | sed 's/},{/}\n{/g' \
+      | grep -F "\"name\":\"$asset\"" | head -n 1 || true)"
+  [ -n "$line" ] || return 1
+  v="$(printf '%s' "$line" | sed -n 's/.*"digest":"sha256:\([0-9a-f]\{64\}\).*/\1/p')"
+  [ -n "$v" ] || return 1
+  printf 'sha256:%s' "$v"
 }
 
 resolve_digest() { # <url> <asset-name> [pin] -> digest spec or empty
