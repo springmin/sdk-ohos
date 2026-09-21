@@ -89,6 +89,7 @@ jobs:
             echo "RT_VERSION=$RT_VERSION"
             echo "SDK_VERSION=$SDK_VERSION"
             echo "BOOTSTRAP_SDK_VERSION=$BOOTSTRAP_SDK_VERSION"
+            echo "BOOTSTRAP_RUNTIME_VERSION=$BOOTSTRAP_RUNTIME_VERSION"
             echo "RIDGRAPH_SDK_VERSION=$RIDGRAPH_SDK_VERSION"
             echo "REFERENCE_RUNTIME_PACK_VERSION=$REFERENCE_RUNTIME_PACK_VERSION"
             echo "HOST_PACK_BRANCH_VERSION=$HOST_PACK_BRANCH_VERSION"
@@ -134,7 +135,7 @@ jobs:
           # inbuild, self-contained at the host RID) resolve it.
           PKROOT="$GITHUB_WORKSPACE/runtime/.dotnet/packs/Microsoft.NETCore.App.Runtime.linux-x64"
           mkdir -p "$PKROOT"
-          for v in "$BOOTSTRAP_SDK_VERSION" "$HOST_PACK_BRANCH_VERSION" "$REFERENCE_RUNTIME_PACK_VERSION"; do
+          for v in "$BOOTSTRAP_RUNTIME_VERSION" "$HOST_PACK_BRANCH_VERSION" "$REFERENCE_RUNTIME_PACK_VERSION"; do
             d="$PKROOT/$v"
             [ -d "$d/runtimes" ] && continue
             id="microsoft.netcore.app.runtime.linux-x64"
@@ -195,7 +196,7 @@ jobs:
           # ILLink.Tasks (built in-tree) runs with rollForward=Major against
           # Microsoft.NETCore.App at VERSION_BAND; no matching release exists yet,
           # so alias the SDK runtime (local runs do the same).
-          cp -r "$GITHUB_WORKSPACE/runtime/.dotnet/shared/Microsoft.NETCore.App/$BOOTSTRAP_SDK_VERSION" \
+          cp -r "$GITHUB_WORKSPACE/runtime/.dotnet/shared/Microsoft.NETCore.App/$BOOTSTRAP_RUNTIME_VERSION" \
             "$GITHUB_WORKSPACE/runtime/.dotnet/shared/Microsoft.NETCore.App/$VERSION_BAND"
           "$GITHUB_WORKSPACE/runtime/.dotnet/dotnet" --list-runtimes
 

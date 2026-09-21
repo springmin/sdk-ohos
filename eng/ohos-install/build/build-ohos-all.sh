@@ -469,7 +469,7 @@ for tfm, fr in proj.get('frameworks',{}).items():
 " 2>&1 | tee -a "$LOG"
     echo "--- nuget linux-x64 cache ---" | tee -a "$LOG"
     ls "$HOME/.nuget/packages/microsoft.netcore.app.runtime.linux-x64/" 2>/dev/null | tee -a "$LOG" || true
-    ls "$HOME/.nuget/packages/microsoft.netcore.app.runtime.linux-x64/$BOOTSTRAP_SDK_VERSION/" 2>/dev/null | head -6 | tee -a "$LOG"
+    ls "$HOME/.nuget/packages/microsoft.netcore.app.runtime.linux-x64/$BOOTSTRAP_RUNTIME_VERSION/" 2>/dev/null | head -6 | tee -a "$LOG"
     echo "--- last attempt log tail ---" | tee -a "$LOG"
     tail -40 "$alog" | tee -a "$LOG"
     echo "--- configure platform lines ---" | tee -a "$LOG"
@@ -562,7 +562,7 @@ stage1() {
   # ILCompiler_inbuild is SelfContained at the SDK runtime version; seed the
   # SDK version plus dnceng candidates (branch product version, darc baseline).
   ensure_nuget_runtime_pack "linux-x64" \
-    "$BOOTSTRAP_SDK_VERSION" \
+    "$BOOTSTRAP_RUNTIME_VERSION" \
     "${HOST_PACK_BRANCH_VERSION%.*}.$(echo "$BUILDID" | cut -d. -f2)" \
     "$HOST_PACK_BRANCH_VERSION" || true
   if [ ! -f "$chbin/apphost" ]; then
@@ -688,11 +688,11 @@ for x in glob.glob(dirp+'/*.nuspec'): shutil.copy(x, dirp+'/$HOSTPACK_ID.nuspec'
   # device has no bootstrap SDK, so the pack must carry the framework itself.
   # The runtime pack nupkg from clr+libs+packs (same build) provides it.
   # The deps runtimepack entry version must be the framework the ilc was built
-  # against (bootstrap SDK runtime, BOOTSTRAP_SDK_VERSION, round-17 device-verified), NOT the
+  # against (bootstrap SDK runtime, BOOTSTRAP_RUNTIME_VERSION, round-17 device-verified), NOT the
   # runtime pack file version - hostpolicy resolves libcoreclr.so from it and a
   # mismatch fails with "Could not resolve CoreCLR path" on device.
   local rtpack_nupkg=$(ls "$ship"/Microsoft.NETCore.App.Runtime.$RID.$RT_VERSION.nupkg 2>/dev/null | head -1)
-  python3 "$SCRIPT_DIR/assemble-ilc-pack.py" "$ilcd" "$ilc_ref" "$ilcpk" "$rtpack_nupkg" "$BOOTSTRAP_SDK_VERSION" --tfm "$TFM" \
+  python3 "$SCRIPT_DIR/assemble-ilc-pack.py" "$ilcd" "$ilc_ref" "$ilcpk" "$rtpack_nupkg" "$BOOTSTRAP_RUNTIME_VERSION" --tfm "$TFM" \
     || die "assemble ilc split pack failed"
 
   # --- crossgen2 pack: untrimmed split re-publish (device R2R) ---
@@ -716,7 +716,7 @@ for x in glob.glob(dirp+'/*.nuspec'): shutil.copy(x, dirp+'/$HOSTPACK_ID.nuspec'
   local cg2pk="$ship/Microsoft.NETCore.App.Crossgen2.$RID.$RT_VERSION.nupkg"
   local cg2_ref=$(ls "$ship"/Microsoft.NETCore.App.Crossgen2.$RID.*.nupkg 2>/dev/null | grep -v "$RT_VERSION" | head -1)
   [ -n "$cg2_ref" ] || cg2_ref="$cg2pk"  # same-pack metadata is safe (atomic write)
-  python3 "$SCRIPT_DIR/assemble-crossgen2-pack.py" "$cg2d" "$cg2_ref" "$cg2pk" "$rtpack_nupkg" "$BOOTSTRAP_SDK_VERSION" --tfm "$TFM" \
+  python3 "$SCRIPT_DIR/assemble-crossgen2-pack.py" "$cg2d" "$cg2_ref" "$cg2pk" "$rtpack_nupkg" "$BOOTSTRAP_RUNTIME_VERSION" --tfm "$TFM" \
     || die "assemble crossgen2 split pack failed"
   tar czf "$ship/dotnet-crossgen2-$RT_VERSION-$RID.tar.gz" -C "$cg2d" --exclude='*.pdb' . \
     || die "crossgen2 tool tarball refresh failed"
