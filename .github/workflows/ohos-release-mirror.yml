@@ -3,10 +3,16 @@ name: OHOS release mirror (post-rename)
 # Fork-local helper: mirrors the latest Shipping assets of a frozen pipeline
 # release (the `-ohos` tags, which also feed the build) into the post-rename
 # `-openharmony` distribution releases, from a fast GitHub runner.
-# Idempotent: assets are re-uploaded with --clobber and verified by sha256.
+# Version pins come from eng/ohos-install/versions.env; only the asset filter is
+# per-run. Idempotent: assets are re-uploaded with --clobber and verified by sha256.
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      asset_prefix:
+        description: 'Mirror only assets updated at this ISO prefix (e.g. 2026-09-14T03:17); empty mirrors all'
+        required: false
+        default: ''
 
 jobs:
   mirror:
@@ -17,33 +23,49 @@ jobs:
       matrix:
         include:
           - repo: runtime-ohos
-            source_tag: v11.0.0-rc.1.26451.109-ohos
-            target_tag: v11.0.0-rc.1.26451.109-openharmony
+            band: runtime
           - repo: aspnetcore-ohos
-            source_tag: v11.0.0-rc.1.26451.109-ohos
-            target_tag: v11.0.0-rc.1.26451.109-openharmony
+            band: runtime
           - repo: sdk-ohos
-            source_tag: v11.0.100-rc.1.26451.109-ohos
-            target_tag: v11.0.100-rc.1.26451.109-openharmony
+            band: sdk
     env:
       GH_TOKEN: ${{ secrets.OHOS_RELEASE_TOKEN }}
       REPO: ${{ matrix.repo }}
-      SRC: ${{ matrix.source_tag }}
-      DST: ${{ matrix.target_tag }}
-      ASSET_PREFIX: "2026-09-14T03:17"
+      BAND: ${{ matrix.band }}
+      ASSET_PREFIX: ${{ inputs.asset_prefix }}
+
     steps:
+      - name: Load version pins
+        run: |
+          gh api "repos/${{ github.repository }}/contents/eng/ohos-install/versions.env" \
+            -H "Accept: application/vnd.github.raw" > versions.env
+          cat versions.env
+
       - name: Mirror the latest Shipping assets to the post-rename release
         run: |
           set -euo pipefail
+          set -a
+          . ./versions.env
+          set +a
+          case "$BAND" in
+            runtime) VERSION="$RT_VERSION" ;;
+            sdk) VERSION="$SDK_VERSION" ;;
+            *) echo "unknown band: $BAND" >&2; exit 2 ;;
+          esac
+          SRC="v$VERSION-ohos"
+          DST="v$VERSION-openharmony"
+          OWNER="${{ github.repository_owner }}"
+          echo "mirroring $OWNER/$REPO $SRC -> $DST (asset_prefix='$ASSET_PREFIX')"
+
           mkdir -p dl
-          gh api "repos/springmin/$REPO/releases/tags/$SRC" \
+          gh api "repos/$OWNER/$REPO/releases/tags/$SRC" \
             --jq ".assets[] | select(.updated_at | startswith(\"$ASSET_PREFIX\")) | [.name, (.size|tostring), (.digest // \"none\")] | @tsv" \
             > assets.tsv
           echo "assets to mirror: $(wc -l < assets.tsv)"
           while IFS=$'\t' read -r name size digest; do
             [ -n "$name" ] || continue
             echo "--- $name ($size bytes)"
-            gh release download "$SRC" --repo "springmin/$REPO" --pattern "$name" --dir dl --clobber
+            gh release download "$SRC" --repo "$OWNER/$REPO" --pattern "$name" --dir dl --clobber
             actual=$(stat -c %s "dl/$name")
             if [ "$actual" != "$size" ]; then
               echo "SIZE-FAIL $name: $actual != $size"
@@ -57,7 +79,7 @@ jobs:
                 exit 1
               fi
             fi
-            gh release upload "$DST" "dl/$name" --repo "springmin/$REPO" --clobber
+            gh release upload "$DST" "dl/$name" --repo "$OWNER/$REPO" --clobber
             rm -f "dl/$name"
             echo "OK $name"
           done < assets.tsv

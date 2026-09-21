@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       buildid:
-        description: OfficialBuildId (YYYYMMDD.N)
-        required: true
-        default: '20260901.109'
+        description: OfficialBuildId (YYYYMMDD.N); empty uses versions.env
+        required: false
+        default: ''
       runtime_ref:
         description: runtime-ohos branch/tag to build
         required: true
@@ -28,9 +28,9 @@ on:
         type: boolean
         default: false
       crossgen2_version:
-        description: Stock crossgen2 version for R2R CoreLib (must match the runtime branch R2R version)
+        description: Stock crossgen2 version for R2R CoreLib (empty uses versions.env)
         required: false
-        default: '11.0.0-rc.1.26451.109'
+        default: ''
       in_tree_r2r:
         description: 'A/B: R2R the runtime framework in-tree (OpenHarmonyInTreeR2R, in-build crossgen2) instead of the out-of-tree overlay'
         type: boolean
@@ -45,32 +45,58 @@ jobs:
     timeout-minutes: 355
     env:
       CI: 'true'
-      BUILDID: ${{ inputs.buildid }}
-      RID: ${{ inputs.rid }}
-      STOCK_CROSSGEN2_VERSION: ${{ inputs.crossgen2_version }}
       OHOS_IN_TREE_R2R: ${{ inputs.in_tree_r2r == true && '1' || '0' }}
     steps:
       - name: Checkout sdk-ohos (scripts + selfsign)
         uses: actions/checkout@v4
         with:
-          repository: springmin/sdk-ohos
+          repository: ${{ github.repository }}
           ref: ${{ inputs.sdk_ref }}
           path: sdk
 
       - name: Checkout runtime-ohos
         uses: actions/checkout@v4
         with:
-          repository: springmin/runtime-ohos
+          repository: ${{ github.repository_owner }}/runtime-ohos
           ref: ${{ inputs.runtime_ref }}
           path: runtime
 
       - name: Checkout aspnetcore-ohos
         uses: actions/checkout@v4
         with:
-          repository: springmin/aspnetcore-ohos
+          repository: ${{ github.repository_owner }}/aspnetcore-ohos
           ref: ${{ inputs.aspnetcore_ref }}
           path: aspnetcore
           submodules: recursive
+
+      - name: Resolve version pins (sdk/eng/ohos-install/versions.env)
+        env:
+          BUILDID_INPUT: ${{ inputs.buildid }}
+          RID_INPUT: ${{ inputs.rid }}
+          CROSSGEN2_VERSION_INPUT: ${{ inputs.crossgen2_version }}
+        run: |
+          set -a
+          . sdk/eng/ohos-install/versions.env
+          set +a
+          BUILDID="${BUILDID_INPUT:-$DEFAULT_BUILDID}"
+          RID="${RID_INPUT:-$RID}"
+          STOCK_CROSSGEN2_VERSION="${CROSSGEN2_VERSION_INPUT:-$CI_STOCK_CROSSGEN2_VERSION}"
+          {
+            echo "BUILDID=$BUILDID"
+            echo "RID=$RID"
+            echo "STOCK_CROSSGEN2_VERSION=$STOCK_CROSSGEN2_VERSION"
+            echo "VERSION_BAND=$VERSION_BAND"
+            echo "RT_VERSION=$RT_VERSION"
+            echo "SDK_VERSION=$SDK_VERSION"
+            echo "BOOTSTRAP_SDK_VERSION=$BOOTSTRAP_SDK_VERSION"
+            echo "RIDGRAPH_SDK_VERSION=$RIDGRAPH_SDK_VERSION"
+            echo "REFERENCE_RUNTIME_PACK_VERSION=$REFERENCE_RUNTIME_PACK_VERSION"
+            echo "HOST_PACK_BRANCH_VERSION=$HOST_PACK_BRANCH_VERSION"
+            echo "HOST_PACK_DNCENG_DOTNET11_VERSION=$HOST_PACK_DNCENG_DOTNET11_VERSION"
+            echo "GH_USER=$GH_USER"
+          } >> "$GITHUB_ENV"
+          echo "buildid=$BUILDID rid=$RID crossgen2=$STOCK_CROSSGEN2_VERSION"
+          echo "runtime=$RT_VERSION sdk=$SDK_VERSION"
 
       - name: Install host build deps
         run: |
@@ -108,15 +134,15 @@ jobs:
           # inbuild, self-contained at the host RID) resolve it.
           PKROOT="$GITHUB_WORKSPACE/runtime/.dotnet/packs/Microsoft.NETCore.App.Runtime.linux-x64"
           mkdir -p "$PKROOT"
-          for v in 11.0.0-rc.1.26420.103 11.0.0-rc.1.26431.109 11.0.0-rc.1.26451.109; do
+          for v in "$BOOTSTRAP_SDK_VERSION" "$HOST_PACK_BRANCH_VERSION" "$REFERENCE_RUNTIME_PACK_VERSION"; do
             d="$PKROOT/$v"
             [ -d "$d/runtimes" ] && continue
             id="microsoft.netcore.app.runtime.linux-x64"
             case "$v" in
-              11.0.0-rc.1.26420.103)
+              "$HOST_PACK_DNCENG_DOTNET11_VERSION")
                 src="https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet11/nuget/v3/flat2/$id/$v/$id.$v.nupkg" ;;
               *)
-                src="https://github.com/springmin/runtime-ohos/releases/download/v11.0.0-rc.1.26451.109-ohos/$id.$v.nupkg" ;;
+                src="https://github.com/${GH_USER}/runtime-ohos/releases/download/v${REFERENCE_RUNTIME_PACK_VERSION}-ohos/$id.$v.nupkg" ;;
             esac
             mkdir -p "$d" "/tmp/hostfeed/$id/$v"
             curl -fsSL --retry 3 -o /tmp/hostpack.nupkg "$src" || { echo "FAILED fetch $v"; continue; }
@@ -155,34 +181,34 @@ jobs:
         run: |
           curl -sSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh
           # runtime global.json SDK (actual build SDK)
-          bash /tmp/dotnet-install.sh --version 11.0.100-rc.1.26420.103 \
+          bash /tmp/dotnet-install.sh --version "$BOOTSTRAP_SDK_VERSION" \
             --install-dir "$GITHUB_WORKSPACE/runtime/.dotnet" --no-path
-          # RIDGRAPH_SDKVER (shims + aspnetcore portable graph)
-          bash /tmp/dotnet-install.sh --version 11.0.100-preview.6.26359.118 \
+          # RIDGRAPH_SDK_VERSION (shims + aspnetcore portable graph)
+          bash /tmp/dotnet-install.sh --version "$RIDGRAPH_SDK_VERSION" \
             --install-dir "$GITHUB_WORKSPACE/runtime/.dotnet" --no-path
-          bash /tmp/dotnet-install.sh --version 11.0.100-preview.6.26359.118 \
+          bash /tmp/dotnet-install.sh --version "$RIDGRAPH_SDK_VERSION" \
             --install-dir "$GITHUB_WORKSPACE/aspnetcore/.dotnet" --no-path
           # aspnetcore global.json SDK (arcade would download it mid-build, too
           # late for the RID graph injection before the build)
-          bash /tmp/dotnet-install.sh --version 11.0.100-rc.1.26420.103 \
+          bash /tmp/dotnet-install.sh --version "$BOOTSTRAP_SDK_VERSION" \
             --install-dir "$GITHUB_WORKSPACE/aspnetcore/.dotnet" --no-path
           # ILLink.Tasks (built in-tree) runs with rollForward=Major against
-          # Microsoft.NETCore.App 11.0.0; no 11.0.0 release exists yet, so
-          # alias the SDK runtime (local runs do the same).
-          cp -r "$GITHUB_WORKSPACE/runtime/.dotnet/shared/Microsoft.NETCore.App/11.0.0-rc.1.26420.103" \
-            "$GITHUB_WORKSPACE/runtime/.dotnet/shared/Microsoft.NETCore.App/11.0.0"
+          # Microsoft.NETCore.App at VERSION_BAND; no matching release exists yet,
+          # so alias the SDK runtime (local runs do the same).
+          cp -r "$GITHUB_WORKSPACE/runtime/.dotnet/shared/Microsoft.NETCore.App/$BOOTSTRAP_SDK_VERSION" \
+            "$GITHUB_WORKSPACE/runtime/.dotnet/shared/Microsoft.NETCore.App/$VERSION_BAND"
           "$GITHUB_WORKSPACE/runtime/.dotnet/dotnet" --list-runtimes
 
-      - name: Install fork Ref pack (26451.109, has CompositeMLKem etc.)
+      - name: Install fork Ref pack (has CompositeMLKem etc.)
         run: |
           PKROOT="$GITHUB_WORKSPACE/runtime/.dotnet/packs/Microsoft.NETCore.App.Ref"
           mkdir -p "$PKROOT"
-          d="$PKROOT/11.0.0-rc.1.26451.109"
+          d="$PKROOT/$REFERENCE_RUNTIME_PACK_VERSION"
           if [ ! -f "$d/data/FrameworkList.xml" ]; then
             mkdir -p "$d"
-            curl -fsSL --retry 3 -o /tmp/ref.nupkg "https://github.com/springmin/runtime-ohos/releases/download/v11.0.0-rc.1.26451.109-ohos/Microsoft.NETCore.App.Ref.11.0.0-rc.1.26451.109.nupkg"
+            curl -fsSL --retry 3 -o /tmp/ref.nupkg "https://github.com/${GH_USER}/runtime-ohos/releases/download/v${REFERENCE_RUNTIME_PACK_VERSION}-ohos/Microsoft.NETCore.App.Ref.${REFERENCE_RUNTIME_PACK_VERSION}.nupkg"
             (cd "$d" && python3 -c "import zipfile; zipfile.ZipFile('/tmp/ref.nupkg').extractall('.')")
-            test -f "$d/data/FrameworkList.xml" && echo "installed fork Ref 26451.109" || echo "FAILED Ref install"
+            test -f "$d/data/FrameworkList.xml" && echo "installed fork Ref $REFERENCE_RUNTIME_PACK_VERSION" || echo "FAILED Ref install"
           fi
           ls "$PKROOT" 2>&1 | head -4
 
@@ -200,7 +226,7 @@ jobs:
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ohos-build-${{ inputs.rid }}-${{ inputs.buildid }}
+          name: ohos-build-${{ inputs.rid }}-${{ github.run_id }}
           path: |
             runtime/artifacts/packages/Release/Shipping/*
             aspnetcore/artifacts/packages/Release/Shipping/*
@@ -218,15 +244,15 @@ jobs:
           SDK_VERSION=$(basename "$SDK_TAR" | sed 's/dotnet-sdk-//; s/-openharmony-arm64\.tar\.gz//')
           echo "Publishing runtime/aspnetcore at $RT_VERSION, sdk redist at $SDK_VERSION"
           gh auth status
-          gh release create "v$RT_VERSION-ohos" --repo springmin/runtime-ohos \
-            --notes "CI build (workflow_dispatch ${{ inputs.buildid }})" || true
-          gh release upload "v$RT_VERSION-ohos" --repo springmin/runtime-ohos --clobber \
+          gh release create "v$RT_VERSION-ohos" --repo "${{ github.repository_owner }}/runtime-ohos" \
+            --notes "CI build (workflow_dispatch $BUILDID)" || true
+          gh release upload "v$RT_VERSION-ohos" --repo "${{ github.repository_owner }}/runtime-ohos" --clobber \
             runtime/artifacts/packages/Release/Shipping/* || true
-          gh release create "v$RT_VERSION-ohos" --repo springmin/aspnetcore-ohos \
-            --notes "CI build (workflow_dispatch ${{ inputs.buildid }})" || true
-          gh release upload "v$RT_VERSION-ohos" --repo springmin/aspnetcore-ohos --clobber \
+          gh release create "v$RT_VERSION-ohos" --repo "${{ github.repository_owner }}/aspnetcore-ohos" \
+            --notes "CI build (workflow_dispatch $BUILDID)" || true
+          gh release upload "v$RT_VERSION-ohos" --repo "${{ github.repository_owner }}/aspnetcore-ohos" --clobber \
             aspnetcore/artifacts/packages/Release/Shipping/* || true
-          gh release create "v$SDK_VERSION-ohos" --repo springmin/sdk-ohos \
-            --notes "CI build (workflow_dispatch ${{ inputs.buildid }})" || true
-          gh release upload "v$SDK_VERSION-ohos" --repo springmin/sdk-ohos --clobber \
+          gh release create "v$SDK_VERSION-ohos" --repo "${{ github.repository_owner }}/sdk-ohos" \
+            --notes "CI build (workflow_dispatch $BUILDID)" || true
+          gh release upload "v$SDK_VERSION-ohos" --repo "${{ github.repository_owner }}/sdk-ohos" --clobber \
             sdk/artifacts/packages/Release/Shipping/* || true

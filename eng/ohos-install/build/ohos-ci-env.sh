@@ -5,8 +5,9 @@
 # Builds everything build-ohos-all.sh needs that is NOT obtained by the
 # repo builds themselves:
 #   NDK      OpenHarmony Public SDK native/ (llvm + sysroot, ohos clang)
-#   OpenSSL  3.3.1 cross-compiled static libs for aarch64-ohos
-#   ICU      75.1 cross-compiled static libs for aarch64-ohos
+#   OpenSSL  cross-compiled static libs for aarch64-ohos
+#   ICU      cross-compiled static libs for aarch64-ohos
+# Versions and the NDK URL come from ../versions.env (env overrides win).
 #
 # Output layout (default PREFIX=~/.ohos-ci-env; override with --prefix):
 #   $PREFIX/ohos-sdk       -> OHOS_NDK_HOME (SDK root, contains native/)
@@ -26,13 +27,18 @@
 # ============================================================================
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ ! -f "$SCRIPT_DIR/../versions.env" ]; then
+  echo "ERROR: missing $SCRIPT_DIR/../versions.env (run this script from the sdk-ohos repository)" >&2
+  exit 1
+fi
+# shellcheck source=../versions.env
+. "$SCRIPT_DIR/../versions.env"
+
 ARCH=aarch64
 CONFIG=Debug
 PREFIX="${PREFIX:-$HOME/.ohos-ci-env}"
 KEEP_SDK_TAR=0
-NDK_URL="${NDK_URL:-https://repo.huaweicloud.com/openharmony/os/6.0.0.1-Release/ohos-sdk-windows_linux-public.tar.gz}"
-OPENSSL_VERSION="${OPENSSL_VERSION:-3.3.1}"
-ICU_VERSION="${ICU_VERSION:-75.1}"
 
 while [ $# -gt 0 ]; do
   case "$1" in

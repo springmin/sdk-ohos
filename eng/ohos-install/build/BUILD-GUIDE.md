@@ -2,8 +2,9 @@
 
 构建 .NET（runtime → aspnetcore → sdk）的 OpenHarmony (OHOS, RID `openharmony-arm64`) 交叉产物。
 
-版本：runtime/aspnetcore `11.0.0-rc.1.26451.109` · SDK `11.0.100-rc.1.26451.109`
-（由 `--buildid 20260901.109` 决定；三仓需保持同一版本使 feed 可解析）
+版本 pin（runtime/aspnetcore/SDK、crossgen2、digest、TFM 等）统一在 `eng/ohos-install/versions.env`；
+本页示例对应当前默认值：runtime/aspnetcore `11.0.0-rc.1.26451.109` · SDK `11.0.100-rc.1.26451.109`
+（由 `--buildid` 决定；三仓需保持同一版本使 feed 可解析）
 
 ---
 
@@ -29,18 +30,18 @@ gh workflow run ohos-full-build.yml --repo springmin/sdk-ohos \
 
 ### B. 本地一键（增量，复用已编译环境）
 ```sh
-# 前置 env（deps 已就绪时直接复用；干净机先跑 ./ohos-ci-env.sh 产出同款目录）
-export OHOS_NDK_HOME=/home/springmin/dotnet/deps/ohos-sdk
-export OPENSSL_DIR=/home/springmin/dotnet/deps/openssl/install
-export ICU_DIR=/home/springmin/dotnet/deps/icu/install
-export RUNTIME_REPO=/home/springmin/dotnet/runtime-ohos
-export SDK_REPO=/home/springmin/dotnet/sdk-ohos
-export ASCORE_REPO=/home/springmin/dotnet/aspnetcore-ohos
+# 三个仓按兄弟目录摆放时（<parent>/{sdk-ohos,runtime-ohos,aspnetcore-ohos}）
+# 无需设置路径；否则显式指向（示例）：
+export RUNTIME_REPO=$HOME/src/runtime-ohos
+export SDK_REPO=$HOME/src/sdk-ohos
+export ASCORE_REPO=$HOME/src/aspnetcore-ohos
+# 干净机先跑 ./ohos-ci-env.sh 后，把输出目录导出给构建脚本：
+eval "$(bash ohos-ci-env.sh --prefix "$HOME/.ohos-ci-env")"
 
-sh build-ohos-all.sh                    # 默认全链；BUILDID 默认 20260901.109
+sh build-ohos-all.sh                    # 默认全链；BUILDID 默认取 versions.env
 ```
-> 脚本内三仓路径默认 `~/sources/{runtime,sdk,aspnetcore-ohos}`；当前完整工作区位于
-> `~/dotnet/{runtime-ohos,sdk-ohos,aspnetcore-ohos}`，故用上面的显式 env 指向。
+> 三个仓路径默认：SDK 仓 = 本脚本所在 checkout，runtime/aspnetcore = 其兄弟目录
+> `runtime-ohos` / `aspnetcore-ohos`。
 
 ## 三、常用参数
 
@@ -54,11 +55,11 @@ sh build-ohos-all.sh \
 
 ## 四、前置条件（不是裸跑就能过）
 
-1. 三仓源码在 `RUNTIME_REPO/SDK_REPO/ASCORE_REPO` 指向的路径，且各自 `.dotnet` bootstrap SDK 已就位（runtime `global.json` 用 `11.0.100-rc.1.26420.103`，并已注入 ohos RID graph）。
+1. 三仓源码在 `RUNTIME_REPO/SDK_REPO/ASCORE_REPO` 指向的路径，且各自 `.dotnet` bootstrap SDK 已就位（runtime `global.json` 用 `BOOTSTRAP_SDK_VERSION`/`RIDGRAPH_SDK_VERSION`，见 `eng/ohos-install/versions.env`，并已注入 ohos RID graph）。
 2. 交叉工具链产物（脚本 stage0 会逐一校验，缺则 die）：
    - `OHOS_NDK_HOME`：OHOS NDK（需含 `native/build/cmake/ohos.toolchain.cmake` + `aarch64-linux-ohos` 编译器 wrapper）
    - `OPENSSL_DIR/lib/libcrypto.a`、`ICU_DIR/lib`：**为目标 RID 交叉编译**的产物
-   - 本地已固化于 `/home/springmin/dotnet/deps/{ohos-sdk,openssl,icu}`；干净机用 `ohos-ci-env.sh` 重建。
+   - 本地可用 `ohos-ci-env.sh --prefix <dir>` 固化到 `<dir>/{ohos-sdk,openssl/install,icu/install}`；干净机用它重建。
 3. 网络：构建期需访问 dnceng/azureedge/ci.dot.net 拉取官方包（本地偶发停滞时，SDK 构建所需的 6.0.36/7.0.20/8.0.30/9.0.19/10.0.11/11.0.0-rc.1.26452.110 runtime 可预装进 `sdk/.dotnet/shared/` 使 dotnetup 跳过）。
 
 ## 五、产物位置

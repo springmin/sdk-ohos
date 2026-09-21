@@ -40,7 +40,7 @@ die()   { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 [ -n "$TARBALL" ] || die "usage: sh $0 <dotnet-runtime-*.tar.gz> [install_dir]"
 [ -r "$TARBALL" ] || die "tarball not readable: $TARBALL
   (on OHOS, files inside another app's sandbox — e.g. WeChat appdata — cannot
-   be read; move the file to /storage/Users/currentUser/Download first)"
+   be read; move the file to a readable location such as the Download folder first)"
 
 # required tools (tar/file/readelf come with the OHOS SDK or coreutils)
 for tool in tar file readelf; do
@@ -58,8 +58,7 @@ find_sign_tool() {
     for p in \
         "${HOME}/.harmonybrew/bin/binary-sign-tool" \
         "${HOME}/.harmonybrew/Cellar/ohos-sdk/"*/toolchains/lib/binary-sign-tool \
-        "${HOME}/.harmonybrew/Cellar/ohos-sdk/"*/bin/binary-sign-tool \
-        "/storage/Users/currentUser/.harmonybrew/bin/binary-sign-tool"
+        "${HOME}/.harmonybrew/Cellar/ohos-sdk/"*/bin/binary-sign-tool
     do
         if [ -f "$p" ]; then
             printf '%s\n' "$p"

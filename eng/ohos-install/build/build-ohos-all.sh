@@ -38,33 +38,47 @@
 #                        [--stage-only 1|3]        # run only one stage (1=runtime …)
 #
 # Required env:
-#   OHOS_NDK_HOME     OpenHarmony NDK root (e.g. /home/springmin/hmos-tools/sdk/default/openharmony)
-#   RUNTIME_REPO SDK_REPO ASCORE_REPO  (defaults to $HOME/sources/{runtime,sdk,aspnetcore-ohos})
+#   OHOS_NDK_HOME     OpenHarmony NDK root (e.g. $HOME/hmos-tools/sdk/default/openharmony)
+#   RUNTIME_REPO SDK_REPO ASCORE_REPO  (defaults: this sdk checkout plus its sibling
+#                                      checkouts runtime-ohos / aspnetcore-ohos)
 #   OPENSSL_DIR ICU_DIR                (cross-compiled OpenSSL + ICU for the target)
+#
+# Version pins (product versions, crossgen2, digests, TFM, asset port) live in
+# ../versions.env; exported environment values win over its defaults.
 #
 # Version flow (keep the three repos on ONE version so feeds resolve):
 #   LABEL=rc, PRE=1, OFFICIALBUILDID=<id>  →  11.0.0-rc.1.<yyMMdd>.<id>
-#   sdk uses 11.0.100-rc.1.<...>  (SDK band 100 vs runtime 0) via its own build.
+#   sdk uses the SDK band (100 vs runtime 0) via its own build.
 # ============================================================================
 set -euo pipefail
 
 # ---- config -----------------------------------------------------------------
+# Version pins come from ../versions.env (sourced below); exported environment
+# values still win over its defaults.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VERSIONS_ENV="$SCRIPT_DIR/../versions.env"
+if [ ! -f "$VERSIONS_ENV" ]; then
+  echo "ERROR: missing $VERSIONS_ENV (run this script from the sdk-ohos repository)" >&2
+  exit 1
+fi
+# shellcheck source=../versions.env
+. "$VERSIONS_ENV"
+
 ARCH="${ARCH:-arm64}"
 RID="openharmony-${ARCH}"
 CONFIG="${CONFIG:-Release}"
 LABEL="${LABEL:-rc}"
 PRE="${PRE:-1}"
-BUILDID="${BUILDID:-20260901.109}"
-VERSION_BAND="${VERSION_BAND:-11.0.0}"          # runtime/aspnetcore
-SDK_BAND="${SDK_BAND:-11.0.100}"                # sdk
-RIDGRAPH_SDKVER="${RIDGRAPH_SDKVER:-11.0.100-preview.6.26359.118}"  # bootstrap SDK whose RID graph carries openharmony
-HOME_DIR="${HOME:-/home/springmin}"
-RUNTIME_REPO="${RUNTIME_REPO:-$HOME_DIR/sources/runtime}"
-SDK_REPO="${SDK_REPO:-$HOME_DIR/sources/sdk}"
-ASCORE_REPO="${ASCORE_REPO:-$HOME_DIR/sources/aspnetcore-ohos}"
+BUILDID="${BUILDID:-$DEFAULT_BUILDID}"
+RIDGRAPH_SDKVER="${RIDGRAPH_SDKVER:-$RIDGRAPH_SDK_VERSION}"  # bootstrap SDK whose RID graph carries openharmony
+# Defaults: this sdk checkout (SDK_REPO) and its sibling checkouts.
+SDK_REPO="${SDK_REPO:-$(cd "$SCRIPT_DIR/../../.." && pwd)}"
+_SIBLING_DIR="$(dirname "$SDK_REPO")"
+RUNTIME_REPO="${RUNTIME_REPO:-$_SIBLING_DIR/runtime-ohos}"
+ASCORE_REPO="${ASCORE_REPO:-$_SIBLING_DIR/aspnetcore-ohos}"
+unset _SIBLING_DIR
 # Runtime work dir (feed/assets/log/selfsign/stock tools). Defaults to a
 # .work dir under this build/ folder (git-ignored) so a fresh clone can run.
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORK="${WORK:-$(dirname "$SCRIPT_DIR")/.work}"
 FEED="$WORK/feed"              # local NuGet directory feed
 ASSETS="$WORK/assets"          # runtime tarball assets for aspnetcore
@@ -77,24 +91,16 @@ ICU_DIR="${ICU_DIR:-/tmp/icu-ohos-install}"
 # EventSource/AdvSimd path (see runtime docs/plans round-13); the OFFICIAL NuGet
 # crossgen2 compiles the openharmony CoreLib R2R fine (18.9MB, PGO). Matches how the
 # official CI's crossgen2 runs against the previously-published host runtime.
-STOCK_CROSSGEN2_VERSION="${STOCK_CROSSGEN2_VERSION:-11.0.0-rc.1.26427.131}"
 STOCK_CROSSGEN2_DIR="$WORK/stock-crossgen2/$STOCK_CROSSGEN2_VERSION"
-# sha256 pins for the stock crossgen2 builds in use (the dnceng flat2 feed
-# serves immutable package versions). 26427.131 is the local default; CI passes
-# crossgen2_version=26451.109. Add a pin (or set STOCK_CROSSGEN2_SHA256) when
-# the version changes; the download is refused without one.
-case "$STOCK_CROSSGEN2_VERSION" in
-  11.0.0-rc.1.26427.131) _xc2_sha="c8d42378a12889a45d1b68e89d1fd74cbc5075879e3630c0276fbdfd7197340e" ;;
-  11.0.0-rc.1.26451.109) _xc2_sha="5da0dafca92667d2f48c79d69059ef4924cefc87de7fa07cc6a1d8299ad798aa" ;;
-  *) _xc2_sha="" ;;
-esac
-STOCK_CROSSGEN2_SHA256="${STOCK_CROSSGEN2_SHA256:-$_xc2_sha}"
-unset _xc2_sha
+# sha256 pins for the stock crossgen2 builds in use (see versions.env; the
+# dnceng flat2 feed serves immutable package versions). The download is refused
+# when the selected version has no pin — add one (or export STOCK_CROSSGEN2_SHA256)
+# when the version changes.
+STOCK_CROSSGEN2_SHA256="${STOCK_CROSSGEN2_SHA256:-$(stock_crossgen2_sha256 "$STOCK_CROSSGEN2_VERSION")}"
 # Reference runtime pack: metadata + PGO mibc source (the ohos-arm64 R2R-PGO
-# build of 26451.109). Downloaded on demand, sha256-pinned; a manually placed
-# $SCRIPT_DIR/reference-runtime-pack.nupkg still takes precedence.
-REFERENCE_RUNTIME_PACK_URL="${REFERENCE_RUNTIME_PACK_URL:-https://github.com/springmin/runtime-ohos/releases/download/v11.0.0-rc.1.26451.109-ohos/Microsoft.NETCore.App.Runtime.ohos-arm64.11.0.0-rc.1.26451.109-R2R-PGO.nupkg}"
-REFERENCE_RUNTIME_PACK_SHA256="${REFERENCE_RUNTIME_PACK_SHA256:-54d093f5bf3d522917cbe51a42ab2450ecd77b78be83214fe52ca6e5aac92163}"
+# build pinned in versions.env). Downloaded on demand, sha256-pinned; a manually
+# placed $SCRIPT_DIR/third-party/<asset> still takes precedence.
+REFERENCE_RUNTIME_PACK_URL="${REFERENCE_RUNTIME_PACK_URL:-https://github.com/${GH_USER}/runtime-ohos/releases/download/v${REFERENCE_RUNTIME_PACK_VERSION}-ohos/${REFERENCE_RUNTIME_PACK_ASSET}}"
 REFERENCE_RUNTIME_PACK=""
 # Framework-wide R2R overlay (mac model): 1 = compile all PureIL framework
 # assemblies at pack build and overlay them (device SCD+R2R becomes app-only).
@@ -171,7 +177,7 @@ resolve_reference_runtime_pack() {
     REFERENCE_RUNTIME_PACK="$SCRIPT_DIR/reference-runtime-pack.nupkg"
     return 0
   fi
-  local dest="$SCRIPT_DIR/third-party/Microsoft.NETCore.App.Runtime.ohos-arm64.11.0.0-rc.1.26451.109-R2R-PGO.nupkg"
+  local dest="$SCRIPT_DIR/third-party/$REFERENCE_RUNTIME_PACK_ASSET"
   if [ ! -s "$dest" ] || [ "$(sha256sum "$dest" | cut -d' ' -f1)" != "$REFERENCE_RUNTIME_PACK_SHA256" ]; then
     fetch_verified "$REFERENCE_RUNTIME_PACK_URL" "$dest" "$REFERENCE_RUNTIME_PACK_SHA256" "reference runtime pack (R2R-PGO)" || return 1
   fi
@@ -243,13 +249,13 @@ ensure_runtimeinfo() {
 }
 
 # On a clean build the shims (NetFx facade assemblies: System.dll, mscorlib,
-# netstandard, ...) are filtered out of libs.sfx by the unix-vs-net11.0 TFM
+# netstandard, ...) are filtered out of libs.sfx by the unix-vs-managed TFM
 # mismatch and sfx-finish fails ("...were missing"). Compile all shims (their
 # referenced libs are already built at that point) and copy the facades into
 # the shared-framework layout, then retry the libs build once.
 compile_shims_into_layout() {
   local rsp="$RUNTIME_REPO/.dotnet/sdk/$RIDGRAPH_SDKVER/RuntimeIdentifierGraph.json"
-  local layout="$RUNTIME_REPO/artifacts/bin/microsoft.netcore.app.runtime.$RID/$CONFIG/runtimes/$RID/lib/net11.0"
+  local layout="$RUNTIME_REPO/artifacts/bin/microsoft.netcore.app.runtime.$RID/$CONFIG/runtimes/$RID/lib/$TFM"
   mkdir -p "$layout"
   info "compiling shims (facade assemblies) and copying into the layout..."
   for P in $(find "$RUNTIME_REPO/src/libraries/shims" -name "*.csproj" -path "*/src/*" | sort); do
@@ -259,7 +265,7 @@ compile_shims_into_layout() {
       -p:PreReleaseVersionLabel="$LABEL" -p:PreReleaseVersion="$PRE" -p:OfficialBuildId="$BUILDID" \
       -v:q -nologo) >>"$LOG" 2>&1 || { echo "shim build failed: $P" | tee -a "$LOG"; return 1; }
   done
-  for D in "$RUNTIME_REPO"/artifacts/bin/*/Release/net11.0-unix; do
+  for D in "$RUNTIME_REPO"/artifacts/bin/*/Release/${TFM}-unix; do
     [ -d "$D" ] || continue
     for F in "$D"/*.dll; do
       [ -f "$F" ] || continue
@@ -280,7 +286,7 @@ seed_bootstrap_ref() {
   local sdkref=""
   local packs="$RUNTIME_REPO/.dotnet/packs/Microsoft.NETCore.App.Ref"
   local p
-  for p in "$packs/11.0.0-rc.1.26451.109" "$packs/11.0.100-rc.1.26420.103" "$packs/$RIDGRAPH_SDKVER" $(ls -d "$packs"/*/ 2>/dev/null); do
+  for p in "$packs/$REFERENCE_RUNTIME_PACK_VERSION" "$packs/$BOOTSTRAP_SDK_VERSION" "$packs/$RIDGRAPH_SDKVER" $(ls -d "$packs"/*/ 2>/dev/null); do
     [ -d "$p/ref" ] && [ -f "$p/data/FrameworkList.xml" ] && { sdkref="$p"; break; }
   done
   [ -n "$sdkref" ] || die "no SDK Ref pack to seed bootstrap (looked under $packs)"
@@ -328,24 +334,25 @@ open('$clrbin_early/StandardOptimizationData.mibc','wb').write(z.read('tools/Sta
     info "host packs mirrored into FEED ($(ls "$FEED" | grep -c linux-x64) linux-x64 nupkgs)"
   fi
   # The in-build tools resolve the host runtime pack at ProductVersion
-  # (11.0.0 base, no suffix) per targetingpacks KnownRuntimePack; re-version
-  # the seeded 26451.109 pack to 11.0.0 in both the folder feed and the flat
-  # feed (docs/plans problem-4 pattern: repackage to the requested version).
-  if [ -f /tmp/hostfeed/microsoft.netcore.app.runtime.linux-x64/11.0.0-rc.1.26451.109/microsoft.netcore.app.runtime.linux-x64.11.0.0-rc.1.26451.109.nupkg ]; then
+  # ($VERSION_BAND base, no suffix) per targetingpacks KnownRuntimePack;
+  # re-version the seeded reference pack to $VERSION_BAND in both the folder
+  # feed and the flat feed (docs/plans problem-4 pattern: repackage to the
+  # requested version).
+  if [ -f /tmp/hostfeed/microsoft.netcore.app.runtime.linux-x64/$REFERENCE_RUNTIME_PACK_VERSION/microsoft.netcore.app.runtime.linux-x64.$REFERENCE_RUNTIME_PACK_VERSION.nupkg ]; then
     for dest in /tmp/hostfeed "$FEED"; do
-      mkdir -p "$dest/microsoft.netcore.app.runtime.linux-x64/11.0.0"
+      mkdir -p "$dest/microsoft.netcore.app.runtime.linux-x64/$VERSION_BAND"
       python3 -c "
 import zipfile, io
-src = '/tmp/hostfeed/microsoft.netcore.app.runtime.linux-x64/11.0.0-rc.1.26451.109/microsoft.netcore.app.runtime.linux-x64.11.0.0-rc.1.26451.109.nupkg'
-out = '$dest/microsoft.netcore.app.runtime.linux-x64/11.0.0/microsoft.netcore.app.runtime.linux-x64.11.0.0.nupkg'
+src = '/tmp/hostfeed/microsoft.netcore.app.runtime.linux-x64/$REFERENCE_RUNTIME_PACK_VERSION/microsoft.netcore.app.runtime.linux-x64.$REFERENCE_RUNTIME_PACK_VERSION.nupkg'
+out = '$dest/microsoft.netcore.app.runtime.linux-x64/$VERSION_BAND/microsoft.netcore.app.runtime.linux-x64.$VERSION_BAND.nupkg'
 zin = zipfile.ZipFile(src)
 with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as zout:
     for n in zin.namelist():
         d = zin.read(n)
         if n.endswith('.nuspec') or n.endswith('.nupkg.metadata'):
-            d = d.decode().replace('11.0.0-rc.1.26451.109', '11.0.0').encode()
+            d = d.decode().replace('$REFERENCE_RUNTIME_PACK_VERSION', '$VERSION_BAND').encode()
         zout.writestr(n, d)
-" && info "re-versioned host pack to 11.0.0 in $dest"
+" && info "re-versioned host pack to $VERSION_BAND in $dest"
     done
   fi
   # Seed every hostfeed version into the NuGet global cache too (the SDK
@@ -462,7 +469,7 @@ for tfm, fr in proj.get('frameworks',{}).items():
 " 2>&1 | tee -a "$LOG"
     echo "--- nuget linux-x64 cache ---" | tee -a "$LOG"
     ls "$HOME/.nuget/packages/microsoft.netcore.app.runtime.linux-x64/" 2>/dev/null | tee -a "$LOG" || true
-    ls "$HOME/.nuget/packages/microsoft.netcore.app.runtime.linux-x64/11.0.0-rc.1.26420.103/" 2>/dev/null | head -6 | tee -a "$LOG"
+    ls "$HOME/.nuget/packages/microsoft.netcore.app.runtime.linux-x64/$BOOTSTRAP_SDK_VERSION/" 2>/dev/null | head -6 | tee -a "$LOG"
     echo "--- last attempt log tail ---" | tee -a "$LOG"
     tail -40 "$alog" | tee -a "$LOG"
     echo "--- configure platform lines ---" | tee -a "$LOG"
@@ -486,11 +493,13 @@ ensure_nuget_runtime_pack() {
     local url=""
     # GitHub-hosted copy first (CI cannot reliably reach dnceng/nuget.org for
     # these; see sdk-ohos release 'host-runtime-packs'), then the origin feeds.
-    case "$ver" in
-      11.0.0-rc.1.26420.103) url="https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet11/nuget/v3/flat2/$id/$ver/$id.$ver.nupkg" ;;
-      11.0.0-rc.1.26431.109|11.0.0-rc.1.26451.109) url="https://github.com/springmin/sdk-ohos/releases/download/host-runtime-packs/$id.$ver.nupkg" ;;
-      *) url="https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet12/nuget/v3/flat2/$id/$ver/$id.$ver.nupkg" ;;
-    esac
+    if [ "$ver" = "$HOST_PACK_DNCENG_DOTNET11_VERSION" ]; then
+      url="https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet11/nuget/v3/flat2/$id/$ver/$id.$ver.nupkg"
+    elif is_github_host_pack_version "$ver"; then
+      url="https://github.com/${GH_USER}/sdk-ohos/releases/download/host-runtime-packs/$id.$ver.nupkg"
+    else
+      url="https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet12/nuget/v3/flat2/$id/$ver/$id.$ver.nupkg"
+    fi
     info "pre-seeding $id $ver..."
     local tmp="$(mktemp -d)"
     if curl -fsSL --retry 2 -o "$tmp/p.nupkg" "$url"; then
@@ -553,9 +562,9 @@ stage1() {
   # ILCompiler_inbuild is SelfContained at the SDK runtime version; seed the
   # SDK version plus dnceng candidates (branch product version, darc baseline).
   ensure_nuget_runtime_pack "linux-x64" \
-    "11.0.0-rc.1.26420.103" \
-    "11.0.0-$LABEL.$PRE.26451.$(echo "$BUILDID" | cut -d. -f2)" \
-    "11.0.0-$LABEL.$PRE.26431.109" || true
+    "$BOOTSTRAP_SDK_VERSION" \
+    "${HOST_PACK_BRANCH_VERSION%.*}.$(echo "$BUILDID" | cut -d. -f2)" \
+    "$HOST_PACK_BRANCH_VERSION" || true
   if [ ! -f "$chbin/apphost" ]; then
     info "corehost apphost missing — building host subset"
     (cd "$RUNTIME_REPO" && ./build.sh -os openharmony -arch "$ARCH" --cross -c "$CONFIG" \
@@ -679,11 +688,11 @@ for x in glob.glob(dirp+'/*.nuspec'): shutil.copy(x, dirp+'/$HOSTPACK_ID.nuspec'
   # device has no bootstrap SDK, so the pack must carry the framework itself.
   # The runtime pack nupkg from clr+libs+packs (same build) provides it.
   # The deps runtimepack entry version must be the framework the ilc was built
-  # against (bootstrap SDK runtime 26420.103, round-17 device-verified), NOT the
+  # against (bootstrap SDK runtime, BOOTSTRAP_SDK_VERSION, round-17 device-verified), NOT the
   # runtime pack file version - hostpolicy resolves libcoreclr.so from it and a
   # mismatch fails with "Could not resolve CoreCLR path" on device.
   local rtpack_nupkg=$(ls "$ship"/Microsoft.NETCore.App.Runtime.$RID.$RT_VERSION.nupkg 2>/dev/null | head -1)
-  python3 "$SCRIPT_DIR/assemble-ilc-pack.py" "$ilcd" "$ilc_ref" "$ilcpk" "$rtpack_nupkg" "11.0.0-rc.1.26420.103" \
+  python3 "$SCRIPT_DIR/assemble-ilc-pack.py" "$ilcd" "$ilc_ref" "$ilcpk" "$rtpack_nupkg" "$BOOTSTRAP_SDK_VERSION" --tfm "$TFM" \
     || die "assemble ilc split pack failed"
 
   # --- crossgen2 pack: untrimmed split re-publish (device R2R) ---
@@ -707,7 +716,7 @@ for x in glob.glob(dirp+'/*.nuspec'): shutil.copy(x, dirp+'/$HOSTPACK_ID.nuspec'
   local cg2pk="$ship/Microsoft.NETCore.App.Crossgen2.$RID.$RT_VERSION.nupkg"
   local cg2_ref=$(ls "$ship"/Microsoft.NETCore.App.Crossgen2.$RID.*.nupkg 2>/dev/null | grep -v "$RT_VERSION" | head -1)
   [ -n "$cg2_ref" ] || cg2_ref="$cg2pk"  # same-pack metadata is safe (atomic write)
-  python3 "$SCRIPT_DIR/assemble-crossgen2-pack.py" "$cg2d" "$cg2_ref" "$cg2pk" "$rtpack_nupkg" "11.0.0-rc.1.26420.103" \
+  python3 "$SCRIPT_DIR/assemble-crossgen2-pack.py" "$cg2d" "$cg2_ref" "$cg2pk" "$rtpack_nupkg" "$BOOTSTRAP_SDK_VERSION" --tfm "$TFM" \
     || die "assemble crossgen2 split pack failed"
   tar czf "$ship/dotnet-crossgen2-$RT_VERSION-$RID.tar.gz" -C "$cg2d" --exclude='*.pdb' . \
     || die "crossgen2 tool tarball refresh failed"
@@ -740,9 +749,9 @@ for x in glob.glob(dirp+'/*.nuspec'): shutil.copy(x, dirp+'/$HOSTPACK_ID.nuspec'
   [ -s "$corelib_il" ] || die "CoreLib IL missing: $corelib_il"
   info "producing ReadyToRun CoreLib (official crossgen2, PGO if mibc present)..."
   # PGO data: the reference runtime pack (downloaded on demand) carries
-  # tools/StandardOptimizationData.mibc (profiles for the 26451.109 assemblies;
-  # verified applicable: PGO crossgen of System.Text.Json emits a PGO image).
-  # Seed it when the clean build did not produce its own.
+  # tools/StandardOptimizationData.mibc (profiles for the reference-pack
+  # assemblies; verified applicable: PGO crossgen of System.Text.Json emits a
+  # PGO image). Seed it when the clean build did not produce its own.
   if [ ! -s "$clrbin/StandardOptimizationData.mibc" ] && resolve_reference_runtime_pack; then
     (python3 -c "
 import zipfile
@@ -824,7 +833,7 @@ open('$clrbin/StandardOptimizationData.mibc','wb').write(z.read('tools/StandardO
     # host runtime pack version the build re-versions into the local feeds.
     for cg2_variant in base hostver; do
       local cg2_extra=""
-      if [ "$cg2_variant" = "hostver" ]; then cg2_extra="/p:RuntimeFrameworkVersion=11.0.0"; fi
+      if [ "$cg2_variant" = "hostver" ]; then cg2_extra="/p:RuntimeFrameworkVersion=$VERSION_BAND"; fi
       rm -rf "$cg2out"
       : > "$cg2pub_log"
       ( cd "$RUNTIME_REPO" && \
@@ -869,13 +878,13 @@ open('$clrbin/StandardOptimizationData.mibc','wb').write(z.read('tools/StandardO
   fi
   set -e
   if [ "$OHOS_FRAMEWORK_R2R" = "1" ] && [ "$OHOS_IN_TREE_R2R" != "1" ]; then
-    local libdir="$rtl/runtimes/$RID/lib/net11.0"
+    local libdir="$rtl/runtimes/$RID/lib/$TFM"
     local r2rout="$WORK/framework-r2r"
     local r2rrefs="$WORK/framework-r2r-refs"
     [ -d "$libdir" ] || die "framework R2R: layout lib dir missing: $libdir"
     rm -rf "$r2rout" "$r2rrefs"
     mkdir -p "$r2rout" "$r2rrefs"
-    # The sfxproj layout keeps System.Private.CoreLib out of lib/net11.0 (the
+    # The sfxproj layout keeps System.Private.CoreLib out of lib/$TFM (the
     # pack assembly step adds it); crossgen2 needs it as the core reference, so
     # add the IL image from the compiler obj dir to the ref set.
     cp -f "$libdir"/*.dll "$r2rrefs/" 2>/dev/null || true
@@ -958,13 +967,13 @@ print(m.group(1) if m else '')
     info "asset mirrored: Runtime/$plat_ver/$(basename "$rt_archive") (SDK Platforms blob version)"
   fi
   # start the asset http server the aspnetcore/sdk builds download from
-  # (PublicBaseURL=http://localhost:8000/) unless one is already listening
-  if ! curl -sf --max-time 2 http://localhost:8000/ >/dev/null 2>&1; then
-    (cd "$ASSETS" && nohup python3 -m http.server 8000 >"$WORK/http-server.log" 2>&1 &)
+  # (PublicBaseURL=http://localhost:$ASSET_PORT/) unless one is already listening
+  if ! curl -sf --max-time 2 "http://localhost:$ASSET_PORT/" >/dev/null 2>&1; then
+    (cd "$ASSETS" && nohup python3 -m http.server "$ASSET_PORT" >"$WORK/http-server.log" 2>&1 &)
     sleep 1
-    curl -sf --max-time 2 http://localhost:8000/ >/dev/null 2>&1 \
-      || die "asset http server failed to start on :8000"
-    info "asset http server started on :8000 (root $ASSETS)"
+    curl -sf --max-time 2 "http://localhost:$ASSET_PORT/" >/dev/null 2>&1 \
+      || die "asset http server failed to start on :$ASSET_PORT"
+    info "asset http server started on :$ASSET_PORT (root $ASSETS)"
   fi
   info "asset: $ASSETS/Runtime/$ASPCORE_TRANSPORT/$(basename "$rt_archive")"
 }
@@ -997,14 +1006,14 @@ stage3() {
       info "injected eng/ RID graph into aspnetcore SDK $(basename "$sd")"
     fi
   done
-  # aspnetcore's darc-flowed runtime versions (e.g. 11.0.0-rc.1.26451.109 from
-  # official runtime) point at a feed that has no openharmony packs — override the
-  # runtime-driven versions to the locally built one so restore hits our feed.
+  # aspnetcore's darc-flowed runtime version points at a feed that has no
+  # openharmony packs — override the runtime-driven versions to the locally
+  # built one so restore hits our feed.
   local rtver="$RT_VERSION"
   ./eng/build.sh --os-name "$(echo "$RID" | cut -d- -f1)" --arch "$ARCH" -c "$CONFIG" \
     --no-build-nodejs \
     --projects "$(pwd)/src/Framework/App.Runtime/src/aspnetcore-runtime.proj" \
-    -p:PublicBaseURL="http://localhost:8000/" \
+    -p:PublicBaseURL="http://localhost:$ASSET_PORT/" \
     -p:PublishReadyToRun=false -p:NativeAotSupported=false \
     -p:RestoreAdditionalProjectSources="$FEED" \
     -p:RuntimeIdentifierGraphPath="$ridgraph" \
@@ -1044,7 +1053,7 @@ with zipfile.ZipFile(nupkg) as z:
 print("aspnetcore R2R: extracted %d assemblies" % count)
 PY
       cp -f "$asplib"/*.dll "$asprefs/" 2>/dev/null || true
-      cp -f "$RUNTIME_REPO/artifacts/bin/microsoft.netcore.app.runtime.$RID/$CONFIG/runtimes/$RID/lib/net11.0"/*.dll "$asprefs/" 2>/dev/null || true
+      cp -f "$RUNTIME_REPO/artifacts/bin/microsoft.netcore.app.runtime.$RID/$CONFIG/runtimes/$RID/lib/$TFM"/*.dll "$asprefs/" 2>/dev/null || true
       cp -f "$RUNTIME_REPO/artifacts/obj/coreclr/System.Private.CoreLib/openharmony.$ARCH.$CONFIG/System.Private.CoreLib.dll" "$asprefs/System.Private.CoreLib.dll" || die "aspnetcore R2R: CoreLib ref missing"
       local as_mibc=()
       local as_mibc_file="$RUNTIME_REPO/artifacts/bin/coreclr/openharmony.$ARCH.$CONFIG/StandardOptimizationData.mibc"
@@ -1089,7 +1098,7 @@ stage4() {
     /p:MicrosoftNETCoreAppRuntimePackageVersion="$rtver" \
     /p:MicrosoftAspNetCoreAppRuntimePackageVersion="$rtver" \
     /p:RestoreAdditionalProjectSources="$FEED" \
-    /p:PublicBaseURL=http://localhost:8000/ \
+    /p:PublicBaseURL=http://localhost:$ASSET_PORT/ \
     /p:RidGraphOverrideRuntimeJson="$PWD/eng/RuntimeIdentifierGraph.openharmony.json" \
     /p:RidGraphOverridePortableJson="$PWD/eng/PortableRuntimeIdentifierGraph.openharmony.json" \
     /p:IncludeAspNetCoreRuntime=false \

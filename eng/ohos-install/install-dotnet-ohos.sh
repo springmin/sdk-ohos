@@ -3,9 +3,10 @@
 # install-dotnet-ohos.sh
 # Install .NET (SDK or Runtime) on OpenHarmony from GitHub release artifacts
 #
-# Downloads from the springmin/{sdk,runtime,aspnetcore}-ohos GitHub releases
-# (or accepts a local tar.gz), extracts into $HOME/.dotnet, code-signs every
-# ELF with a .codesign section, and persists DOTNET_ROOT/PATH.
+# Downloads from the ${GH_USER}/{sdk,runtime,aspnetcore}-ohos GitHub releases
+# (version pins in versions.env; a local tar.gz or URL also works), extracts
+# into $HOME/.dotnet, code-signs every ELF with a .codesign section, and
+# persists DOTNET_ROOT/PATH.
 #
 # OpenHarmony only executes ELF binaries carrying a .codesign section
 # (unsigned -> EACCES). The runtime/SDK tarballs are NOT pre-signed, so this
@@ -34,21 +35,32 @@
 set -u
 
 # ------------------------------------------------------------------ config
-GH_USER="springmin"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# Version pins (release tags, asset names, GH account) live in versions.env.
+# shellcheck source=versions.env
+if [ ! -f "$SCRIPT_DIR/versions.env" ]; then
+    printf 'ERROR: missing %s (run this script from the sdk-ohos repository)\n' \
+        "$SCRIPT_DIR/versions.env" >&2
+    exit 1
+fi
+. "$SCRIPT_DIR/versions.env"
+
+# Release assets: <short-name>|<repo>|<release-tag>|<asset-file>. Short names
+# "sdk"/"runtime" resolve through this table; asset names derive from the
+# version pins in versions.env.
 RELEASES="
-  sdk|sdk-ohos|v11.0.100-rc.1.26451.109-ohos|dotnet-sdk-11.0.100-rc.1.26451.109-openharmony-arm64.tar.gz
-  runtime|runtime-ohos|v11.0.0-rc.1.26451.109-ohos|dotnet-runtime-11.0.0-rc.1.26451.109-openharmony-arm64.tar.gz
+  sdk|sdk-ohos|v${SDK_VERSION}-ohos|dotnet-sdk-${SDK_VERSION}-${RID}.tar.gz
+  runtime|runtime-ohos|v${RT_VERSION}-ohos|dotnet-runtime-${RT_VERSION}-${RID}.tar.gz
 "
 # aspnetcore runtime is embedded in the SDK since 2026-08-26; kept here for
 # standalone runtime installs that also want ASP.NET Core.
 ASPNETCORE_REPO="aspnetcore-ohos"
-ASPNETCORE_TAG="v11.0.0-rc.1.26451.109-ohos"
-ASPNETCORE_FILE="aspnetcore-runtime-11.0.0-rc.1.26451.109-openharmony-arm64.tar.gz"
+ASPNETCORE_TAG="v${RT_VERSION}-ohos"
+ASPNETCORE_FILE="aspnetcore-runtime-${RT_VERSION}-${RID}.tar.gz"
 
 INSTALL_DIR="${INSTALL_DIR:-${HOME}/.dotnet}"
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# OpenHarmony platform workload (net11.0-openharmony<api>). Ships as a bundle
+# OpenHarmony platform workload (${TFM}-openharmony<api>). Ships as a bundle
 # (ohos-workload-<version>.tar.gz: manifests/ + feed/ + install-ohos-workload.sh)
 # next to the SDK tarball. INSTALL_WORKLOAD=0 disables the step; WORKLOAD_BUNDLE
 # points at a local bundle (directory or tarball); WORKLOAD_RELEASE_TAG selects the
@@ -83,8 +95,7 @@ find_binary_sign_tool() {
     for p in \
         "${HOME}/.harmonybrew/bin/binary-sign-tool" \
         "${HOME}/.harmonybrew/Cellar/ohos-sdk/"*/toolchains/lib/binary-sign-tool \
-        "${HOME}/.harmonybrew/Cellar/ohos-sdk/"*/bin/binary-sign-tool \
-        "/storage/Users/currentUser/.harmonybrew/bin/binary-sign-tool"
+        "${HOME}/.harmonybrew/Cellar/ohos-sdk/"*/bin/binary-sign-tool
     do
         [ -f "$p" ] && { printf '%s\n' "$p"; return 0; }
     done
@@ -126,12 +137,12 @@ resolve_choice() { # "sdk"|"runtime"|local path|url
     arg="$1"
     case "$arg" in
         sdk)
-            repo="sdk-ohos"; tag="v11.0.100-rc.1.26451.109-ohos"; file="dotnet-sdk-11.0.100-rc.1.26451.109-openharmony-arm64.tar.gz"
+            repo="sdk-ohos"; tag="v${SDK_VERSION}-ohos"; file="dotnet-sdk-${SDK_VERSION}-${RID}.tar.gz"
             RESOLVED_FILE="$file"
             RESOLVED_URL="https://github.com/${GH_USER}/${repo}/releases/download/${tag}/${file}"
             ;;
         runtime)
-            repo="runtime-ohos"; tag="v11.0.0-rc.1.26451.109-ohos"; file="dotnet-runtime-11.0.0-rc.1.26451.109-openharmony-arm64.tar.gz"
+            repo="runtime-ohos"; tag="v${RT_VERSION}-ohos"; file="dotnet-runtime-${RT_VERSION}-${RID}.tar.gz"
             RESOLVED_FILE="$file"
             RESOLVED_URL="https://github.com/${GH_USER}/${repo}/releases/download/${tag}/${file}"
             ;;
@@ -142,7 +153,7 @@ resolve_choice() { # "sdk"|"runtime"|local path|url
         *)
             [ -r "$arg" ] || die "tarball not readable: ${arg}
   (on OpenHarmony, files inside another app's sandbox — e.g. WeChat appdata — cannot
-   be read; move the file to /storage/Users/currentUser/Download first)"
+   be read; move the file to a readable location such as the Download folder first)"
             RESOLVED_FILE="$arg"
             RESOLVED_URL=""
             ;;
@@ -166,7 +177,7 @@ install_tarball() {
 # leave selfsign absent and binary-sign-tool is used instead.
 # The selfsign asset lives in the sdk-ohos release, same tag as the SDK.
 SDK_TAG="$(printf '%s\n' "$RELEASES" | sed -n 's/^ *sdk|sdk-ohos|\([^|]*\)|.*/\1/p' | head -n 1)"
-SELFSIGN_URL="https://github.com/springmin/sdk-ohos/releases/download/${SDK_TAG}/selfsign-ohos-arm64"
+SELFSIGN_URL="https://github.com/${GH_USER}/sdk-ohos/releases/download/${SDK_TAG}/${SELFSIGN_ASSET}"
 deploy_selfsign() {
     [ -x "${INSTALL_DIR}/selfsign" ] && { info "selfsign already at ${INSTALL_DIR}/selfsign"; return 0; }
     TMP="${TMPDIR:-/tmp}/selfsign-ohos-$$"
@@ -202,7 +213,7 @@ deploy_selfsign() {
 }
 
 # -------------------------------------------------------------- workload
-# Installs the OpenHarmony platform workload so that net11.0-openharmony<api>
+# Installs the OpenHarmony platform workload so that ${TFM}-openharmony<api>
 # projects build without DOTNETSDK_WORKLOAD_* environment variables.
 install_workload() {
     [ "${INSTALL_WORKLOAD:-1}" = "1" ] || { info "workload install skipped (INSTALL_WORKLOAD=0)"; return 0; }
@@ -248,7 +259,7 @@ install_workload() {
                          | sed -E 's/.*"(workload-[^"]*)".*/\1/' || true)"
             fi
             sdk_tag="$(printf '%s' "${RESOLVED_URL:-}" | sed -nE 's|.*/releases/download/([^/]+)/.*|\1|p')"
-            sdk_tag="${sdk_tag:-v11.0.100-rc.1.26451.109-ohos}"
+            sdk_tag="${sdk_tag:-v${SDK_VERSION}-ohos}"
             wtags="$wtags $sdk_tag"
             for tag in $wtags; do
                 [ -n "$asset" ] && break
@@ -386,7 +397,8 @@ setup_profile() {
         grep -q 'export TMPDIR=' "$pf" 2>/dev/null || cat >> "$pf" <<EOF
 
 # OpenHarmony sandbox: /tmp is read-only; the runtime reads TMPDIR via Path.GetTempPath().
-export TMPDIR="\${TMPDIR:-/data/storage/el2/base/tmp}"
+export TMPDIR="\${TMPDIR:-\$HOME/.tmp}"
+mkdir -p "\$TMPDIR" 2>/dev/null || true
 EOF
         return 0
     fi
@@ -396,7 +408,8 @@ EOF
 export DOTNET_ROOT=\$HOME/.dotnet
 export PATH=\$PATH:\$DOTNET_ROOT:\$DOTNET_ROOT/tools
 # OpenHarmony sandbox: /tmp is read-only; the runtime reads TMPDIR via Path.GetTempPath().
-export TMPDIR="\${TMPDIR:-/data/storage/el2/base/tmp}"
+export TMPDIR="\${TMPDIR:-\$HOME/.tmp}"
+mkdir -p "\$TMPDIR" 2>/dev/null || true
 EOF
     info "env vars added to ${pf}"
 }

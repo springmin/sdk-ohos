@@ -17,28 +17,45 @@ from the bootstrap SDK during the build). On the DEVICE there is no bootstrap
 SDK, so the pack must carry the framework itself. The runtime pack nupkg produced
 by the same build provides exactly that (native/ .so + CoreLib, lib/ managed dlls).
 
-Usage: assemble-crossgen2-pack.py <cg2-published-dir> <reference-pack> <out-nupkg> [runtime-pack.nupkg] [framework-version]
+Usage: assemble-crossgen2-pack.py <cg2-published-dir> <reference-pack> <out-nupkg> [runtime-pack.nupkg] [framework-version] [--tfm netX.Y]
   cg2-published   artifacts/bin/coreclr/ohos.arm64.Release/crossgen2-published
   reference       existing Crossgen2 nupkg (non-tools metadata reused; may be the
                   same path as out — written atomically via temp + move)
   out-nupkg       target (Shipping pack path)
   runtime-pack    Microsoft.NETCore.App.Runtime.<rid>.<ver>.nupkg from the same
-                  build (framework overlay: native/ -> tools/, lib/ -> tools/).
+                  build (framework overlay: native/ -> tools/, lib/<tfm> -> tools/).
   framework-version  Version string for the deps.json runtimepack entry. Must be
                   the framework the tool was built against (the bootstrap SDK
-                  runtime, e.g. 11.0.0-rc.1.26420.103) - NOT the runtime pack file
-                  version: hostpolicy resolves libcoreclr.so from the runtimepack
-                  entry version and a mismatch yields "Could not resolve CoreCLR
-                  path" on device. Defaults to the runtime pack file version.
+                  runtime, BOOTSTRAP_SDK_VERSION in ../versions.env) - NOT the
+                  runtime pack file version: hostpolicy resolves libcoreclr.so
+                  from the runtimepack entry version and a mismatch yields
+                  "Could not resolve CoreCLR path" on device. Defaults to the
+                  runtime pack file version.
+  --tfm           TFM folder inside the runtime pack (e.g. net11.0). Defaults to
+                  $TFM; required when a runtime pack is given.
 """
 import os
 import sys
 import zipfile
 import json
 
-pub, ref, out = sys.argv[1], sys.argv[2], sys.argv[3]
-rtpk = sys.argv[4] if len(sys.argv) > 4 else None
-fw_ver = sys.argv[5] if len(sys.argv) > 5 else None
+args = list(sys.argv[1:])
+tfm = os.environ.get("TFM", "")
+if "--tfm" in args:
+    i = args.index("--tfm")
+    tfm = args[i + 1] if i + 1 < len(args) else ""
+    del args[i:i + 2]
+if len(args) < 3:
+    raise SystemExit(
+        "usage: assemble-crossgen2-pack.py <cg2-published-dir> <reference-pack> "
+        "<out-nupkg> [runtime-pack.nupkg] [framework-version] [--tfm netX.Y]")
+
+pub, ref, out = args[0], args[1], args[2]
+rtpk = args[3] if len(args) > 3 else None
+fw_ver = args[4] if len(args) > 4 else None
+
+if rtpk and not tfm:
+    raise SystemExit("--tfm <netX.Y> (or $TFM) is required when a runtime pack is given")
 
 if fw_ver is None and rtpk:
     base = os.path.basename(rtpk)
@@ -59,7 +76,9 @@ def framework_files_from_runtime_pack(rtp):
     if not prefixes:
         raise SystemExit(f"no runtimes/<rid>/ layout found in {rtp}")
     native_pfx = next((p for p in prefixes if p.endswith("/native")), None)
-    lib_pfx = next((p for p in prefixes if p.endswith("/lib/net11.0")), None)
+    lib_pfx = next((p for p in prefixes if p.endswith("/lib/" + tfm)), None)
+    if lib_pfx is None:
+        raise SystemExit(f"no runtimes/<rid>/lib/{tfm} files found in {rtp}")
     files = {}
     for n in rz.namelist():
         if native_pfx and n.startswith(native_pfx + "/"):

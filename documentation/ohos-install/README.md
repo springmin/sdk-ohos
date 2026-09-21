@@ -11,9 +11,11 @@ OpenHarmony 特有的代码签名。
 
 三个仓库的 Release 提供交叉编译好的 `openharmony-arm64` 产物：
 
+> 版本 pin 统一在 `eng/ohos-install/versions.env`（下表为当前默认值）。
+
 | 仓库 | Release | 内容 | 下载 |
 |---|---|---|---|
-| [springmin/sdk-ohos](https://github.com/springmin/sdk-ohos/releases) | `v11.0.100-rc.1.26451.10909-ohos` | **SDK**（含 ASP.NET Core runtime + 全部修复，175MB） | `dotnet-sdk-11.0.100-rc.1.26451.10909-openharmony-arm64.tar.gz` |
+| [springmin/sdk-ohos](https://github.com/springmin/sdk-ohos/releases) | `v11.0.100-rc.1.26451.109-ohos` | **SDK**（含 ASP.NET Core runtime + 全部修复，175MB） | `dotnet-sdk-11.0.100-rc.1.26451.109-openharmony-arm64.tar.gz` |
 | [springmin/runtime-ohos](https://github.com/springmin/runtime-ohos/releases) | `v11.0.0-rc.1.26451.109-ohos` | **Runtime**（仅运行，15MB） | `dotnet-runtime-11.0.0-rc.1.26451.109-openharmony-arm64.tar.gz` |
 | [springmin/aspnetcore-ohos](https://github.com/springmin/aspnetcore-ohos/releases) | `v11.0.0-rc.1.26451.109-ohos` | **ASP.NET Core**（单独分发用，19MB） | `aspnetcore-runtime-11.0.0-rc.1.26451.109-openharmony-arm64.tar.gz` |
 
@@ -39,8 +41,8 @@ sh eng/ohos-install/install-dotnet-ohos.sh sdk
 sh eng/ohos-install/install-dotnet-ohos.sh runtime
 
 # 4. 或用本地文件 / 自定义 URL
-sh eng/ohos-install/install-dotnet-ohos.sh ~/Download/dotnet-sdk-11.0.100-rc.1.26451.10909-openharmony-arm64.tar.gz
-sh eng/ohos-install/install-dotnet-ohos.sh https://github.com/springmin/sdk-ohos/releases/download/v11.0.100-rc.1.26451.10909-ohos/dotnet-sdk-11.0.100-rc.1.26451.10909-openharmony-arm64.tar.gz
+sh eng/ohos-install/install-dotnet-ohos.sh ~/Download/dotnet-sdk-11.0.100-rc.1.26451.109-openharmony-arm64.tar.gz
+sh eng/ohos-install/install-dotnet-ohos.sh https://github.com/springmin/sdk-ohos/releases/download/v11.0.100-rc.1.26451.109-ohos/dotnet-sdk-11.0.100-rc.1.26451.109-openharmony-arm64.tar.gz
 
 # 5. 自定义安装目录
 INSTALL_DIR=/data/xxx/dotnet sh eng/ohos-install/install-dotnet-ohos.sh sdk
@@ -64,7 +66,7 @@ INSTALL_DIR=/data/xxx/dotnet sh eng/ohos-install/install-dotnet-ohos.sh sdk
 ```sh
 export DOTNET_ROOT=$HOME/.dotnet
 mkdir -p "$DOTNET_ROOT"
-tar zxf dotnet-sdk-11.0.100-rc.1.26451.10909-openharmony-arm64.tar.gz -C "$DOTNET_ROOT"
+tar zxf dotnet-sdk-11.0.100-rc.1.26451.109-openharmony-arm64.tar.gz -C "$DOTNET_ROOT"
 # 签名（见 §3）
 export PATH=$PATH:$DOTNET_ROOT:$DOTNET_ROOT/tools
 dotnet --list-runtimes
@@ -109,9 +111,9 @@ selfsign <input_elf> [output_elf] [--force] [--strip]
 
 ```sh
 # 宿主（x64 Linux，交叉编译机 / CI）—— 签名 OpenHarmony ELF：
-#   https://github.com/springmin/sdk-ohos/releases/download/v11.0.100-rc.1.26451.10909-ohos/selfsign-linux-x64
+#   https://github.com/springmin/sdk-ohos/releases/download/v11.0.100-rc.1.26451.109-ohos/selfsign-linux-x64
 # 设备端（openharmony-arm64，NativeAOT 单文件）—— 在真机上签名：
-#   https://github.com/springmin/sdk-ohos/releases/download/v11.0.100-rc.1.26451.10909-ohos/selfsign-ohos-arm64
+#   https://github.com/springmin/sdk-ohos/releases/download/v11.0.100-rc.1.26451.109-ohos/selfsign-ohos-arm64
 
 # 宿主批量预签名（配合 sign-ohos-release.sh）：
 sh eng/ohos-install/sign-ohos-release.sh <dir-or-tarball> ...   # SELFSIGN=<path> 指定 selfsign

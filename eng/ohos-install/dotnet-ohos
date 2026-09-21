@@ -21,15 +21,21 @@
 # Usage (legacy): dotnet-ohos <dotnet-args...>
 
 DOTNET_ROOT="${DOTNET_ROOT:-$HOME/.dotnet}"
-TMPDIR="${TMPDIR:-/data/storage/el2/base/tmp}"
+# TMPDIR: honor the environment; otherwise probe for a writable directory
+# (/tmp is read-only inside the OpenHarmony sandbox).
+if [ -z "${TMPDIR:-}" ] || [ ! -w "${TMPDIR:-}" ]; then
+    for _d in /tmp "$HOME/.tmp"; do
+        if mkdir -p "$_d" 2>/dev/null && [ -w "$_d" ]; then TMPDIR="$_d"; break; fi
+    done
+    unset _d
+fi
 RUNDIR="${XDG_DATA_HOME:-$HOME/.local/share}/dotnet/runfile"
 
 SIGN_TOOL="${BINARY_SIGN_TOOL:-}"
 if [ -z "$SIGN_TOOL" ]; then
     for p in \
         "${HOME}/.harmonybrew/bin/binary-sign-tool" \
-        "${HOME}/.harmonybrew/Cellar/ohos-sdk/"*/toolchains/lib/binary-sign-tool \
-        "/storage/Users/currentUser/.harmonybrew/bin/binary-sign-tool"
+        "${HOME}/.harmonybrew/Cellar/ohos-sdk/"*/toolchains/lib/binary-sign-tool
     do
         if [ -f "$p" ]; then SIGN_TOOL="$p"; break; fi
     done
