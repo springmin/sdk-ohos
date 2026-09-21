@@ -80,15 +80,35 @@ ASPNETCORE_FILE="aspnetcore-runtime-${RT_VERSION}-${RID}.tar.gz"
 INSTALL_DIR="${INSTALL_DIR:-${HOME}/.dotnet}"
 # Explicit opt-out from download verification (insecure; offline/legacy only).
 ALLOW_UNVERIFIED="${ALLOW_UNVERIFIED:-0}"
+# Explicit opt-out from a refused/absent workload failing the whole install:
+# 1 = warn and continue without the OpenHarmony workload.
+ALLOW_MISSING_WORKLOAD="${ALLOW_MISSING_WORKLOAD:-0}"
 
 # OpenHarmony platform workload (${TFM}-openharmony<api>). Ships as a bundle
 # (ohos-workload-<version>.tar.gz: manifests/ + feed/ + install-ohos-workload.sh)
 # next to the SDK tarball. INSTALL_WORKLOAD=0 disables the step; WORKLOAD_BUNDLE
 # points at a local bundle (directory or tarball); WORKLOAD_RELEASE_TAG selects the
-# release whose assets are searched for the bundle.
+# release whose assets are searched for the bundle. A refused/absent bundle (and a
+# failed workload install) fails the installer; ALLOW_MISSING_WORKLOAD=1 downgrades
+# that to a warning and continues without the workload.
 
 info() { printf '==> %s\n' "$*"; }
 die()  { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
+
+# ------------------------------------------------------------- temp cleanup
+# Temp dirs (the downloaded SDK/runtime tarball, the extracted workload bundle)
+# are removed on every exit path: normal completion (explicit cleanup in main),
+# die/exit and signals (EXIT/HUP/INT/TERM trap). The downloaded tarball is kept
+# until its tar extraction has completed.
+MAIN_TMP=""
+WL_TMP=""
+cleanup_tmp() {
+    [ -z "$MAIN_TMP" ] || rm -rf "$MAIN_TMP"
+    [ -z "$WL_TMP" ] || rm -rf "$WL_TMP"
+    return 0
+}
+trap cleanup_tmp EXIT
+trap 'cleanup_tmp; exit 1' HUP INT TERM
 
 # ------------------------------------------------------------- find tools
 # Signing preference (since 2026-09-06): selfsign FIRST (deployed next to
@@ -143,7 +163,7 @@ download() { # url -> file
     url="$1"; out="$2"
     info "downloading ${url}"
     if command -v curl >/dev/null 2>&1; then
-        curl -fSL --retry 3 --retry-delay 2 --connect-timeout 30 -o "$out" "$url" || return 1
+        curl -fsSL --retry 3 --retry-delay 2 --connect-timeout 30 -o "$out" "$url" || return 1
     elif command -v wget >/dev/null 2>&1; then
         wget --tries=3 --timeout=30 -O "$out" "$url" || return 1
     else
@@ -361,12 +381,24 @@ deploy_selfsign() {
 # -------------------------------------------------------------- workload
 # Installs the OpenHarmony platform workload so that ${TFM}-openharmony<api>
 # projects build without DOTNETSDK_WORKLOAD_* environment variables.
+# A refused/absent bundle (and a failed workload install) is a hard error:
+# exiting 0 with no workload installed hides the failure from callers and CI.
+# ALLOW_MISSING_WORKLOAD=1 downgrades that to a warning and continues.
+workload_error() { # <message> -> 0 when opted out, 1 otherwise
+    if [ "$ALLOW_MISSING_WORKLOAD" = "1" ]; then
+        info "WARNING: $* (ALLOW_MISSING_WORKLOAD=1: continuing without the workload)"
+        return 0
+    fi
+    printf 'ERROR: %s\n  set ALLOW_MISSING_WORKLOAD=1 to install without the OpenHarmony workload\n' "$*" >&2
+    return 1
+}
+
 install_workload() {
     [ "${INSTALL_WORKLOAD:-1}" = "1" ] || { info "workload install skipped (INSTALL_WORKLOAD=0)"; return 0; }
     [ -x "${INSTALL_DIR}/dotnet" ] || { info "no dotnet in ${INSTALL_DIR}; skipping the workload"; return 0; }
 
     bundle="${WORKLOAD_BUNDLE:-}"
-    tmp=""
+    WL_TMP=""
     tb=""
     asset=""
     rel_tag=""
@@ -454,22 +486,32 @@ install_workload() {
             fi
         fi
         if [ -n "$tb" ]; then
-            tmp="$(mktemp -d)"
-            tar zxf "$tb" -C "$tmp" || { info "WARNING: could not extract $tb"; rm -rf "$tmp"; return 0; }
-            bundle="$(find "$tmp" -mindepth 1 -maxdepth 1 -type d | head -1)"
+            WL_TMP="$(mktemp -d)"
+            if ! tar zxf "$tb" -C "$WL_TMP"; then
+                rm -rf "$WL_TMP"; WL_TMP=""
+                workload_error "could not extract workload bundle $tb"
+                return $?
+            fi
+            bundle="$(find "$WL_TMP" -mindepth 1 -maxdepth 1 -type d | head -1)"
         fi
     fi
 
     if [ -z "$bundle" ]; then
-        info "no workload bundle found (set WORKLOAD_BUNDLE=<dir|tar.gz> to install the OpenHarmony workload)"
-        return 0
+        workload_error "no workload bundle found (set WORKLOAD_BUNDLE=<dir|tar.gz> to install the OpenHarmony workload)"
+        return $?
     fi
     if [ -f "$bundle" ]; then
-        verify_local_file "$bundle" "${WORKLOAD_SHA256:-}" "workload bundle $(basename "$bundle")" \
-            || { info "WARNING: refusing unverified workload bundle $bundle"; return 0; }
-        tmp="$(mktemp -d)"
-        tar zxf "$bundle" -C "$tmp" || { info "WARNING: could not extract $bundle"; rm -rf "$tmp"; return 0; }
-        bundle="$(find "$tmp" -mindepth 1 -maxdepth 1 -type d | head -1)"
+        if ! verify_local_file "$bundle" "${WORKLOAD_SHA256:-}" "workload bundle $(basename "$bundle")"; then
+            workload_error "refusing unverified workload bundle $bundle"
+            return $?
+        fi
+        WL_TMP="$(mktemp -d)"
+        if ! tar zxf "$bundle" -C "$WL_TMP"; then
+            rm -rf "$WL_TMP"; WL_TMP=""
+            workload_error "could not extract workload bundle $bundle"
+            return $?
+        fi
+        bundle="$(find "$WL_TMP" -mindepth 1 -maxdepth 1 -type d | head -1)"
     fi
 
     info "installing the OpenHarmony platform workload from ${bundle}"
@@ -477,11 +519,12 @@ install_workload() {
     [ "${WORKLOAD_DRY_RUN:-0}" = "1" ] && dry="--dry-run"
     if sh "${bundle}/install-ohos-workload.sh" $dry --dotnet "${INSTALL_DIR}/dotnet" "$bundle"; then
         info "workload installed (dotnet workload list)"
-    else
-        info "WARNING: OpenHarmony workload installation failed (continuing without it)"
+        [ -n "$WL_TMP" ] && { rm -rf "$WL_TMP"; WL_TMP=""; }
+        return 0
     fi
-    [ -n "$tmp" ] && rm -rf "$tmp"
-    return 0
+    [ -n "$WL_TMP" ] && { rm -rf "$WL_TMP"; WL_TMP=""; }
+    workload_error "OpenHarmony workload installation failed"
+    return $?
 }
 
 # ------------------------------------------------------------------ cxx runtime
@@ -614,8 +657,8 @@ esac
 
 TARBALL=""
 if [ -n "${RESOLVED_URL:-}" ]; then
-    TMP="$(mktemp -d "${TMPDIR:-/tmp}/dotnet-ohos.XXXXXX")" || die "mktemp -d failed"
-    TARBALL="$TMP/$RESOLVED_FILE"
+    MAIN_TMP="$(mktemp -d "${TMPDIR:-/tmp}/dotnet-ohos.XXXXXX")" || die "mktemp -d failed"
+    TARBALL="$MAIN_TMP/$RESOLVED_FILE"
     download_verified "$RESOLVED_URL" "$TARBALL" "tarball $RESOLVED_FILE" "${TARBALL_SHA256:-}" \
         || die "download failed or unverified: ${RESOLVED_URL}
   (set TARBALL_SHA256=<sha256>, or ALLOW_UNVERIFIED=1 to accept unverified — insecure)"
@@ -626,6 +669,12 @@ else
 fi
 
 install_tarball "$TARBALL"
+# The downloaded tarball is only needed until extraction completes; remove it
+# now (failures above/below are covered by the EXIT trap).
+if [ -n "$MAIN_TMP" ]; then
+    rm -rf "$MAIN_TMP"
+    MAIN_TMP=""
+fi
 deploy_cxx_runtime
 deploy_hostpolicy
 
@@ -659,7 +708,7 @@ setup_profile "${HOME}/.zshrc"
 setup_profile "${HOME}/.profile"
 
 # ----------------------------------------------------------------- workload
-install_workload
+install_workload || exit $?
 
 # ----------------------------------------------------------------- verify
 info "verifying ..."
