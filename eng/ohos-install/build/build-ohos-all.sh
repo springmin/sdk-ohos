@@ -1124,6 +1124,19 @@ stage3() {
   # openharmony packs — override the runtime-driven versions to the locally
   # built one so restore hits our feed.
   local rtver="$RT_VERSION"
+  # Pre-existing warning noise from the cross-compiled aspnetcore build, not
+  # introduced by the OpenHarmony port; upstream sources are deliberately left
+  # untouched, so suppress it for this invocation only:
+  #   nullable:           CS8602 CS8603 CS8604 CS8618 CS8625 CS8714 CS8764
+  #   obsolete/bootstrap: CS0618, CS9103 (RefSafetyRules version mismatch of the
+  #                       local ref assemblies vs the bootstrap compiler)
+  #   docs/async:         CS1574, CS1998
+  #   analyzers:          CA1305 CA1416 CA2000 CA2007 IDE0005 IDE0060 IDE0073 IDE0055 RS0016 RS0041
+  #   source-gen:         SYSLIB0057 SYSLIB1002 SYSLIB1005 SYSLIB1006 SYSLIB1025
+  #   NuGet:              NU1507 NU1603 NU5128
+  #   aspnetcore:         ASPNETCORE_DIRECTTLS_001
+  # Removal: drop these codes (or this list) once the cross-compiled aspnetcore
+  # build is warning-clean for openharmony-*.
   ./eng/build.sh --os-name "$(echo "$RID" | cut -d- -f1)" --arch "$ARCH" -c "$CONFIG" \
     --no-build-nodejs \
     --projects "$(pwd)/src/Framework/App.Runtime/src/aspnetcore-runtime.proj" \
