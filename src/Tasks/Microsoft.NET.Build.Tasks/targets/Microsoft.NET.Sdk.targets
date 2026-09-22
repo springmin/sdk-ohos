@@ -877,9 +877,11 @@ Copyright (c) .NET Foundation. All rights reserved.
     ============================================================
                                         _OpenHarmonyCodeSignBuildOutputs
     OpenHarmony only executes signed ELF binaries, and a signed binary whose content changed
-    (e.g. the apphost) fails with EPERM. Re-sign the build/publish outputs on or for OHOS; the
-    task skips non-ELF files and still-valid signatures. Mirrors _EnableMacOSCodeSign;
-    _EnableOpenHarmonyCodeSign opts in/out explicitly.
+    (e.g. the apphost) fails with EPERM. Re-sign the build/publish outputs on or for OHOS so
+    device runs need no external tooling. The task skips non-ELF files and files whose
+    .codesign section is still valid: re-signing an already-signed ELF on a repeat build
+    failed with "Access to the path is denied", so a valid signature must never be rewritten.
+    Mirrors _EnableMacOSCodeSign; _EnableOpenHarmonyCodeSign opts in/out explicitly.
     ============================================================
      -->
   <UsingTask TaskName="OpenHarmonyCodesign" AssemblyFile="$(MicrosoftNETBuildTasksAssembly)" />
