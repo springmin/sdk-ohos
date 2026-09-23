@@ -85,6 +85,11 @@ OpenHarmony 只执行带 `.codesign` 段的 ELF。**Release 产物未预签名**
 2. `binary-sign-tool`（OHOS SDK / harmonybrew，自动探测）——仅当
    selfsign 不可用（下载失败 / 离线安装 / 未预签名且无法自举）时回退
 
+> `binary-sign-tool` 来自用户自装的 OHOS SDK/harmonybrew，仓库无法为它锚定
+> 唯一摘要；设置 `BINARY_SIGN_TOOL_SHA256=<hex>` 后，脚本会在执行前校验该
+> 文件，摘要不符即拒绝安装；未设置时按"未 pin"告警后回退使用（selfsign
+> 仍为首选）。
+
 > 自动部署的 selfsign 若未携带 `.codesign`，脚本会用 binary-sign-tool
 > 为其自举签名（未签名 ELF 无法执行，selfsign 不能签自己）；两者皆无时
 > 脚本会移除该 selfsign 并回退 binary-sign-tool，或报错提示。

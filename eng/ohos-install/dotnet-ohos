@@ -37,8 +37,31 @@ if [ -z "$SIGN_TOOL" ]; then
         "${HOME}/.harmonybrew/bin/binary-sign-tool" \
         "${HOME}/.harmonybrew/Cellar/ohos-sdk/"*/toolchains/lib/binary-sign-tool
     do
-        if [ -f "$p" ]; then SIGN_TOOL="$p"; break; fi
+        if [ -x "$p" ]; then SIGN_TOOL="$p"; break; fi
     done
+fi
+
+# Optional pin: BINARY_SIGN_TOOL_SHA256=<hex> verifies the exact fallback tool
+# before it is executed (the tool ships inside a user SDK install, so the repo
+# has no digest of its own to anchor; see install-dotnet-ohos.sh). A mismatch
+# refuses to run rather than executing an unexpected binary.
+if [ -n "$SIGN_TOOL" ] && [ -n "${BINARY_SIGN_TOOL_SHA256:-}" ]; then
+    _got=""
+    if command -v sha256sum >/dev/null 2>&1; then
+        _got="$(sha256sum "$SIGN_TOOL" | cut -d' ' -f1)"
+    elif command -v shasum >/dev/null 2>&1; then
+        _got="$(shasum -a 256 "$SIGN_TOOL" | cut -d' ' -f1)"
+    fi
+    _want="$(printf '%s' "$BINARY_SIGN_TOOL_SHA256" | tr 'A-F' 'a-f')"
+    if [ -z "$_got" ]; then
+        echo "dotnet-ohos: ERROR: no sha256 tool (sha256sum/shasum) to verify binary-sign-tool" >&2
+        exit 1
+    fi
+    if [ "$_got" != "$_want" ]; then
+        echo "dotnet-ohos: ERROR: binary-sign-tool sha256 mismatch: $SIGN_TOOL" >&2
+        exit 1
+    fi
+    unset _got _want
 fi
 
 export DOTNET_ROOT

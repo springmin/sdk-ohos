@@ -84,6 +84,46 @@ installer_tests() {
     export SELFSIGN_SHA256
     verify_selfsign_asset "$artifact" >/dev/null 2>&1; rc=$?
     expect_rc "$rc" 2 "without a pin the selfsign file is reported as unverifiable" ""
+
+    # ---------------------------------------------------------- binary-sign-tool
+    tool="$TMP/binary-sign-tool"
+    printf '#!/bin/sh\nexit 0\n' > "$tool"
+    chmod -x "$tool"
+    out="$(verify_binary_sign_tool "$tool" 2>&1)"; rc=$?
+    expect_rc "$rc" 1 "a non-executable binary-sign-tool is refused" "$out"
+    expect_msg "$out" "not executable" "the executable check is named"
+
+    chmod +x "$tool"
+    out="$(BINARY_SIGN_TOOL_SHA256="" verify_binary_sign_tool "$tool" 2>&1)"; rc=$?
+    expect_rc "$rc" 0 "an unpinned binary-sign-tool is accepted with a warning" "$out"
+    expect_msg "$out" "not pinned" "the missing pin is reported"
+
+    tool_good="$(sha256_of "$tool")"
+    out="$(BINARY_SIGN_TOOL_SHA256="$tool_good" verify_binary_sign_tool "$tool" 2>&1)"; rc=$?
+    expect_rc "$rc" 0 "a pin matching the tool verifies" "$out"
+    expect_msg "$out" "verified against BINARY_SIGN_TOOL_SHA256" "the pin verification is reported"
+
+    out="$(BINARY_SIGN_TOOL_SHA256="$(printf '%s' "$tool_good" | tr 'a-f' 'A-F')" verify_binary_sign_tool "$tool" 2>&1)"; rc=$?
+    expect_rc "$rc" 0 "an upper-case pin is normalized" "$out"
+
+    out="$(BINARY_SIGN_TOOL_SHA256="0000000000000000000000000000000000000000000000000000000000000000" verify_binary_sign_tool "$tool" 2>&1)"; rc=$?
+    expect_rc "$rc" 1 "a mismatching binary-sign-tool pin is refused" "$out"
+    expect_msg "$out" "sha256 mismatch" "the mismatch is named"
+
+    # A non-executable harmonybrew candidate must not be picked up by the finder.
+    fake_home="$TMP/home"
+    mkdir -p "$fake_home/.harmonybrew/bin"
+    printf '#!/bin/sh\nexit 0\n' > "$fake_home/.harmonybrew/bin/binary-sign-tool"
+    chmod -x "$fake_home/.harmonybrew/bin/binary-sign-tool"
+    found="$(HOME="$fake_home" PATH="$TMP/empty-path:/usr/bin:/bin" find_binary_sign_tool 2>/dev/null)" || found=""
+    [ -z "$found" ] && pass "a non-executable harmonybrew candidate is not selected" \
+        || fail "a non-executable harmonybrew candidate is not selected: $found"
+
+    chmod +x "$fake_home/.harmonybrew/bin/binary-sign-tool"
+    found="$(HOME="$fake_home" PATH="$TMP/empty-path:/usr/bin:/bin" find_binary_sign_tool 2>/dev/null)" || found=""
+    [ "$found" = "$fake_home/.harmonybrew/bin/binary-sign-tool" ] \
+        && pass "an executable harmonybrew candidate is selected" \
+        || fail "an executable harmonybrew candidate is selected: $found"
 }
 
 

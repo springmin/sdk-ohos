@@ -11,8 +11,15 @@
 # OpenHarmony only executes ELF binaries carrying a .codesign section
 # (unsigned -> EACCES). The runtime/SDK tarballs are NOT pre-signed, so this
 # script signs them with, in order of preference:
-#   1) binary-sign-tool from the OpenHarmony SDK / harmonybrew (if found)
-#   2) the bundled selfsign.sh (C# AOT self-sign tool, see selfsign.sh)
+#   1) selfsign (deployed next to dotnet/dnx by this script, or on PATH; the C#
+#      AOT self-sign tool in this directory)
+#   2) binary-sign-tool from the OpenHarmony SDK / harmonybrew (fallback)
+#
+# binary-sign-tool ships inside the user's own OHOS SDK/harmonybrew install, so
+# there is no single upstream artifact this repository can anchor a digest for.
+# Set BINARY_SIGN_TOOL_SHA256=<hex> to pin the exact file that may be executed:
+# it is verified before first use and a mismatch is fatal. Without the pin the
+# fallback runs with a warning (selfsign remains the preferred path).
 #
 # Since 2026-08-26 the SDK embeds all OpenHarmony fixes (W^X, ICU-invariant, NUMA
 # probe skip, TMPDIR shared memory, auto-codesign of build outputs), and the
@@ -143,7 +150,7 @@ find_binary_sign_tool() {
         "${HOME}/.harmonybrew/Cellar/ohos-sdk/"*/toolchains/lib/binary-sign-tool \
         "${HOME}/.harmonybrew/Cellar/ohos-sdk/"*/bin/binary-sign-tool
     do
-        [ -f "$p" ] && { printf '%s\n' "$p"; return 0; }
+        [ -x "$p" ] && { printf '%s\n' "$p"; return 0; }
     done
     return 1
 }
@@ -227,6 +234,43 @@ verify_sha256() { # <file> <expected-hex> <what>
         return 1
     fi
     info "sha256 OK: ${VF_WHAT}"
+    return 0
+}
+
+# ------------------------------------------------- binary-sign-tool (VBT)
+# binary-sign-tool is the fallback signer (used for the selfsign bootstrap and
+# when $INSTALL_DIR/selfsign could not be deployed). It ships inside the user's
+# OpenHarmony SDK / harmonybrew installation, so there is no single upstream
+# artifact this repository could pin a digest for; the tool is only as trusted
+# as the SDK install it came from. When BINARY_SIGN_TOOL_SHA256 is set (the
+# caller decided which SDK build to trust), the exact file is verified before it
+# is executed and a mismatch is fatal; without it the fallback is used with a
+# warning so the installer stays usable with arbitrary SDK builds.
+verify_binary_sign_tool() { # <path> -> 0 verified-or-unpinned, 1 refused
+    VBT_PATH="$1"
+    if [ -z "$VBT_PATH" ] || [ ! -f "$VBT_PATH" ]; then
+        printf 'ERROR: binary-sign-tool not found: %s\n' "$VBT_PATH" >&2
+        return 1
+    fi
+    if [ ! -x "$VBT_PATH" ]; then
+        printf 'ERROR: binary-sign-tool is not executable: %s\n' "$VBT_PATH" >&2
+        return 1
+    fi
+    if [ -n "${BINARY_SIGN_TOOL_SHA256:-}" ]; then
+        VBT_GOT="$(sha256_of "$VBT_PATH")" || {
+            printf 'ERROR: no sha256 tool (sha256sum/shasum/openssl) to verify binary-sign-tool\n' >&2
+            return 1
+        }
+        VBT_WANT="$(printf '%s' "$BINARY_SIGN_TOOL_SHA256" | tr 'A-F' 'a-f')"
+        if [ "$VBT_GOT" != "$VBT_WANT" ]; then
+            printf 'ERROR: binary-sign-tool sha256 mismatch: %s\n  expected: %s\n  actual:   %s\n' \
+                "$VBT_PATH" "$VBT_WANT" "$VBT_GOT" >&2
+            return 1
+        fi
+        info "binary-sign-tool verified against BINARY_SIGN_TOOL_SHA256"
+    else
+        warn_echo "WARN: binary-sign-tool is not pinned (set BINARY_SIGN_TOOL_SHA256=${VBT_PATH} hash to verify it before use)"
+    fi
     return 0
 }
 
@@ -785,6 +829,7 @@ fi
 # SELFSIGN is resolved after deployment (deployed copy wins over PATH).
 SIGN_TOOL="$(find_binary_sign_tool || true)"
 if [ -n "$SIGN_TOOL" ]; then
+    verify_binary_sign_tool "$SIGN_TOOL" || die "refusing to use an unverified binary-sign-tool: ${SIGN_TOOL}"
     info "found binary-sign-tool: ${SIGN_TOOL} (fallback signer)"
 fi
 deploy_selfsign

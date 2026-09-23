@@ -16,6 +16,11 @@
 #   We sign every ELF file with the OHOS SDK binary-sign-tool (-selfSign 1),
 #   the same tool harmonybrew uses to make its binaries executable.
 #
+#   binary-sign-tool ships inside the user's own OHOS SDK/harmonybrew install,
+#   so this repo cannot anchor a digest for it. Set BINARY_SIGN_TOOL_SHA256=<hex>
+#   to pin the exact file: it is verified before first use and a mismatch is
+#   fatal. Without the pin the tool runs with a warning.
+#
 # Usage:
 #   sh install-dotnet-runtime.sh <dotnet-runtime-*.tar.gz> [install_dir]
 #
@@ -35,6 +40,19 @@ INSTALL_DIR="${2:-${HOME}/.dotnet}"
 
 info()  { printf '==> %s\n' "$*"; }
 die()   { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
+warn()  { printf 'WARN: %s\n' "$*" >&2; }
+
+sha256_of() { # <file> -> hex on stdout
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$1" | cut -d' ' -f1
+    elif command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "$1" | cut -d' ' -f1
+    elif command -v openssl >/dev/null 2>&1; then
+        openssl dgst -sha256 "$1" | sed 's/.*[ =]//'
+    else
+        return 1
+    fi
+}
 
 # ---------------------------------------------------------------- 0. sanity
 [ -n "$TARBALL" ] || die "usage: sh $0 <dotnet-runtime-*.tar.gz> [install_dir]"
@@ -60,7 +78,7 @@ find_sign_tool() {
         "${HOME}/.harmonybrew/Cellar/ohos-sdk/"*/toolchains/lib/binary-sign-tool \
         "${HOME}/.harmonybrew/Cellar/ohos-sdk/"*/bin/binary-sign-tool
     do
-        if [ -f "$p" ]; then
+        if [ -x "$p" ]; then
             printf '%s\n' "$p"
             return 0
         fi
@@ -68,8 +86,34 @@ find_sign_tool() {
     return 1
 }
 
+# Optional pin: verify the exact fallback tool before executing it. Without
+# BINARY_SIGN_TOOL_SHA256 the tool is user-installed SDK content and is used
+# with a warning (see the header).
+verify_sign_tool() { # <path> -> 0 verified-or-unpinned, 1 refused
+    VST_PATH="$1"
+    [ -f "$VST_PATH" ] || { printf 'ERROR: binary-sign-tool not found: %s\n' "$VST_PATH" >&2; return 1; }
+    [ -x "$VST_PATH" ] || { printf 'ERROR: binary-sign-tool is not executable: %s\n' "$VST_PATH" >&2; return 1; }
+    if [ -n "${BINARY_SIGN_TOOL_SHA256:-}" ]; then
+        VST_GOT="$(sha256_of "$VST_PATH")" || {
+            printf 'ERROR: no sha256 tool (sha256sum/shasum/openssl) to verify binary-sign-tool\n' >&2
+            return 1
+        }
+        VST_WANT="$(printf '%s' "$BINARY_SIGN_TOOL_SHA256" | tr 'A-F' 'a-f')"
+        if [ "$VST_GOT" != "$VST_WANT" ]; then
+            printf 'ERROR: binary-sign-tool sha256 mismatch: %s\n  expected: %s\n  actual:   %s\n' \
+                "$VST_PATH" "$VST_WANT" "$VST_GOT" >&2
+            return 1
+        fi
+        info "binary-sign-tool verified against BINARY_SIGN_TOOL_SHA256"
+    else
+        warn "binary-sign-tool is not pinned (set BINARY_SIGN_TOOL_SHA256 to verify it before use)"
+    fi
+    return 0
+}
+
 SIGN_TOOL="$(find_sign_tool)" || die "binary-sign-tool not found
   (install the OpenHarmony SDK or harmonybrew, or add it to PATH)"
+verify_sign_tool "$SIGN_TOOL" || die "refusing to use an unverified binary-sign-tool: ${SIGN_TOOL}"
 
 info "using sign tool: ${SIGN_TOOL}"
 
