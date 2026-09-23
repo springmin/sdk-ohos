@@ -88,6 +88,10 @@ unset _SIBLING_DIR
 # .work dir under this build/ folder (git-ignored) so a fresh clone can run.
 WORK="${WORK:-$(dirname "$SCRIPT_DIR")/.work}"
 FEED="$WORK/feed"              # local NuGet directory feed
+# Pre-seeded host linux-x64 packs. Everything inside becomes build input, so the
+# default lives next to the other build scratch (and must be 0700); the CI
+# workflow points HOSTFEED at its workspace and writes a sha256 manifest into it.
+HOSTFEED="${HOSTFEED:-$WORK/hostfeed}"
 ASSETS="$WORK/assets"          # runtime tarball assets for aspnetcore
 LOG="$WORK/build.log"
 OHOS_NDK_HOME="${OHOS_NDK_HOME:-}"
@@ -233,6 +237,85 @@ dnceng_pkg_sha256() { # <package-id> <version> -> hex or empty
   esac
 }
 
+verify_pinned_nupkg() { # <file> <expected-hex> <what> -> 0 verified
+  [ -n "$2" ] || { info "no sha256 pinned for $3"; return 1; }
+  local got
+  got="$(sha256sum "$1" | cut -d' ' -f1)"
+  [ "$got" = "$2" ] || { info "sha256 mismatch for $3: got $got want $2"; return 1; }
+  return 0
+}
+
+# ---- pre-seeded host packages ($HOSTFEED) -----------------------------------
+# $HOSTFEED is writable by other local jobs/users on shared machines, so every
+# package taken from it must match an anchored digest before it is copied into
+# the local feed or the NuGet global-packages folder (H-C1):
+#   HOSTFEED_<ID>_<VER>_SHA256   env pin (dots/dashes -> '_', upper-cased)
+#   $HOSTFEED/manifest.sha256    "sha256  <name|relative-path>" lines
+# Unknown packages and unpinned files are refused; only the pinned linux-x64
+# host runtime packs/crossgen2 packs may be pre-seeded.
+hostfeed_pin() { # <id> <ver> -> hex or empty
+  local var="HOSTFEED_$(printf '%s' "$1" | tr 'a-z.-' 'A-Z__')_$(printf '%s' "$2" | tr 'a-z.-' 'A-Z__')_SHA256"
+  eval "printf '%s' \"\${$var:-}\""
+}
+
+hostfeed_manifest_sha256() { # <nupkg> -> hex or empty
+  local manifest="$HOSTFEED/manifest.sha256" name rel line sha path
+  [ -f "$manifest" ] || return 0
+  name="$(basename "$1")"
+  rel="${1#"$HOSTFEED"/}"
+  while IFS= read -r line; do
+    sha="$(printf '%s' "$line" | awk '{print $1}')"
+    printf '%s' "$sha" | grep -qE '^[0-9a-fA-F]{64}$' || continue
+    path="$(printf '%s' "$line" | awk '{print $NF}')"
+    [ "$path" = "$rel" ] || [ "$path" = "$name" ] || [ "$path" = "./$name" ] || continue
+    printf '%s' "$sha" | tr 'A-F' 'a-f'
+    return 0
+  done < "$manifest"
+  return 0
+}
+
+hostfeed_digest() { # <id> <ver> <nupkg> -> hex or empty
+  local pin
+  pin="$(hostfeed_pin "$1" "$2")"
+  [ -n "$pin" ] || pin="$(hostfeed_manifest_sha256 "$3")"
+  printf '%s' "$pin" | tr 'A-F' 'a-f'
+}
+
+ingest_hostfeed() {
+  [ -d "$HOSTFEED" ] || return 0
+  if [ -n "$(find "$HOSTFEED" -maxdepth 0 -perm /022 2>/dev/null)" ]; then
+    die "hostfeed $HOSTFEED is group/world writable; chmod 700 it or set HOSTFEED to a private directory"
+  fi
+
+  mkdir -p "$FEED"
+  local nupkg id ver want got found=0
+  while IFS= read -r nupkg; do
+    [ -n "$nupkg" ] || continue
+    id="$(basename "$(dirname "$(dirname "$nupkg")")")"
+    ver="$(basename "$(dirname "$nupkg")")"
+    case "$id" in
+      microsoft.netcore.app.runtime.linux-x64|microsoft.netcore.app.crossgen2.linux-x64) ;;
+      *) die "unexpected package in $HOSTFEED: $nupkg
+  only pinned linux-x64 host runtime/crossgen2 packs may be pre-seeded" ;;
+    esac
+
+    want="$(hostfeed_digest "$id" "$ver" "$nupkg")"
+    if [ -z "$want" ]; then
+      die "no digest pinned for hostfeed entry $nupkg
+  add HOSTFEED_$(printf '%s_%s' "$id" "$ver" | tr 'a-z.-' 'A-Z__')_SHA256 or a line in $HOSTFEED/manifest.sha256"
+    fi
+
+    got="$(sha256sum "$nupkg" | cut -d' ' -f1)"
+    [ "$got" = "$want" ] || die "sha256 mismatch for hostfeed entry $nupkg (want $want got $got)"
+    cp -f "$nupkg" "$FEED/" || die "could not copy $nupkg into $FEED"
+    found=$((found + 1))
+    info "hostfeed: verified $(basename "$nupkg")"
+  done <<EOF
+$(find "$HOSTFEED" -type f -name '*.nupkg' | sort)
+EOF
+  info "hostfeed: $found verified package(s) mirrored into $FEED"
+}
+
 # fetch <url> <dest> <sha256|-> <what>; verifies the digest before moving into place.
 fetch_verified() {
   local url="$1" dest="$2" sha="${3:-}" what="$4"
@@ -291,10 +374,6 @@ resolve_reference_runtime_pack() {
 }
 
 ensure_stock_crossgen2() {
-  if [ -x "$STOCK_CROSSGEN2_DIR/tools/crossgen2" ]; then
-    info "stock crossgen2 ready: $STOCK_CROSSGEN2_VERSION"
-    return 0
-  fi
   # resolution order: repo-bundled -> NuGet cache -> dnceng public feed
   # (this is an internal-dev build: NOT on nuget.org, which returns 404);
   # downloads are sha256-pinned
@@ -314,9 +393,23 @@ ensure_stock_crossgen2() {
       "$nupkg" "$STOCK_CROSSGEN2_SHA256" "official crossgen2 $STOCK_CROSSGEN2_VERSION (dnceng dotnet12 feed)" \
       || die "download official crossgen2 failed (place the nupkg at $SCRIPT_DIR/third-party/ to go offline)"
   fi
-  mkdir -p "$STOCK_CROSSGEN2_DIR"
-  python3 -c "import zipfile; zipfile.ZipFile('$nupkg').extractall('$STOCK_CROSSGEN2_DIR')" || die "extract crossgen2 failed"
-  chmod +x "$STOCK_CROSSGEN2_DIR/tools/crossgen2" 2>/dev/null
+  # An existing extracted directory is not trusted: verify the source package
+  # against the pin, re-extract it and use the freshly extracted tool (the cache
+  # is replaced when it differs). Fail-closed when no pin is available.
+  verify_pinned_nupkg "$nupkg" "$STOCK_CROSSGEN2_SHA256" "stock crossgen2 $STOCK_CROSSGEN2_VERSION" \
+    || die "refusing unverified stock crossgen2 nupkg $nupkg (add the digest to versions.env stock_crossgen2_sha256())"
+  local fresh="$STOCK_CROSSGEN2_DIR.fresh.$$"
+  rm -rf "$fresh"
+  mkdir -p "$fresh"
+  python3 -c "import zipfile; zipfile.ZipFile('$nupkg').extractall('$fresh')" || { rm -rf "$fresh"; die "extract crossgen2 failed"; }
+  chmod +x "$fresh/tools/crossgen2" 2>/dev/null
+  if [ -x "$STOCK_CROSSGEN2_DIR/tools/crossgen2" ] && cmp -s "$fresh/tools/crossgen2" "$STOCK_CROSSGEN2_DIR/tools/crossgen2"; then
+    rm -rf "$fresh"
+    info "stock crossgen2 ready (sha256 verified): $STOCK_CROSSGEN2_DIR/tools/crossgen2 ($STOCK_CROSSGEN2_VERSION)"
+    return 0
+  fi
+  rm -rf "$STOCK_CROSSGEN2_DIR"
+  mv "$fresh" "$STOCK_CROSSGEN2_DIR"
   info "stock crossgen2: $STOCK_CROSSGEN2_DIR/tools/crossgen2 ($STOCK_CROSSGEN2_VERSION)"
 }
 
@@ -430,25 +523,23 @@ open('$clrbin_early/StandardOptimizationData.mibc','wb').write(z.read('tools/Sta
     ensure_stock_crossgen2
     info "in-tree R2R: sfxproj crossgen2 -> $STOCK_CROSSGEN2_DIR/tools/crossgen2"
   fi
-  # Mirror the host linux-x64 runtime packs into the local NuGet feed (flat)
+  # Mirror the verified host linux-x64 packs into the local NuGet feed (flat)
   # so the in-build tool restore (RestoreAdditionalProjectSources=$FEED) and
   # SDK runtime-pack download can resolve them regardless of version source.
-  if [ -d /tmp/hostfeed ]; then
-    mkdir -p "$FEED"
-    find /tmp/hostfeed -name "*.nupkg" -exec cp -n {} "$FEED/" \;
-    info "host packs mirrored into FEED ($(ls "$FEED" | grep -c linux-x64) linux-x64 nupkgs)"
-  fi
+  # Every package is digest-checked against $HOSTFEED/manifest.sha256 or a
+  # HOSTFEED_*_SHA256 pin before it becomes build input.
+  ingest_hostfeed
   # The in-build tools resolve the host runtime pack at ProductVersion
   # ($VERSION_BAND base, no suffix) per targetingpacks KnownRuntimePack;
   # re-version the seeded reference pack to $VERSION_BAND in both the folder
   # feed and the flat feed (docs/plans problem-4 pattern: repackage to the
   # requested version).
-  if [ -f /tmp/hostfeed/microsoft.netcore.app.runtime.linux-x64/$REFERENCE_RUNTIME_PACK_VERSION/microsoft.netcore.app.runtime.linux-x64.$REFERENCE_RUNTIME_PACK_VERSION.nupkg ]; then
-    for dest in /tmp/hostfeed "$FEED"; do
+  if [ -f "$HOSTFEED/microsoft.netcore.app.runtime.linux-x64/$REFERENCE_RUNTIME_PACK_VERSION/microsoft.netcore.app.runtime.linux-x64.$REFERENCE_RUNTIME_PACK_VERSION.nupkg" ]; then
+    for dest in "$HOSTFEED" "$FEED"; do
       mkdir -p "$dest/microsoft.netcore.app.runtime.linux-x64/$VERSION_BAND"
       python3 -c "
 import zipfile, io
-src = '/tmp/hostfeed/microsoft.netcore.app.runtime.linux-x64/$REFERENCE_RUNTIME_PACK_VERSION/microsoft.netcore.app.runtime.linux-x64.$REFERENCE_RUNTIME_PACK_VERSION.nupkg'
+src = '$HOSTFEED/microsoft.netcore.app.runtime.linux-x64/$REFERENCE_RUNTIME_PACK_VERSION/microsoft.netcore.app.runtime.linux-x64.$REFERENCE_RUNTIME_PACK_VERSION.nupkg'
 out = '$dest/microsoft.netcore.app.runtime.linux-x64/$VERSION_BAND/microsoft.netcore.app.runtime.linux-x64.$VERSION_BAND.nupkg'
 zin = zipfile.ZipFile(src)
 with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as zout:
@@ -460,10 +551,12 @@ with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as zout:
 " && info "re-versioned host pack to $VERSION_BAND in $dest"
     done
   fi
-  # Seed every hostfeed version into the NuGet global cache too (the SDK
-  # runtime-pack check looks at ~/.nuget for the resolved version).
-  if [ -d /tmp/hostfeed ]; then
-    for nupkg in $(find /tmp/hostfeed -name "*.nupkg"); do
+  # Seed every verified hostfeed version into the NuGet global cache too (the
+  # SDK runtime-pack check looks at ~/.nuget for the resolved version). The
+  # nupkg was digest-verified above; the content hash is computed from the same
+  # verified bytes.
+  if [ -d "$HOSTFEED" ]; then
+    for nupkg in $(find "$HOSTFEED" -type f -name "*.nupkg"); do
       id=$(basename "$(dirname "$(dirname "$nupkg")")")
       ver=$(basename "$(dirname "$nupkg")")
       dir="$HOME/.nuget/packages/$id/$ver"
@@ -484,24 +577,30 @@ for n in glob.glob('$dir/*.nuspec'):
     done
   fi
   # SDK's FrameworkReference resolution (in-build self-contained host tools)
-  # reads NuGet.config sources, not RestoreAdditionalProjectSources; the
-  # /tmp/hostfeed folder feed (created by the workflow) must be a NuGet.config
-  # source for crossgen2_inbuild/ILCompiler_inbuild to resolve the host
-  # linux-x64 runtime pack (NETSDK1112 on clean hosts).
-  python3 - "$RUNTIME_REPO/NuGet.config" "$FEED" <<'PYEOF'
-import sys
-f = sys.argv[1]
-s = open(f).read()
-if 'local-hostfeed' not in s:
-    marker = '  </packageSources>'
-    add = '    <add key="local-hostfeed" value="/tmp/hostfeed" />\n    <add key="local-feed" value="' + sys.argv[2] + '" />\n'
-    assert marker in s, "packageSources close not found"
-    s = s.replace(marker, add + marker, 1)
-    open(f, 'w').write(s)
-    print("added local-hostfeed folder source to NuGet.config")
+  # reads NuGet.config sources, not RestoreAdditionalProjectSources. The
+  # repository file must stay untouched (a build may not modify tracked files),
+  # so the repo config is merged with the local folder feeds into a private
+  # config under $WORK and restore is pointed at it with RestoreConfigFile.
+  NUGET_CONFIG="$WORK/NuGet.config"
+  python3 - "$RUNTIME_REPO/NuGet.config" "$NUGET_CONFIG" "$FEED" "$HOSTFEED" <<'PYEOF'
+import os, sys
+src, out, feed, hostfeed = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+s = open(src).read()
+marker = '  </packageSources>'
+assert marker in s, "packageSources close not found"
+adds = []
+if feed not in s:
+    adds.append('    <add key="local-feed" value="' + feed + '" />\n')
+if os.path.isdir(hostfeed) and hostfeed not in s:
+    adds.append('    <add key="local-hostfeed" value="' + hostfeed + '" />\n')
+if adds:
+    s = s.replace(marker, ''.join(adds) + marker, 1)
+open(out, 'w').write(s)
+print("wrote " + out + " (repo NuGet.config untouched)")
 PYEOF
-  RESTORE_SOURCES="$(grep -oE 'value="[^"]*"' "$RUNTIME_REPO/NuGet.config" | sed 's/value="//; s/"//' | grep -E '^http|^/' | tr '\n' ';')$FEED;/tmp/hostfeed"
-  info "restore sources set (NuGet.config + /tmp/hostfeed)"
+  chmod 600 "$NUGET_CONFIG" 2>/dev/null || true
+  RESTORE_SOURCES="$(grep -oE 'value="[^"]*"' "$NUGET_CONFIG" | sed 's/value="//; s/"//' | grep -E '^https?://|^/' | tr '\n' ';')"
+  info "restore sources set (private NuGet.config: $NUGET_CONFIG)"
   # A clean build hits several self-healing failures (all ordering, not our
   # code): singlefilehost links before libruntimeinfo.a is built, sfx-finish
   # runs before the shims (facades) are compiled, and restore needs the
@@ -515,6 +614,7 @@ PYEOF
         -subset clr+libs+packs \
         /p:UseBootstrapLayout=true /p:BuildHostTools=true /p:ApiCompatValidateAssemblies=false \
         /p:RuntimeIdentifierGraphPath="$rsp" /p:IncludeSymbols=false \
+        "/p:RestoreConfigFile=$NUGET_CONFIG" \
         $IN_TREE_R2R_PACK_ARGS \
         /p:PreReleaseVersionLabel="$LABEL" /p:PreReleaseVersion="$PRE" /p:OfficialBuildId="$BUILDID" \
         "/p:RestoreAdditionalProjectSources=$FEED" \
@@ -583,12 +683,46 @@ for tfm, fr in proj.get('frameworks',{}).items():
   done
 }
 
+# expected digest for a host runtime pack (dnceng pins or the GitHub release
+# digest of the 'host-runtime-packs' release); empty when unavailable.
+host_pack_expected_sha256() { # <id> <ver> <url> -> hex or empty
+  case "$3" in
+    *pkgs.dev.azure.com*) printf '%s' "${HOST_PACK_SHA256:-$(dnceng_pkg_sha256 "$1" "$2")}" ;;
+    https://github.com/*) github_asset_sha256 "$GH_USER" sdk-ohos host-runtime-packs "$1.$2.nupkg" || true ;;
+    *) printf '%s' "" ;;
+  esac
+}
+
+# A directory in ~/.nuget is not evidence of integrity: the cached nupkg must
+# match the expected digest before it is used (H-C1).
+verify_host_pack_cache() { # <id> <ver> <expected-hex> -> 0 when the cache is usable
+  local dir="$HOME/.nuget/packages/$1/$2"
+  local nupkg=""
+  nupkg="$(ls "$dir"/*.nupkg 2>/dev/null | grep -v symbols | head -1)"
+  if [ -z "$nupkg" ]; then
+    return 1
+  fi
+  if [ -z "$3" ]; then
+    info "no anchored digest to verify cached $1 $2 against"
+    return 1
+  fi
+  local got
+  got="$(sha256sum "$nupkg" | cut -d' ' -f1)"
+  if [ "$got" != "$3" ]; then
+    info "cached $1 $2 sha256 mismatch (got $got want $3)"
+    return 1
+  fi
+  ls "$dir"/*.nuspec >/dev/null 2>&1 || return 1
+  return 0
+}
+
 # pre-seed a host-RID runtime pack into ~/.nuget (clean hosts cannot restore
 # the host pack for the in-build toolchain from the feed in some cmake/nuget
 # combos — NETSDK1112). ILCompiler_inbuild is SelfContained at the SDK runtime
 # version (nuget.org), so try that first, then dnceng dotnet12 candidates.
 # Downloads are sha256-verified (fetch_verified); dnceng versions use the
-# dnceng_pkg_sha256 pins, GitHub-hosted ones resolve the release digest.
+# dnceng_pkg_sha256 pins, GitHub-hosted ones resolve the release digest. A
+# pre-existing cache is re-verified against the same digest before it is used.
 ensure_nuget_runtime_pack() {
   local rid="$1"
   local id="microsoft.netcore.app.runtime.$rid"
@@ -596,7 +730,6 @@ ensure_nuget_runtime_pack() {
   for ver in "$2" "$3" "$4"; do
     [ -n "$ver" ] || continue
     local dir="$HOME/.nuget/packages/$id/$ver"
-    [ -d "$dir" ] && return 0
     local url=""
     # GitHub-hosted copy first (CI cannot reliably reach dnceng/nuget.org for
     # these; see sdk-ohos release 'host-runtime-packs'), then the origin feeds.
@@ -607,15 +740,21 @@ ensure_nuget_runtime_pack() {
     else
       url="https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet12/nuget/v3/flat2/$id/$ver/$id.$ver.nupkg"
     fi
+    local sha
+    sha="$(host_pack_expected_sha256 "$id" "$ver" "$url")"
+    if [ -z "$sha" ]; then
+      # pinned GitHub release only; resolve_url_sha256 refuses other hosts
+      sha="$(resolve_url_sha256 "$url" "$id.$ver.nupkg" || true)"
+    fi
+    if [ -d "$dir" ]; then
+      if verify_host_pack_cache "$id" "$ver" "$sha"; then
+        return 0
+      fi
+      info "cached $id $ver is not usable; re-downloading"
+      rm -rf "$dir"
+    fi
     info "pre-seeding $id $ver..."
     local tmp="$(mktemp -d)"
-    # The dnceng feeds are immutable per version, so their content digest is
-    # pinned (dnceng_pkg_sha256 / HOST_PACK_SHA256); the GitHub-hosted packs
-    # resolve their digest from the release. Unverifiable downloads are refused.
-    local sha=""
-    case "$url" in
-      *pkgs.dev.azure.com*) sha="${HOST_PACK_SHA256:-$(dnceng_pkg_sha256 "$id" "$ver")}" ;;
-    esac
     if fetch_verified "$url" "$tmp/p.nupkg" "$sha" "host runtime pack $id $ver"; then
       mkdir -p "$dir"
       cp "$tmp/p.nupkg" "$dir/$id.$ver.nupkg"
@@ -726,16 +865,28 @@ stage1() {
   HOSTPACK_ID=microsoft.netcore.app.runtime.linux-x64
   HOSTPACK_DIR="$HOME/.nuget/packages/$HOSTPACK_ID/$RT_VERSION"
   if ! ls "$HOSTPACK_DIR"/*.nuspec >/dev/null 2>&1; then
+    # Only a digest-verified pack may be re-versioned: the ~/.nuget cache is
+    # writable by anything running as this user (H-C1).
     HOSTPACK_SRC=""
+    HOSTPACK_SRCVER=""
     for cand in "$HOME/.nuget/packages/$HOSTPACK_ID"/*; do
       [ -d "$cand" ] || continue
       f=$(ls "$cand"/*.nupkg 2>/dev/null | head -1)
-      [ -n "$f" ] && HOSTPACK_SRC="$f"
+      [ -n "$f" ] || continue
+      cver=$(basename "$f" | sed "s/^$HOSTPACK_ID\.//; s/\.nupkg$//")
+      csha="${HOST_PACK_SHA256:-$(dnceng_pkg_sha256 "$HOSTPACK_ID" "$cver")}"
+      [ -n "$csha" ] || csha="$(github_asset_sha256 "$GH_USER" sdk-ohos host-runtime-packs "$HOSTPACK_ID.$cver.nupkg" || true)"
+      if verify_pinned_nupkg "$f" "$csha" "host pack source $cver"; then
+        HOSTPACK_SRC="$f"
+        HOSTPACK_SRCVER="$cver"
+        break
+      fi
+      info "skipping unverified host pack candidate $f"
     done
     if [ -n "$HOSTPACK_SRC" ]; then
-      HOSTPACK_SRCVER=$(basename "$HOSTPACK_SRC" | sed "s/^$HOSTPACK_ID\.//; s/\.nupkg$//")
       info "re-versioning host pack $HOSTPACK_SRCVER -> $RT_VERSION (no published pack for this buildid)"
-      mkdir -p "$HOSTPACK_DIR" "/tmp/hostfeed/$HOSTPACK_ID/$RT_VERSION"
+      mkdir -p "$HOSTPACK_DIR"
+      [ -d "$HOSTFEED" ] && mkdir -p "$HOSTFEED/$HOSTPACK_ID/$RT_VERSION"
       python3 -c "
 import zipfile
 src, out, old, new = '$HOSTPACK_SRC', '$HOSTPACK_DIR/$HOSTPACK_ID.$RT_VERSION.nupkg', '$HOSTPACK_SRCVER', '$RT_VERSION'
@@ -746,7 +897,13 @@ with zipfile.ZipFile(src) as zin, zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED
             d = d.decode().replace(old, new).encode()
         zout.writestr(n, d)
 "
-      cp "$HOSTPACK_DIR/$HOSTPACK_ID.$RT_VERSION.nupkg" "/tmp/hostfeed/$HOSTPACK_ID/$RT_VERSION/"
+      if [ -d "$HOSTFEED" ]; then
+        cp "$HOSTPACK_DIR/$HOSTPACK_ID.$RT_VERSION.nupkg" "$HOSTFEED/$HOSTPACK_ID/$RT_VERSION/"
+        # The re-versioned pack is a derived artifact, but a later build treats
+        # $HOSTFEED as untrusted input: pin its digest in the manifest.
+        sha256sum "$HOSTFEED/$HOSTPACK_ID/$RT_VERSION/$HOSTPACK_ID.$RT_VERSION.nupkg" \
+          | sed "s|$HOSTFEED/||" >> "$HOSTFEED/manifest.sha256"
+      fi
       python3 -c "
 import hashlib,base64,json,zipfile,glob,shutil
 dirp='$HOSTPACK_DIR'; n='$HOSTPACK_ID.$RT_VERSION.nupkg'; p=dirp+'/'+n
