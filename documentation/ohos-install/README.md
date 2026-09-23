@@ -172,11 +172,17 @@ OHOS SDK / harmonybrew（提供 binary-sign-tool），或把预构建
 ## RID independence (2026-09-03)
 
 Per review guidance (openharmony must not pretend to be a Linux flavor at the RID
-level), the openharmony RID entries in `eng/RuntimeIdentifierGraph.openharmony.json` and
-`eng/PortableRuntimeIdentifierGraph.openharmony.json` no longer `#import linux-musl`:
+level), the openharmony RID entries in `eng/PortableRuntimeIdentifierGraph.openharmony.json`
+no longer `#import linux-musl`:
 
-- `openharmony` → `{}` (independent base RID)
+- `openharmony` → `{"#import": ["any"]}` (independent base RID)
 - `openharmony-arm` / `openharmony-arm64` / `openharmony-x64` → `{"#import": ["openharmony"]}` only
+
+Only the portable graph is fork-owned and overridden (`RidGraphOverridePortableJson`); the
+legacy `RuntimeIdentifierGraph.json` (runtime.json) is frozen upstream, so the shipped SDK
+layout always copies the `Microsoft.NETCore.Platforms` package copy. The SDK resolves RIDs
+from the portable graph by default (`UseRidGraph` is false for .NET 8+), so that graph is
+the one the port depends on.
 
 Consequences:
 - NuGet no longer falls back openharmony → linux-musl packs; a missing openharmony pack is
@@ -186,6 +192,8 @@ Consequences:
 - All openharmony-arm64 asset packs are published for rc.1.26451.109 (runtime,
   ILCompiler, NativeAOT, Host, Crossgen2), so independent resolution works.
 
-To rebuild with the independent graph, the bootstrap SDK copies under
-`.dotnet/sdk/*/` (RuntimeIdentifierGraph.json / PortableRuntimeIdentifierGraph.json)
-must carry the same openharmony entries — they were regenerated on 2026-09-03.
+To rebuild with the independent graph, `build-ohos-all.sh` injects the portable graph into
+the bootstrap SDK copies under `.dotnet/sdk/*/` (RuntimeIdentifierGraph.json /
+PortableRuntimeIdentifierGraph.json) when they lack openharmony — a stock bootstrap SDK
+never has the fork RIDs. These copies are local bootstrap plumbing; the product layout
+carries only the upstream runtime.json plus the overridden portable graph.
