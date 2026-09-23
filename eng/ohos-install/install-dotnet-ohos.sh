@@ -33,20 +33,25 @@
 # tarball, workload bundle) is sha256-verified before it is extracted or
 # executed; downloads land in a mktemp file and only move into place after the
 # digest matches. The expected digest comes from, in order:
-#   1) an explicit env pin:
-#        SELFSIGN_SHA256   selfsign-ohos-arm64
+#   1) an anchored pin (versions.env: SDK_TARBALL_SHA256 / RUNTIME_TARBALL_SHA256
+#      / SELFSIGN_SHA256, or WORKLOAD_SHA256), or an explicit env pin:
 #        TARBALL_SHA256    the sdk/runtime tarball (also local-file installs)
 #        WORKLOAD_SHA256   the workload bundle
-#   2) a SHA256SUMS sibling asset in the same GitHub release
-#   3) a <asset>.sha256 sibling asset in the same release
-#   4) the GitHub release-asset digest (sha256) of that release
-# When no digest resolves the artifact is refused. ALLOW_UNVERIFIED=1 bypasses
-# that (insecure; offline/legacy installs only) and prints a warning.
-# Local tarballs are verified against <file>.sha256 or TARBALL_SHA256 and are
-# refused without one unless ALLOW_UNVERIFIED=1. A cached rolling workload
-# bundle is re-verified before reuse and discarded when it cannot be.
+#   2) for the pinned GitHub release URLs only, a same-release SHA256SUMS /
+#      <asset>.sha256 / GitHub release digest (with a warning when no pin is set)
+# A user-supplied URL is NEVER verified against same-origin evidence: it is
+# refused unless an anchored digest is available, because an attacker who
+# controls that host can replace the artifact and its checksum together.
+# Plaintext http:// is refused outright, curl is restricted to https (including
+# redirects) and wget is used only when it supports --https-only.
+# ALLOW_UNVERIFIED=1 bypasses digest enforcement entirely (insecure; offline/
+# legacy installs only) and prints a warning.
+# Local tarballs are verified against TARBALL_SHA256 or a <file>.sha256 sidecar
+# and are refused without one unless ALLOW_UNVERIFIED=1. A cached rolling
+# workload bundle is re-verified before reuse and discarded when it cannot be.
 # Release publishers should upload SHA256SUMS next to the artifacts (the
-# ohos-full-build workflow does this for new releases).
+# ohos-full-build workflow does this for new releases) and update the anchored
+# digests in versions.env.
 #
 # Idempotent: safe to re-run (re-extract, re-sign, profile entries deduped).
 # ============================================================================
@@ -159,15 +164,34 @@ sign_elf() { # f -> signs one ELF in place (selfsign preferred, then binary-sign
 }
 
 # ------------------------------------------------------------- download
+# wget is only usable when it can refuse a https -> http downgrade; curl gets
+# the equivalent --proto/--proto-redir flags below.
+WGET_TLS_OPTS=""
+if command -v wget >/dev/null 2>&1 && wget --help 2>&1 | grep -q -- '--https-only'; then
+    WGET_TLS_OPTS="--https-only"
+fi
+
 download() { # url -> file
     url="$1"; out="$2"
+    case "$url" in
+        http://*)
+            printf 'ERROR: refusing plaintext http:// URL: %s\n  use https:// or install from a local file\n' "$url" >&2
+            return 1
+            ;;
+    esac
     info "downloading ${url}"
     if command -v curl >/dev/null 2>&1; then
-        curl -fsSL --retry 3 --retry-delay 2 --connect-timeout 30 -o "$out" "$url" || return 1
+        # https only, and a redirect may not downgrade the connection to http
+        curl -fsSL --proto '=https' --proto-redir '=https' \
+            --retry 3 --retry-delay 2 --connect-timeout 30 -o "$out" "$url" || return 1
     elif command -v wget >/dev/null 2>&1; then
-        wget --tries=3 --timeout=30 -O "$out" "$url" || return 1
+        [ -n "$WGET_TLS_OPTS" ] || {
+            printf 'ERROR: wget does not support --https-only; install curl or a wget that can refuse http redirects\n' >&2
+            return 1
+        }
+        wget $WGET_TLS_OPTS --tries=3 --timeout=30 -O "$out" "$url" || return 1
     else
-        printf 'ERROR: need curl or wget to download\n' >&2; return 1
+        printf 'ERROR: need curl (or wget with --https-only) to download\n' >&2; return 1
     fi
     [ -s "$out" ] || { printf 'ERROR: download produced empty file: %s\n' "$out" >&2; return 1; }
 }
@@ -214,8 +238,25 @@ fetch_text() { # <url> -> stdout; nonzero when unreachable
     rm -f "$FETCH_TMP"; return 1
 }
 
+# True when <url> is one of the release URLs derived from the version pins in
+# versions.env (the GitHub account the fork releases live under). Same-release
+# checksum evidence is only ever accepted from these; any other host needs an
+# external anchor.
+is_pinned_release_url() {
+    case "$1" in
+        "https://github.com/${GH_USER}/sdk-ohos/releases/download/"*)        return 0 ;;
+        "https://github.com/${GH_USER}/runtime-ohos/releases/download/"*)    return 0 ;;
+        "https://github.com/${GH_USER}/aspnetcore-ohos/releases/download/"*) return 0 ;;
+    esac
+    return 1
+}
+
 resolve_expected_sha256() { # <url> <asset-name> -> hex or empty
     RE_URL="$1"; RE_NAME="$2"
+    is_pinned_release_url "$RE_URL" || {
+        printf 'ERROR: refusing same-origin checksum evidence for a non-pinned URL: %s\n' "$RE_URL" >&2
+        return 1
+    }
     # 1) SHA256SUMS sibling in the same release
     if RE_TXT="$(fetch_text "${RE_URL%/*}/SHA256SUMS")"; then
         RE_SHA="$(printf '%s\n' "$RE_TXT" | awk -v a="$RE_NAME" '$NF == a || $NF == "*" a { print $1; exit }')"
@@ -248,8 +289,8 @@ resolve_expected_sha256() { # <url> <asset-name> -> hex or empty
     return 1
 }
 
-download_verified() { # <url> <out> <what> [expected-sha256]
-    DV_URL="$1"; DV_OUT="$2"; DV_WHAT="$3"; DV_SHA="${4:-}"
+download_verified() { # <url> <out> <what> [expected-sha256] [anchored-sha256]
+    DV_URL="$1"; DV_OUT="$2"; DV_WHAT="$3"; DV_SHA="${4:-}"; DV_ANCHOR="${5:-}"
     DV_TMP="$(mktemp "${TMPDIR:-/tmp}/dotnet-dl.XXXXXX")" || {
         printf 'ERROR: mktemp failed for %s\n' "$DV_WHAT" >&2; return 1
     }
@@ -258,8 +299,19 @@ download_verified() { # <url> <out> <what> [expected-sha256]
         printf 'ERROR: download failed: %s\n' "$DV_URL" >&2
         return 1
     fi
-    if [ -z "$DV_SHA" ]; then
-        DV_SHA="$(resolve_expected_sha256 "$DV_URL" "$(basename "$DV_URL")")" || DV_SHA=""
+    if [ -n "$DV_ANCHOR" ]; then
+        # An anchored digest always wins: same-release checksums are not consulted.
+        DV_SHA="$DV_ANCHOR"
+    elif [ -z "$DV_SHA" ]; then
+        if is_pinned_release_url "$DV_URL"; then
+            DV_SHA="$(resolve_expected_sha256 "$DV_URL" "$(basename "$DV_URL")")" || DV_SHA=""
+            if [ -n "$DV_SHA" ]; then
+                warn_echo "WARN: no anchored sha256 pinned for $(basename "$DV_URL"); using the release's own checksum evidence"
+            fi
+        else
+            printf 'ERROR: no anchored sha256 for %s\n  %s is not a pinned release URL, so a checksum from the same host is not trusted; set the matching *_SHA256 pin (see script header)\n' \
+                "$DV_WHAT" "$DV_URL" >&2
+        fi
     fi
     if [ -z "$DV_SHA" ]; then
         if [ "$ALLOW_UNVERIFIED" = "1" ]; then
@@ -281,6 +333,7 @@ verify_local_file() { # <file> <pin> <what-prefix> -> 0 verified/opted-out, 1 un
     LF_FILE="$1"; LF_PIN="${2:-}"; LF_WHAT="$3"
     if [ -z "$LF_PIN" ] && [ -f "${LF_FILE}.sha256" ]; then
         LF_PIN="$(grep -oE '[0-9a-fA-F]{64}' "${LF_FILE}.sha256" | head -1 || true)"
+        [ -z "$LF_PIN" ] || warn_echo "WARN: ${LF_FILE}.sha256 is same-source evidence; pin TARBALL_SHA256/WORKLOAD_SHA256 for an external anchor"
     fi
     if [ -z "$LF_PIN" ]; then
         if [ "$ALLOW_UNVERIFIED" = "1" ]; then
@@ -296,6 +349,8 @@ verify_local_file() { # <file> <pin> <what-prefix> -> 0 verified/opted-out, 1 un
 
 # ------------------------------------------------------- resolve artifact
 RESOLVED_FILE=""
+RESOLVED_URL=""
+RESOLVED_ANCHOR=""
 resolve_choice() { # "sdk"|"runtime"|local path|url
     arg="$1"
     case "$arg" in
@@ -303,15 +358,25 @@ resolve_choice() { # "sdk"|"runtime"|local path|url
             repo="sdk-ohos"; tag="v${SDK_VERSION}-ohos"; file="dotnet-sdk-${SDK_VERSION}-${RID}.tar.gz"
             RESOLVED_FILE="$file"
             RESOLVED_URL="https://github.com/${GH_USER}/${repo}/releases/download/${tag}/${file}"
+            RESOLVED_ANCHOR="$(anchored_asset_sha256 "$file")"
             ;;
         runtime)
             repo="runtime-ohos"; tag="v${RT_VERSION}-ohos"; file="dotnet-runtime-${RT_VERSION}-${RID}.tar.gz"
             RESOLVED_FILE="$file"
             RESOLVED_URL="https://github.com/${GH_USER}/${repo}/releases/download/${tag}/${file}"
+            RESOLVED_ANCHOR="$(anchored_asset_sha256 "$file")"
             ;;
-        http://*|https://*)
+        http://*)
+            die "insecure http:// URL refused: ${arg}
+  use an https:// URL, or a local file (the installer verifies local tarballs against
+  TARBALL_SHA256 or a <file>.sha256 sidecar)"
+            ;;
+        https://*)
             RESOLVED_FILE="$(basename "$arg")"
             RESOLVED_URL="$arg"
+            # A URL the caller supplied is not a pinned release URL: its checksum
+            # evidence must come from an anchor (versions.env or *_SHA256).
+            RESOLVED_ANCHOR="$(anchored_asset_sha256 "$RESOLVED_FILE")"
             ;;
         *)
             [ -r "$arg" ] || die "tarball not readable: ${arg}
@@ -341,13 +406,43 @@ install_tarball() {
 # The selfsign asset lives in the sdk-ohos release, same tag as the SDK.
 SDK_TAG="$(printf '%s\n' "$RELEASES" | sed -n 's/^ *sdk|sdk-ohos|\([^|]*\)|.*/\1/p' | head -n 1)"
 SELFSIGN_URL="https://github.com/${GH_USER}/sdk-ohos/releases/download/${SDK_TAG}/${SELFSIGN_ASSET}"
+
+# verify_selfsign_asset <file> -> 0 verified, 1 mismatch, 2 no anchored digest
+# The signer is executed with the caller's privileges, so it must match the
+# pinned digest before it is trusted.
+verify_selfsign_asset() {
+    VSA_PIN="$(anchored_asset_sha256 "$SELFSIGN_ASSET")"
+    [ -n "$VSA_PIN" ] || return 2
+    VSA_GOT="$(sha256_of "$1")" || return 2
+    VSA_PIN="$(printf '%s' "$VSA_PIN" | tr 'A-F' 'a-f')"
+    [ "$VSA_GOT" = "$VSA_PIN" ] || return 1
+    return 0
+}
+
 deploy_selfsign() {
-    [ -x "${INSTALL_DIR}/selfsign" ] && { info "selfsign already at ${INSTALL_DIR}/selfsign"; return 0; }
+    if [ -x "${INSTALL_DIR}/selfsign" ]; then
+        # Never execute a pre-existing signer without checking it against the pin.
+        verify_selfsign_asset "${INSTALL_DIR}/selfsign"; VSA_RC=$?
+        case "$VSA_RC" in
+            0)
+                info "selfsign already at ${INSTALL_DIR}/selfsign (sha256 verified)"
+                return 0
+                ;;
+            1)
+                warn_echo "  WARN: ${INSTALL_DIR}/selfsign does not match the pinned sha256; replacing it"
+                rm -f "${INSTALL_DIR}/selfsign"
+                ;;
+            *)
+                warn_echo "  WARN: no anchored sha256 for ${SELFSIGN_ASSET}; keeping the existing ${INSTALL_DIR}/selfsign"
+                return 0
+                ;;
+        esac
+    fi
     SELFSIGN_TMP="$(mktemp "${TMPDIR:-/tmp}/selfsign-ohos.XXXXXX")" || {
         warn_echo "  WARN: mktemp failed; cannot download selfsign"
         return 1
     }
-    if ! download_verified "$SELFSIGN_URL" "$SELFSIGN_TMP" "selfsign (${SELFSIGN_ASSET})" "${SELFSIGN_SHA256:-}"; then
+    if ! download_verified "$SELFSIGN_URL" "$SELFSIGN_TMP" "selfsign (${SELFSIGN_ASSET})" "${SELFSIGN_SHA256:-}" "$(anchored_asset_sha256 "$SELFSIGN_ASSET")"; then
         rm -f "$SELFSIGN_TMP"
         warn_echo "  WARN: selfsign download/verification failed (offline or no sha256?); will use binary-sign-tool if present"
         return 1
@@ -647,7 +742,7 @@ case "$ARG" in
         exit $?
         ;;
 
-    sdk|runtime|http://*|https://*)
+    sdk|runtime|https://*)
         resolve_choice "$ARG"
         ;;
     *)
@@ -659,7 +754,7 @@ TARBALL=""
 if [ -n "${RESOLVED_URL:-}" ]; then
     MAIN_TMP="$(mktemp -d "${TMPDIR:-/tmp}/dotnet-ohos.XXXXXX")" || die "mktemp -d failed"
     TARBALL="$MAIN_TMP/$RESOLVED_FILE"
-    download_verified "$RESOLVED_URL" "$TARBALL" "tarball $RESOLVED_FILE" "${TARBALL_SHA256:-}" \
+    download_verified "$RESOLVED_URL" "$TARBALL" "tarball $RESOLVED_FILE" "${TARBALL_SHA256:-}" "${RESOLVED_ANCHOR:-}" \
         || die "download failed or unverified: ${RESOLVED_URL}
   (set TARBALL_SHA256=<sha256>, or ALLOW_UNVERIFIED=1 to accept unverified — insecure)"
 else
