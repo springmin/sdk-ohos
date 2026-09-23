@@ -17,6 +17,8 @@ namespace Microsoft.DotNet.Cli.Commands.SelfSign;
 /// Directories are walked without following symbolic links (file or directory links), so a
 /// link placed in the tree can never make the command rewrite a file outside it. An explicit
 /// path that is not an ELF64 file is reported as a failure instead of being silently counted.
+/// Signing probes the 64-byte ELF header before reading anything else, so a walk over an
+/// output tree (which is mostly .hap/.pdb/.json payloads) does not load those files in full.
 /// </summary>
 internal static class SelfSignCommand
 {
@@ -79,26 +81,15 @@ internal static class SelfSignCommand
         {
             try
             {
-                byte[] raw = File.ReadAllBytes(file);
-                if (!ElfSigner.IsElf64(raw))
-                {
-                    if (explicitFile)
-                    {
-                        // A named file that is not a signable ELF64 is a caller error: an exit
-                        // code of 0 would let a signing gate accept an unsigned/invalid artifact.
-                        failed++;
-                        Console.Error.WriteLine($"selfsign failed: {file}: not an ELF64 file");
-                    }
-                    else
-                    {
-                        notElf++;
-                    }
-
-                    return;
-                }
-
                 if (strip)
                 {
+                    byte[] raw = File.ReadAllBytes(file);
+                    if (!ElfSigner.IsElf64(raw))
+                    {
+                        ReportNotElf(file, explicitFile);
+                        return;
+                    }
+
                     byte[] without = ElfSigner.StripCodesign(raw, out bool removed);
                     if (!removed)
                     {
@@ -112,6 +103,9 @@ internal static class SelfSignCommand
                     return;
                 }
 
+                // SignFileInPlace probes the 64-byte ELF header itself, so the command does
+                // not read (and must not reject) non-ELF files up front; its NotElf outcome
+                // feeds the same explicit-file failure / directory-scan counter as before.
                 switch (ElfSigner.SignFileInPlace(file, force))
                 {
                     case ElfSigner.SignOutcome.Signed:
@@ -127,7 +121,7 @@ internal static class SelfSignCommand
                         Console.Error.WriteLine($"selfsign skipped (foreign .codesign retained, use --force to replace): {file}");
                         break;
                     default:
-                        notElf++;
+                        ReportNotElf(file, explicitFile);
                         break;
                 }
             }
@@ -135,6 +129,21 @@ internal static class SelfSignCommand
             {
                 failed++;
                 Console.Error.WriteLine($"selfsign failed: {file}: {e.Message}");
+            }
+        }
+
+        void ReportNotElf(string file, bool explicitFile)
+        {
+            if (explicitFile)
+            {
+                // A named file that is not a signable ELF64 is a caller error: an exit
+                // code of 0 would let a signing gate accept an unsigned/invalid artifact.
+                failed++;
+                Console.Error.WriteLine($"selfsign failed: {file}: not an ELF64 file");
+            }
+            else
+            {
+                notElf++;
             }
         }
     }
