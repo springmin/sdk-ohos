@@ -12,6 +12,11 @@ namespace Microsoft.NET.Build.Tasks
     /// target/publish directories. OpenHarmony only executes signed ELF files, and a signed file
     /// whose content changed (e.g. the apphost, rewritten on every build) fails with EPERM; files
     /// with a still-valid signature are skipped.
+    ///
+    /// Symbolic links (file and directory links) are never followed: signing through a link would
+    /// rewrite a file outside the output tree. Foreign .codesign sections are kept and reported
+    /// instead of being replaced silently; replacing one requires the explicit selfsign --force
+    /// opt-in.
     /// </summary>
     public sealed class OpenHarmonyCodesign : TaskBase
     {
@@ -29,13 +34,20 @@ namespace Microsoft.NET.Build.Tasks
 
                 try
                 {
-                    foreach (string path in Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories))
+                    foreach (string path in ElfSigner.EnumerateFilesWithoutLinks(
+                        directory,
+                        link => Log.LogWarning(Strings.OpenHarmonyCodesignSkippedSymbolicLink, link)))
                     {
                         try
                         {
-                            if (ElfSigner.SignFileInPlace(path) == ElfSigner.SignOutcome.Signed)
+                            switch (ElfSigner.SignFileInPlace(path))
                             {
-                                Log.LogMessage(MessageImportance.Low, "OpenHarmonyCodesign: signed {0}", path);
+                                case ElfSigner.SignOutcome.Signed:
+                                    Log.LogMessage(MessageImportance.Low, "OpenHarmonyCodesign: signed {0}", path);
+                                    break;
+                                case ElfSigner.SignOutcome.ForeignSignatureRetained:
+                                    Log.LogWarning(Strings.OpenHarmonyCodesignRetainedForeignSignature, path);
+                                    break;
                             }
                         }
                         catch (Exception ex)

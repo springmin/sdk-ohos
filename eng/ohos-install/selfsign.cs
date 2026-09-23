@@ -3,6 +3,8 @@
 
 // Standalone OpenHarmony ELF signer. The signing algorithm is shared with the SDK's
 // OpenHarmonyCodesign MSBuild task; both compile src/Tasks/Microsoft.NET.Build.Tasks/ElfSigner.cs.
+// Symbolic links are refused rather than followed, and a .codesign section this tool did
+// not create is only replaced with an explicit --force (never silently).
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -33,6 +35,13 @@ internal static class Program
 
         try
         {
+            // A link would make the write land outside the tree the caller pointed at.
+            if (ElfSigner.IsSymbolicLink(inPath) || (outPath != inPath && ElfSigner.IsSymbolicLink(outPath)))
+            {
+                Console.Error.WriteLine($"error: refusing to sign through a symbolic link: {(ElfSigner.IsSymbolicLink(inPath) ? inPath : outPath)}");
+                return 2;
+            }
+
             if (stripOnly)
             {
                 byte[] raw = File.ReadAllBytes(inPath);
@@ -58,9 +67,14 @@ internal static class Program
                     case ElfSigner.SignOutcome.AlreadyValid:
                         Console.WriteLine($"selfsign skipped (signature already valid): {inPath}");
                         break;
+                    case ElfSigner.SignOutcome.ForeignSignatureRetained:
+                        Console.Error.WriteLine($"selfsign skipped (foreign .codesign retained; use --force to replace it): {inPath}");
+                        return 1;
                     default:
-                        Console.WriteLine($"not an ELF64: {inPath}");
-                        break;
+                        // An explicitly named file that is not a signable ELF64 must not exit 0:
+                        // callers treat the exit code as a signing gate.
+                        Console.Error.WriteLine($"not an ELF64: {inPath}");
+                        return 1;
                 }
 
                 return 0;

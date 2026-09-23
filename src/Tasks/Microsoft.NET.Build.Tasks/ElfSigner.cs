@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Security.Cryptography;
 
@@ -12,6 +13,13 @@ namespace Microsoft.NET.Build.Tasks
     /// Algorithm: SHA-256 page-based Merkle root over the file with the .codesign section zeroed,
     /// plus a fixed 256-byte fs-verity-style descriptor and a 32-byte SHA-256 signature, written
     /// into a 4KB .codesign section appended to the file.
+    ///
+    /// Data preservation is a hard invariant: signing only rewrites the .codesign payload itself
+    /// (in place, when the existing block has the layout this signer produces) or appends a new
+    /// section after the original bytes, and never drops data that follows the signature block
+    /// (e.g. a SingleFile bundle appended to the apphost by the bundler). Malformed section
+    /// layouts are refused (fail-closed) instead of being silently "repaired", and foreign
+    /// signatures are only replaced with the explicit force opt-in.
     /// </summary>
     internal static class ElfSigner
     {
@@ -20,6 +28,7 @@ namespace Microsoft.NET.Build.Tasks
         private const uint FlagSelfSign = 0x10;
         private const uint FsVerityDescriptorType = 1;
         private const int HashOut = 32;
+        private const int PayloadSize = 8 + DescSize + HashOut;
 
         // ELF64 header field offsets
         private const int EShOff = 0x28;
@@ -41,12 +50,40 @@ namespace Microsoft.NET.Build.Tasks
 
             /// <summary>The file was signed (or re-signed) and written back.</summary>
             Signed,
+
+            /// <summary>
+            /// An existing .codesign section that this signer did not produce (a foreign or
+            /// non-self-sign signature) was left untouched. Replacing it requires the explicit
+            /// force opt-in so a build can never silently rewrite someone else's signature.
+            /// </summary>
+            ForeignSignatureRetained,
+        }
+
+        /// <summary>How an existing .codesign section relates to this signer.</summary>
+        private enum CodesignState
+        {
+            /// <summary>No .codesign section.</summary>
+            None,
+
+            /// <summary>A well-formed self-signature that matches the current content.</summary>
+            ValidSelfSign,
+
+            /// <summary>A well-formed self-signature that no longer matches the content.</summary>
+            StaleSelfSign,
+
+            /// <summary>A well-formed signature that this signer did not produce.</summary>
+            Foreign,
+
+            /// <summary>Inconsistent section layout; refuses to sign (fail-closed).</summary>
+            Malformed,
         }
 
         /// <summary>
         /// Signs an ELF64 file in place. When <paramref name="force"/> is false and the file already
         /// carries a valid self-signature (verified by recomputing the page Merkle root and the
         /// descriptor digest), the file is left untouched so repeated builds do not rewrite it.
+        /// A foreign .codesign section is also left untouched unless <paramref name="force"/> is
+        /// set. Re-signing never drops data that follows the signature block.
         /// </summary>
         public static SignOutcome SignFileInPlace(string path, bool force = false)
         {
@@ -61,9 +98,20 @@ namespace Microsoft.NET.Build.Tasks
                 return SignOutcome.NotElf;
             }
 
-            if (!force && IsValidlySigned(raw))
+            CodesignState state = ClassifyCodesign(raw, out _, out _, out _, out string anomaly);
+            if (state == CodesignState.Malformed)
+            {
+                throw new InvalidDataException($"refusing to sign: {anomaly}");
+            }
+
+            if (state == CodesignState.ValidSelfSign && !force)
             {
                 return SignOutcome.AlreadyValid;
+            }
+
+            if (state == CodesignState.Foreign && !force)
+            {
+                return SignOutcome.ForeignSignatureRetained;
             }
 
             byte[] signed = SignElf(raw, force: true);
@@ -73,32 +121,299 @@ namespace Microsoft.NET.Build.Tasks
         }
 
         /// <summary>
+        /// True when <paramref name="path"/> is a symbolic link (to a file or a directory), without
+        /// following it. Links must never be signed: writing through one would rewrite a file
+        /// outside the tree being signed.
+        /// </summary>
+        internal static bool IsSymbolicLink(string path)
+        {
+            try
+            {
+                return (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0;
+            }
+            catch (Exception)
+            {
+                // A path that cannot be stat'ed (e.g. a dangling link on Windows) is not reported
+                // as a link, but callers still fail closed on the read/write error.
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Enumerates the regular files under <paramref name="directory"/>, recursively. Symbolic
+        /// links — both file links and directory links — are never followed: each one is reported
+        /// through <paramref name="onSymbolicLink"/> and skipped, so signing cannot escape the tree
+        /// it was pointed at (and link cycles cannot recurse).
+        /// </summary>
+        internal static IEnumerable<string> EnumerateFilesWithoutLinks(string directory, Action<string> onSymbolicLink)
+        {
+            var files = new List<string>();
+            EnumerateFilesWithoutLinks(directory, files, onSymbolicLink);
+            return files;
+        }
+
+        private static void EnumerateFilesWithoutLinks(string directory, List<string> files, Action<string> onSymbolicLink)
+        {
+            foreach (string entry in Directory.EnumerateFileSystemEntries(directory))
+            {
+                FileAttributes attributes;
+                try
+                {
+                    attributes = File.GetAttributes(entry);
+                }
+                catch (FileNotFoundException)
+                {
+                    onSymbolicLink?.Invoke(entry);
+                    continue;
+                }
+                catch (DirectoryNotFoundException)
+                {
+                    onSymbolicLink?.Invoke(entry);
+                    continue;
+                }
+
+                if ((attributes & FileAttributes.ReparsePoint) != 0)
+                {
+                    onSymbolicLink?.Invoke(entry);
+                    continue;
+                }
+
+                if ((attributes & FileAttributes.Directory) != 0)
+                {
+                    EnumerateFilesWithoutLinks(entry, files, onSymbolicLink);
+                }
+                else
+                {
+                    files.Add(entry);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Decides how to treat an existing .codesign section. <paramref name="reusable"/> is true
+        /// when the block has exactly the geometry this signer writes (a 4KB page-aligned block
+        /// that overlaps no other section or loadable segment), so it can be rewritten in place
+        /// without touching any other byte.
+        /// </summary>
+        private static CodesignState ClassifyCodesign(byte[] elf, out int csOff, out int csLen, out bool reusable, out string anomaly)
+        {
+            csOff = 0;
+            csLen = 0;
+            reusable = false;
+            anomaly = null;
+
+            try
+            {
+                (ulong eShOff, ushort eShnum, ushort eShstrndx) = ParseElfHeader(elf);
+                if (!TryGetSectionNameTable(elf, eShOff, eShnum, eShstrndx, out int shstrOff, out int shstrSz))
+                {
+                    return Malformed("the section name table is out of bounds", out anomaly);
+                }
+
+                long csEntry = -1;
+                int csIdx = -1;
+                int count = 0;
+                for (int i = 0; i < eShnum; i++)
+                {
+                    long entry = (long)eShOff + (long)i * 64;
+                    uint nameOff = ReadU32(elf, (int)entry);
+                    if ((ulong)nameOff + (ulong)s_codesignName.Length <= (ulong)shstrSz &&
+                        ByteArrayEquals(elf, shstrOff + (int)nameOff, s_codesignName))
+                    {
+                        count++;
+                        if (csEntry < 0)
+                        {
+                            csEntry = entry;
+                            csIdx = i;
+                        }
+                    }
+                }
+
+                if (count == 0)
+                {
+                    return CodesignState.None;
+                }
+
+                if (count > 1)
+                {
+                    return Malformed($"{count} .codesign sections make the layout ambiguous", out anomaly);
+                }
+
+                ulong off = ReadU64(elf, (int)csEntry + 24);
+                ulong size = ReadU64(elf, (int)csEntry + 32);
+                if (off > (ulong)elf.Length || size > (ulong)elf.Length - off || size > int.MaxValue)
+                {
+                    return Malformed("the .codesign section is out of bounds", out anomaly);
+                }
+
+                csOff = (int)off;
+                csLen = (int)size;
+
+                if (OverlapsOtherContent(elf, eShOff, eShnum, csIdx, csOff, csLen, out string overlap))
+                {
+                    return Malformed($"the .codesign section overlaps {overlap}", out anomaly);
+                }
+
+                if (csLen < PayloadSize)
+                {
+                    return Malformed($"the .codesign section is too small ({csLen} bytes)", out anomaly);
+                }
+
+                reusable = csLen == PageSize && (csOff % PageSize) == 0;
+                if (!IsSelfSignDescriptor(elf, csOff, csLen))
+                {
+                    return CodesignState.Foreign;
+                }
+
+                return IsValidlySigned(elf, csOff, csLen) ? CodesignState.ValidSelfSign : CodesignState.StaleSelfSign;
+            }
+            catch (Exception ex)
+            {
+                return Malformed(ex.Message, out anomaly);
+            }
+        }
+
+        private static CodesignState Malformed(string reason, out string anomaly)
+        {
+            anomaly = reason;
+            return CodesignState.Malformed;
+        }
+
+        /// <summary>
+        /// True when the candidate .codesign block overlaps content owned by another section, a
+        /// loadable segment or the ELF bookkeeping tables. Rewriting such a block would corrupt
+        /// the binary, so the layout is refused instead.
+        /// </summary>
+        private static bool OverlapsOtherContent(byte[] elf, ulong eShOff, ushort eShnum, int csIdx, int csOff, int csLen, out string overlap)
+        {
+            overlap = null;
+            ulong csStart = (ulong)csOff;
+            ulong csEnd = (ulong)csOff + (ulong)csLen;
+
+            // ELF header (always mapped).
+            if (csStart < 64)
+            {
+                overlap = "the ELF header";
+                return true;
+            }
+
+            // Program header table and loadable segments.
+            ulong phOff = ReadU64(elf, 0x20);
+            ushort phEnt = ReadU16(elf, 0x36);
+            ushort phNum = ReadU16(elf, 0x38);
+            if (phNum > 0 && phEnt > 0)
+            {
+                ulong phEnd = phOff + (ulong)phNum * phEnt;
+                if (phEnd > (ulong)elf.Length || phEnd < phOff)
+                {
+                    overlap = "an out-of-bounds program header table";
+                    return true;
+                }
+
+                if (csStart < phEnd && csEnd > phOff)
+                {
+                    overlap = "the program header table";
+                    return true;
+                }
+
+                for (int i = 0; i < phNum; i++)
+                {
+                    ulong entry = phOff + (ulong)i * phEnt;
+                    ulong pOff = ReadU64(elf, (int)entry + 8);
+                    ulong pSize = ReadU64(elf, (int)entry + 32);
+                    if (pSize == 0)
+                    {
+                        continue;
+                    }
+
+                    ulong pEnd = pOff + pSize;
+                    if (pEnd < pOff || (csStart < pEnd && csEnd > pOff))
+                    {
+                        overlap = $"loadable segment #{i}";
+                        return true;
+                    }
+                }
+            }
+
+            // Section header table.
+            ulong shtEnd = eShOff + (ulong)eShnum * 64;
+            if (csStart < shtEnd && csEnd > eShOff)
+            {
+                overlap = "the section header table";
+                return true;
+            }
+
+            // Every other section that occupies file bytes (SHT_NOBITS has none).
+            for (int i = 0; i < eShnum; i++)
+            {
+                if (i == csIdx)
+                {
+                    continue;
+                }
+
+                ulong entry = eShOff + (ulong)i * 64;
+                if (ReadU32(elf, (int)entry + 4) == 8)
+                {
+                    continue;
+                }
+
+                ulong off = ReadU64(elf, (int)entry + 24);
+                ulong size = ReadU64(elf, (int)entry + 32);
+                if (size == 0)
+                {
+                    continue;
+                }
+
+                ulong end = off + size;
+                if (end < off || (csStart < end && csEnd > off))
+                {
+                    overlap = $"section #{i}";
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool IsSelfSignDescriptor(byte[] elf, int csOff, int csLen)
+        {
+            if (csLen < PayloadSize)
+            {
+                return false;
+            }
+
+            uint type = ReadU32(elf, csOff);
+            uint length = ReadU32(elf, csOff + 4);
+            int dOff = csOff + 8;
+            if (type != FsVerityDescriptorType || length != DescSize + HashOut)
+            {
+                return false;
+            }
+
+            if (elf[dOff] != 1 || elf[dOff + 1] != 1 || elf[dOff + 2] != 12 || elf[dOff + 255] != 3)
+            {
+                return false;
+            }
+
+            uint flags = ReadU32(elf, dOff + 112);
+            return (flags & FlagSelfSign) != 0;
+        }
+
+        /// <summary>
         /// True when the file carries a .codesign payload that matches the current content: the
         /// descriptor is well-formed, the stored page Merkle root equals the recomputed one, and
         /// the stored signature equals SHA-256 of the descriptor with signSize zeroed.
         /// </summary>
-        private static bool IsValidlySigned(byte[] elf)
+        private static bool IsValidlySigned(byte[] elf, int csOff, int csLen)
         {
             try
             {
-                if (!TryGetCodesignSection(elf, out int csOff, out int csLen) || csLen < 8 + DescSize + HashOut)
+                if (!IsSelfSignDescriptor(elf, csOff, csLen))
                 {
                     return false;
                 }
 
-                uint type = ReadU32(elf, csOff);
-                uint length = ReadU32(elf, csOff + 4);
                 int dOff = csOff + 8;
-                if (type != FsVerityDescriptorType || length != DescSize + HashOut)
-                {
-                    return false;
-                }
-
-                if (elf[dOff] != 1 || elf[dOff + 1] != 1 || elf[dOff + 2] != 12 || elf[dOff + 255] != 3)
-                {
-                    return false;
-                }
-
                 uint signSize = ReadU32(elf, dOff + 4);
                 ulong fileSize = ReadU64(elf, dOff + 8);
                 uint flags = ReadU32(elf, dOff + 112);
@@ -125,29 +440,6 @@ namespace Microsoft.NET.Build.Tasks
                 // A malformed ELF/section table means "not validly signed" for our purposes.
                 return false;
             }
-        }
-
-        private static bool TryGetCodesignSection(byte[] elf, out int csOff, out int csLen)
-        {
-            csOff = 0;
-            csLen = 0;
-            (ulong eShOff, ushort eShnum, ushort eShstrndx) = ParseElfHeader(elf);
-            long csEntryOff = FindSectionByName(elf, eShOff, eShnum, eShstrndx, s_codesignName);
-            if (csEntryOff < 0)
-            {
-                return false;
-            }
-
-            ulong off = ReadU64(elf, (int)csEntryOff + 24);
-            ulong size = ReadU64(elf, (int)csEntryOff + 32);
-            if (off > (ulong)elf.Length || size > (ulong)elf.Length - off || size > int.MaxValue)
-            {
-                return false;
-            }
-
-            csOff = (int)off;
-            csLen = (int)size;
-            return true;
         }
 
         private static bool BytesEqual(byte[] a, byte[] b)
@@ -245,28 +537,43 @@ namespace Microsoft.NET.Build.Tasks
             return (eShOff, eShnum, eShstrndx);
         }
 
+        private static bool TryGetSectionNameTable(byte[] elf, ulong eShOff, ushort eShnum, ushort eShstrndx, out int shstrOff, out int shstrSz)
+        {
+            shstrOff = 0;
+            shstrSz = 0;
+            if (eShstrndx >= eShnum)
+            {
+                return false;
+            }
+
+            ulong entry = eShOff + (ulong)eShstrndx * 64;
+            ulong off = ReadU64(elf, (int)entry + 24);
+            ulong size = ReadU64(elf, (int)entry + 32);
+            if (off > (ulong)elf.Length || size > (ulong)elf.Length - off || size > int.MaxValue)
+            {
+                return false;
+            }
+
+            shstrOff = (int)off;
+            shstrSz = (int)size;
+            return true;
+        }
+
         private static long FindSectionByName(byte[] elf, ulong eShOff, ushort eShnum, ushort eShstrndx, byte[] name)
         {
-            int nameLen = name.Length;
-            ulong shstrE = eShOff + (ulong)eShstrndx * 64;
-            ulong shstrOff = ReadU64(elf, (int)(shstrE + 24));
-            ulong shstrSz = ReadU64(elf, (int)(shstrE + 32));
-            if (shstrOff > (ulong)elf.Length || shstrSz > (ulong)elf.Length - shstrOff)
+            if (!TryGetSectionNameTable(elf, eShOff, eShnum, eShstrndx, out int shstrOff, out int shstrSz))
             {
                 return -1;
             }
 
             for (int i = 0; i < eShnum; i++)
             {
-                ulong e = eShOff + (ulong)i * 64;
-                uint nameOff = ReadU32(elf, (int)e);
-                if ((ulong)nameOff + (ulong)nameLen <= shstrSz)
+                long entry = (long)eShOff + (long)i * 64;
+                uint nameOff = ReadU32(elf, (int)entry);
+                if ((ulong)nameOff + (ulong)name.Length <= (ulong)shstrSz &&
+                    ByteArrayEquals(elf, shstrOff + (int)nameOff, name))
                 {
-                    int start = (int)(shstrOff + nameOff);
-                    if (start + nameLen <= elf.Length && ByteArrayEquals(elf, start, name))
-                    {
-                        return (long)e;
-                    }
+                    return entry;
                 }
             }
 
@@ -286,15 +593,16 @@ namespace Microsoft.NET.Build.Tasks
             return true;
         }
 
-        private static bool HasCodesignSection(byte[] elf)
-        {
-            (ulong eShOff, ushort eShnum, ushort eShstrndx) = ParseElfHeader(elf);
-            return FindSectionByName(elf, eShOff, eShnum, eShstrndx, s_codesignName) >= 0;
-        }
-
         private static ushort NewShstrndx(ushort oldShstrndx, int csIdx) =>
             csIdx < oldShstrndx ? (ushort)(oldShstrndx - 1) : oldShstrndx;
 
+        /// <summary>
+        /// Removes the .codesign section entry from the section header table and appends the
+        /// rebuilt name table/section header table after the original bytes. The original bytes
+        /// are kept in place (including anything that followed the signature block, such as a
+        /// SingleFile bundle) except for the old signature payload, which is zeroed only when it
+        /// cannot overlap any other section or loadable segment.
+        /// </summary>
         internal static byte[] StripCodesign(byte[] buf, out bool removed)
         {
             removed = false;
@@ -306,24 +614,66 @@ namespace Microsoft.NET.Build.Tasks
                 return buf;
             }
 
-            removed = true;
-            int csIdx = (int)((ulong)csEntryOff - eShOff) / 64;
+            if (eShnum < 2)
+            {
+                throw new InvalidDataException("refusing to strip the only section in the file");
+            }
 
-            ulong shstrE = eShOff + (ulong)eShstrndx * 64;
-            ulong shstrOff = ReadU64(buf, (int)(shstrE + 24));
-            ulong shstrSz = ReadU64(buf, (int)(shstrE + 32));
-            if (shstrOff > (ulong)buf.Length || shstrSz > (ulong)buf.Length - shstrOff)
+            int csIdx = (int)((ulong)csEntryOff - eShOff) / 64;
+            if (!TryGetSectionNameTable(buf, eShOff, eShnum, eShstrndx, out int shstrStart, out int shstrTotal))
             {
                 throw new InvalidDataException("shstrtab out of bounds");
             }
 
+            int count = 0;
+            for (int i = 0; i < eShnum; i++)
+            {
+                long entry = (long)eShOff + (long)i * 64;
+                uint nameOff = ReadU32(buf, (int)entry);
+                if ((ulong)nameOff + (ulong)s_codesignName.Length <= (ulong)shstrTotal &&
+                    ByteArrayEquals(buf, shstrStart + (int)nameOff, s_codesignName))
+                {
+                    count++;
+                }
+            }
+
+            if (count != 1)
+            {
+                throw new InvalidDataException($"refusing to strip: {count} .codesign sections make the layout ambiguous");
+            }
+
+            if (csIdx == eShstrndx)
+            {
+                throw new InvalidDataException("refusing to strip: the .codesign section is the section name table");
+            }
+
+            if (csIdx == 0)
+            {
+                throw new InvalidDataException("refusing to strip: the .codesign section is the reserved section #0");
+            }
+
             uint csNameOff = ReadU32(buf, (int)csEntryOff);
             int csNameLen = s_codesignName.Length;
-            int shstrStart = (int)shstrOff;
-            byte[] newShstr = new byte[shstrSz - (ulong)csNameLen];
-            Buffer.BlockCopy(buf, shstrStart, newShstr, 0, (int)csNameOff);
-            Buffer.BlockCopy(buf, shstrStart + (int)csNameOff + csNameLen, newShstr, (int)csNameOff, (int)(shstrSz - (ulong)csNameOff - (ulong)csNameLen));
-            int newShstrSz = newShstr.Length;
+            if ((ulong)shstrTotal < (ulong)csNameLen || (ulong)csNameOff + (ulong)csNameLen > (ulong)shstrTotal)
+            {
+                throw new InvalidDataException("the .codesign name lies outside the section name table");
+            }
+
+            ulong csSecOff = ReadU64(buf, (int)csEntryOff + 24);
+            ulong csSecSize = ReadU64(buf, (int)csEntryOff + 32);
+            if (csSecOff > (ulong)buf.Length || csSecSize > (ulong)buf.Length - csSecOff || csSecSize > int.MaxValue)
+            {
+                throw new InvalidDataException("the .codesign section is out of bounds");
+            }
+
+            int newShstrSz = shstrTotal - csNameLen;
+            byte[] newShstr = new byte[newShstrSz];
+            if (csNameOff > 0)
+            {
+                Buffer.BlockCopy(buf, shstrStart, newShstr, 0, (int)csNameOff);
+            }
+
+            Buffer.BlockCopy(buf, shstrStart + (int)csNameOff + csNameLen, newShstr, (int)csNameOff, newShstrSz - (int)csNameOff);
 
             int newShnum = eShnum - 1;
             byte[] newSht = new byte[newShnum * 64];
@@ -339,14 +689,15 @@ namespace Microsoft.NET.Build.Tasks
                 dst += 64;
             }
 
-            ulong csSecOff = ReadU64(buf, (int)csEntryOff + 24);
-            int keepLen = (int)Math.Min(csSecOff, (ulong)buf.Length);
-            int newShstrOff = keepLen;
+            // Append the rebuilt tables after the original end of file: no byte of the input is
+            // ever removed or shifted, so trailing data (SingleFile bundle, appended blobs) and
+            // any absolute offset it contains stay valid.
+            int newShstrOff = buf.Length;
             int newShtOff = (int)AlignUp((ulong)(newShstrOff + newShstrSz), 8);
             int newTotal = newShtOff + newShnum * 64;
 
             byte[] outBuf = new byte[newTotal];
-            Buffer.BlockCopy(buf, 0, outBuf, 0, keepLen);
+            Buffer.BlockCopy(buf, 0, outBuf, 0, buf.Length);
             Buffer.BlockCopy(newShstr, 0, outBuf, newShstrOff, newShstrSz);
             Buffer.BlockCopy(newSht, 0, outBuf, newShtOff, newShnum * 64);
 
@@ -371,6 +722,17 @@ namespace Microsoft.NET.Build.Tasks
                 WriteU16(outBuf, EShstrndx, (ushort)(eShstrndx - 1));
             }
 
+            // The old signature payload is only erased when it is a self-contained block that no
+            // other section or segment can reach; otherwise its bytes are body data and stay.
+            bool overlaps = OverlapsOtherContent(outBuf, eShOff, eShnum, csIdx, (int)csSecOff, (int)csSecSize, out _);
+            int zeroed = overlaps ? 0 : (int)csSecSize;
+            if (zeroed > 0)
+            {
+                Array.Clear(outBuf, (int)csSecOff, zeroed);
+            }
+
+            ValidateNoDataLoss(outBuf, buf, (int)csSecOff, zeroed);
+            removed = true;
             return outBuf;
         }
 
@@ -378,10 +740,7 @@ namespace Microsoft.NET.Build.Tasks
         {
             (ulong eShOff, ushort eShnum, ushort eShstrndx) = ParseElfHeader(elf);
 
-            ulong shstrE = eShOff + (ulong)eShstrndx * 64;
-            ulong shstrOff = ReadU64(elf, (int)(shstrE + 24));
-            ulong shstrSz = ReadU64(elf, (int)(shstrE + 32));
-            if (shstrOff > (ulong)elf.Length || shstrSz > (ulong)elf.Length - shstrOff)
+            if (!TryGetSectionNameTable(elf, eShOff, eShnum, eShstrndx, out int shstrStart, out int shstrSz))
             {
                 throw new InvalidDataException("shstrtab out of bounds");
             }
@@ -415,10 +774,9 @@ namespace Microsoft.NET.Build.Tasks
 
             int csOff = (int)csOffAligned;
 
-            int shstrStart = (int)shstrOff;
-            byte[] newShstr = new byte[shstrSz + (ulong)s_codesignName.Length];
-            Buffer.BlockCopy(elf, shstrStart, newShstr, 0, (int)shstrSz);
-            Buffer.BlockCopy(s_codesignName, 0, newShstr, (int)shstrSz, s_codesignName.Length);
+            byte[] newShstr = new byte[shstrSz + s_codesignName.Length];
+            Buffer.BlockCopy(elf, shstrStart, newShstr, 0, shstrSz);
+            Buffer.BlockCopy(s_codesignName, 0, newShstr, shstrSz, s_codesignName.Length);
             int newShstrSz = newShstr.Length;
             uint csShname = (uint)shstrSz;
 
@@ -449,6 +807,29 @@ namespace Microsoft.NET.Build.Tasks
             WriteU16(buf, EShnum, (ushort)newShnum);
 
             return (buf, csOff);
+        }
+
+        /// <summary>
+        /// Writes the fs-verity descriptor and signature into an already zeroed
+        /// [<paramref name="csOff"/>, <paramref name="csOff"/> + <paramref name="csLen"/>) block.
+        /// </summary>
+        private static void WriteSignature(byte[] buf, int csOff, int csLen)
+        {
+            if (csOff < 0 || csLen < PayloadSize || (long)csOff + csLen > buf.Length)
+            {
+                throw new InvalidDataException("signature payload exceeds file length");
+            }
+
+            ulong fileSize = (ulong)buf.Length;
+            byte[] root = MerkleRootHash(buf, csOff, csLen);
+            byte[] descForDigest = BuildDescriptor(0, fileSize, root, FlagSelfSign);
+            byte[] signature = Sha256(descForDigest);
+            byte[] descOnDisk = BuildDescriptor(HashOut, fileSize, root, FlagSelfSign);
+
+            WriteU32(buf, csOff, FsVerityDescriptorType);
+            WriteU32(buf, csOff + 4, (uint)(DescSize + HashOut));
+            Buffer.BlockCopy(descOnDisk, 0, buf, csOff + 8, DescSize);
+            Buffer.BlockCopy(signature, 0, buf, csOff + 8 + DescSize, HashOut);
         }
 
         private static byte[] MerkleRootHash(byte[] data, int csOff, int csLen)
@@ -534,37 +915,90 @@ namespace Microsoft.NET.Build.Tasks
                 throw new InvalidDataException("not ELF64");
             }
 
-            byte[] buf = elf;
-            if (HasCodesignSection(buf))
+            CodesignState state = ClassifyCodesign(elf, out int csOff, out int csLen, out bool reusable, out string anomaly);
+            if (state == CodesignState.Malformed)
             {
-                if (!force)
-                {
-                    throw new InvalidDataException("already has a .codesign section; strip first or use --force");
-                }
-
-                buf = StripCodesign(buf, out _);
+                throw new InvalidDataException($"refusing to sign: {anomaly}");
             }
 
-            (byte[] tmp0, int csOff) = InjectCodesignSection(buf);
-            ulong fileSize = (ulong)tmp0.Length;
+            if (state == CodesignState.None)
+            {
+                return InjectAndSign(elf);
+            }
 
-            byte[] root = MerkleRootHash(tmp0, csOff, PageSize);
+            if (!force)
+            {
+                throw new InvalidDataException("already has a .codesign section; strip first or use --force");
+            }
 
-            byte[] descForDigest = BuildDescriptor(0, fileSize, root, FlagSelfSign);
-            byte[] signature = Sha256(descForDigest);
-            byte[] descOnDisk = BuildDescriptor(32, fileSize, root, FlagSelfSign);
+            if (reusable)
+            {
+                // The existing block has exactly the geometry this signer produces: rewrite the
+                // signature in place. Nothing else in the file moves, so a SingleFile bundle (or
+                // any other trailing data) is preserved and repeated --force re-signs do not grow
+                // the file.
+                byte[] resigned = (byte[])elf.Clone();
+                Array.Clear(resigned, csOff, csLen);
+                WriteSignature(resigned, csOff, csLen);
+                ValidateNoDataLoss(resigned, elf, csOff, csLen);
+                ValidateSigned(resigned, csOff);
+                return resigned;
+            }
 
-            byte[] payload = new byte[4 + 4 + DescSize + HashOut];
-            WriteU32(payload, 0, FsVerityDescriptorType); // type
-            WriteU32(payload, 4, (uint)(DescSize + HashOut)); // length = 288
-            Buffer.BlockCopy(descOnDisk, 0, payload, 8, DescSize);
-            Buffer.BlockCopy(signature, 0, payload, 8 + DescSize, HashOut);
-
-            Buffer.BlockCopy(payload, 0, tmp0, csOff, payload.Length);
-
-            ValidateSigned(tmp0, csOff);
-            return tmp0;
+            // Foreign geometry: drop the section entry but keep every original byte, then append a
+            // fresh self-contained block after the end of file.
+            return InjectAndSign(StripCodesign(elf, out _));
         }
+
+        private static byte[] InjectAndSign(byte[] elf)
+        {
+            (byte[] buf, int csOff) = InjectCodesignSection(elf);
+            WriteSignature(buf, csOff, PageSize);
+            // Nothing that was in the input may be dropped or rewritten: the .codesign block is
+            // appended after the original bytes.
+            ValidateNoDataLoss(buf, elf, changedStart: 0, changedLength: 0);
+            ValidateSigned(buf, csOff);
+            return buf;
+        }
+
+        /// <summary>
+        /// Asserts that signing did not drop or rewrite any input byte: every byte outside
+        /// [<paramref name="changedStart"/>, <paramref name="changedStart"/> +
+        /// <paramref name="changedLength"/>) must be present unchanged at the same offset, and
+        /// the output may only be longer than the input. Only the section-table bookkeeping in
+        /// the ELF header (e_shoff/e_shnum/e_shstrndx) may change, because the rebuilt section
+        /// header table is relocated.
+        /// </summary>
+        private static void ValidateNoDataLoss(byte[] output, byte[] input, int changedStart, int changedLength)
+        {
+            if (output.Length < input.Length)
+            {
+                throw new InvalidDataException($"signed output shrank from {input.Length} to {output.Length} bytes");
+            }
+
+            for (int i = 0; i < input.Length; i++)
+            {
+                if (changedLength > 0 && i >= changedStart && i < changedStart + changedLength)
+                {
+                    continue;
+                }
+
+                if (IsSectionTableBookkeeping(i))
+                {
+                    continue;
+                }
+
+                if (output[i] != input[i])
+                {
+                    throw new InvalidDataException($"signed output differs from the input at offset {i}: data must never be dropped or rewritten");
+                }
+            }
+        }
+
+        private static bool IsSectionTableBookkeeping(int offset) =>
+            (offset >= EShOff && offset < EShOff + 8) ||
+            (offset >= EShnum && offset < EShnum + 2) ||
+            (offset >= EShstrndx && offset < EShstrndx + 2);
 
         // Mirrors Mach-O Validate: after building the signature, re-parse the result to ensure the
         // layout is self-consistent — the .codesign data is at csOff, nothing that must be covered
@@ -572,20 +1006,23 @@ namespace Microsoft.NET.Build.Tasks
         // header table is still readable.
         private static void ValidateSigned(byte[] signed, int csOff)
         {
-            if (signed.Length < csOff + PageSize)
+            if (csOff < 0 || signed.Length < csOff + PageSize)
             {
                 throw new InvalidDataException("signature payload exceeds file length");
             }
 
             (ulong eShOff, ushort eShnum, ushort eShstrndx) = ParseElfHeader(signed);
-            if (FindSectionByName(signed, eShOff, eShnum, eShstrndx, s_codesignName) < 0)
+            long csEntry = FindSectionByName(signed, eShOff, eShnum, eShstrndx, s_codesignName);
+            if (csEntry < 0)
             {
                 throw new InvalidDataException("signed output is missing the .codesign section");
             }
 
-            if (csOff > signed.Length)
+            ulong off = ReadU64(signed, (int)csEntry + 24);
+            ulong size = ReadU64(signed, (int)csEntry + 32);
+            if (off != (ulong)csOff || size != PageSize || size > (ulong)signed.Length - off)
             {
-                throw new InvalidDataException("codesign offset out of bounds");
+                throw new InvalidDataException("signed output has an inconsistent .codesign section");
             }
         }
     }

@@ -72,7 +72,7 @@ namespace Microsoft.NET.Build.Tasks.UnitTests
         [TestMethod]
         public void SignFileInPlace_SkipsAnAlreadyValidSignature()
         {
-            string path = Path.Combine(Path.GetTempPath(), $"ohos-sign-{Guid.NewGuid():N}");
+            string path = TempPath();
             try
             {
                 File.WriteAllBytes(path, CreateMinimalElf());
@@ -110,6 +110,264 @@ namespace Microsoft.NET.Build.Tasks.UnitTests
 
             ElfSigner.IsElf64(elf).Should().BeFalse();
         }
+
+        // ---------------------------------------------------------------------------------
+        // Regression coverage for the data-loss, symlink, foreign-signature and idempotence
+        // defects (D-1/D-2/D-3/D-5/C1/C2).
+        // ---------------------------------------------------------------------------------
+
+        [TestMethod]
+        public void SignFileInPlace_PreservesDataAppendedAfterTheSignatureBlock()
+        {
+            // The shape PublishSingleFile produces: an apphost/singlefilehost that already has a
+            // .codesign section with the bundle appended after it. Re-signing must cover the
+            // bundle, not truncate the file at the signature block (D-1).
+            byte[] signed = ElfSigner.SignElf(CreateMinimalElf(), force: false);
+            byte[] bundle = Enumerable.Range(0, 256 * 1024).Select(i => (byte)((i * 31) & 0xff)).ToArray();
+            byte[] withBundle = signed.Concat(bundle).ToArray();
+
+            string path = TempPath();
+            try
+            {
+                File.WriteAllBytes(path, withBundle);
+
+                ElfSigner.SignFileInPlace(path).Should().Be(ElfSigner.SignOutcome.Signed);
+                byte[] result = File.ReadAllBytes(path);
+
+                result.Length.Should().Be(withBundle.Length);
+                result.AsSpan(signed.Length, bundle.Length).ToArray().Should().Equal(bundle);
+                (int csOffset, _) = FindSection(result, ".codesign")!.Value;
+                ReadU64(result, csOffset + 8 + 8).Should().Be((ulong)result.Length);
+
+                // The signature now covers the bundle, so the file is validly signed as-is.
+                ElfSigner.SignFileInPlace(path).Should().Be(ElfSigner.SignOutcome.AlreadyValid);
+            }
+            finally
+            {
+                File.Delete(path);
+            }
+        }
+
+        [TestMethod]
+        public void SignFileInPlace_ReSignsInPlaceAndLeavesEveryByteOutsideTheBlockAlone()
+        {
+            byte[] signed = ElfSigner.SignElf(CreateMinimalElf(), force: false);
+            byte[] trailer = Enumerable.Range(0, 9000).Select(i => (byte)(i & 0x7f)).ToArray();
+            byte[] input = signed.Concat(trailer).ToArray();
+            (int csOffset, int csSize) = FindSection(input, ".codesign")!.Value;
+
+            string path = TempPath();
+            try
+            {
+                File.WriteAllBytes(path, input);
+
+                ElfSigner.SignFileInPlace(path, force: true).Should().Be(ElfSigner.SignOutcome.Signed);
+                byte[] result = File.ReadAllBytes(path);
+
+                result.Length.Should().Be(input.Length);
+                for (int i = 0; i < input.Length; i++)
+                {
+                    if (i >= csOffset && i < csOffset + csSize)
+                    {
+                        continue;
+                    }
+
+                    result[i].Should().Be(input[i], $"byte {i} is data, not signature");
+                }
+            }
+            finally
+            {
+                File.Delete(path);
+            }
+        }
+
+        [TestMethod]
+        public void SignFileInPlace_ForceIsIdempotentAndDoesNotGrowTheFile()
+        {
+            // sign_all in the installer always uses --force; re-signing an already signed file
+            // must rewrite the existing block instead of appending a fresh page every round (D-5).
+            string path = TempPath();
+            try
+            {
+                File.WriteAllBytes(path, CreateMinimalElf());
+                ElfSigner.SignFileInPlace(path).Should().Be(ElfSigner.SignOutcome.Signed);
+
+                long size = new FileInfo(path).Length;
+                byte[] bytes = File.ReadAllBytes(path);
+                for (int i = 0; i < 3; i++)
+                {
+                    ElfSigner.SignFileInPlace(path, force: true).Should().Be(ElfSigner.SignOutcome.Signed);
+                    new FileInfo(path).Length.Should().Be(size, "force re-signs must not grow the file");
+                }
+
+                File.ReadAllBytes(path).Should().Equal(bytes);
+            }
+            finally
+            {
+                File.Delete(path);
+            }
+        }
+
+        [TestMethod]
+        public void StripCodesign_KeepsDataAppendedAfterTheSignatureBlock()
+        {
+            byte[] signed = ElfSigner.SignElf(CreateMinimalElf(), force: false);
+            byte[] bundle = Enumerable.Range(0, PageSize).Select(i => (byte)(i ^ 0x5a)).ToArray();
+            byte[] withBundle = signed.Concat(bundle).ToArray();
+
+            byte[] stripped = ElfSigner.StripCodesign(withBundle, out bool removed);
+
+            removed.Should().BeTrue();
+            FindSection(stripped, ".codesign").Should().BeNull();
+            ElfSigner.IsElf64(stripped).Should().BeTrue();
+            stripped.AsSpan(signed.Length, bundle.Length).ToArray().Should().Equal(bundle);
+
+            byte[] resigned = ElfSigner.SignElf(stripped, force: false);
+            FindSection(resigned, ".codesign").Should().NotBeNull();
+        }
+
+        [TestMethod]
+        public void SignFileInPlace_RejectsACodesignSectionThatOverlapsAnotherSection()
+        {
+            // A .codesign entry retargeted into real section data must be refused instead of
+            // silently rewriting (and thereby destroying) the body (D-2).
+            byte[] signed = ElfSigner.SignElf(CreateMinimalElf(), force: false);
+            byte[] malformed = (byte[])signed.Clone();
+            (int shstrtabOffset, int shstrtabSize) = FindSection(malformed, ".shstrtab")!.Value;
+            int csEntry = FindSectionEntry(malformed, ".codesign");
+            WriteU64(malformed, csEntry + 24, (ulong)shstrtabOffset);
+            WriteU64(malformed, csEntry + 32, (ulong)shstrtabSize);
+
+            string path = TempPath();
+            try
+            {
+                File.WriteAllBytes(path, malformed);
+
+                Action sign = () => ElfSigner.SignFileInPlace(path);
+                sign.Should().Throw<InvalidDataException>();
+                File.ReadAllBytes(path).Should().Equal(malformed);
+            }
+            finally
+            {
+                File.Delete(path);
+            }
+        }
+
+        [TestMethod]
+        public void SignElf_RejectsDuplicateCodesignSections()
+        {
+            byte[] signed = ElfSigner.SignElf(CreateMinimalElf(), force: false);
+            byte[] malformed = (byte[])signed.Clone();
+            int csEntry = FindSectionEntry(malformed, ".codesign");
+            int shstrtabEntry = FindSectionEntry(malformed, ".shstrtab");
+            WriteU32(malformed, shstrtabEntry, ReadU32(malformed, csEntry));
+
+            Action sign = () => ElfSigner.SignElf(malformed, force: true);
+            sign.Should().Throw<InvalidDataException>();
+        }
+
+        [TestMethod]
+        public void SignFileInPlace_RejectsASelfReferencingCodesignNameTable()
+        {
+            // e_shstrndx pointing at the section named .codesign used to crash with an
+            // IndexOutOfRangeException while rebuilding the section header table (D-6); it must
+            // now be a readable, fail-closed error.
+            byte[] signed = ElfSigner.SignElf(CreateMinimalElf(), force: false);
+            byte[] malformed = (byte[])signed.Clone();
+            int csEntry = FindSectionEntry(malformed, ".codesign");
+            int csIndex = (int)(((ulong)csEntry - ReadU64(malformed, 0x28)) / 64);
+            byte[] name = Encoding.ASCII.GetBytes(".codesign\0");
+            const int plantedOffset = 64;
+            Buffer.BlockCopy(name, 0, malformed, (int)ReadU64(malformed, csEntry + 24) + plantedOffset, name.Length);
+            WriteU32(malformed, csEntry, plantedOffset);
+            WriteU16(malformed, 0x3e, (ushort)csIndex);
+
+            string path = TempPath();
+            try
+            {
+                File.WriteAllBytes(path, malformed);
+
+                Action sign = () => ElfSigner.SignFileInPlace(path, force: true);
+                sign.Should().Throw<InvalidDataException>();
+                File.ReadAllBytes(path).Should().Equal(malformed);
+            }
+            finally
+            {
+                File.Delete(path);
+            }
+        }
+
+        [TestMethod]
+        public void SignFileInPlace_RetainsForeignSignaturesWithoutForce()
+        {
+            // Replacing a .codesign section this signer did not create requires the explicit
+            // force opt-in; it must never happen silently during a build (C2).
+            byte[] signed = ElfSigner.SignElf(CreateMinimalElf(), force: false);
+            byte[] foreign = (byte[])signed.Clone();
+            (int csOffset, _) = FindSection(foreign, ".codesign")!.Value;
+            Array.Clear(foreign, csOffset + 8 + 112, 4); // clear FLAG_SELF_SIGN
+
+            string path = TempPath();
+            try
+            {
+                File.WriteAllBytes(path, foreign);
+
+                ElfSigner.SignFileInPlace(path).Should().Be(ElfSigner.SignOutcome.ForeignSignatureRetained);
+                File.ReadAllBytes(path).Should().Equal(foreign);
+
+                ElfSigner.SignFileInPlace(path, force: true).Should().Be(ElfSigner.SignOutcome.Signed);
+                ElfSigner.SignFileInPlace(path).Should().Be(ElfSigner.SignOutcome.AlreadyValid);
+            }
+            finally
+            {
+                File.Delete(path);
+            }
+        }
+
+        [TestMethod]
+        [OSCondition(OperatingSystems.Linux | OperatingSystems.OSX)]
+        public void EnumerateFilesWithoutLinks_SkipsFileDirectoryAndCyclicLinks()
+        {
+            // A link placed in the signed tree must never make the signer rewrite the linked
+            // target (D-3/C1); a link cycle must not recurse.
+            string root = Path.Combine(Path.GetTempPath(), $"ohos-sign-links-{Guid.NewGuid():N}");
+            Directory.CreateDirectory(root);
+            string outside = Path.Combine(root, "outside");
+            Directory.CreateDirectory(outside);
+            File.WriteAllBytes(Path.Combine(outside, "victim.so"), CreateMinimalElf());
+            string stage = Path.Combine(root, "stage");
+            Directory.CreateDirectory(stage);
+            File.WriteAllBytes(Path.Combine(stage, "real.so"), CreateMinimalElf());
+            File.CreateSymbolicLink(Path.Combine(stage, "filelink.so"), Path.Combine(outside, "victim.so"));
+            Directory.CreateSymbolicLink(Path.Combine(stage, "dirlink"), outside);
+            File.CreateSymbolicLink(Path.Combine(stage, "cycle"), stage);
+
+            try
+            {
+                byte[] victim = File.ReadAllBytes(Path.Combine(outside, "victim.so"));
+                var warnings = new List<string>();
+
+                List<string> files = ElfSigner.EnumerateFilesWithoutLinks(stage, warnings.Add).ToList();
+
+                files.Should().HaveCount(1);
+                Path.GetFileName(files[0]).Should().Be("real.so");
+                warnings.Should().HaveCount(3);
+
+                foreach (string file in files)
+                {
+                    ElfSigner.SignFileInPlace(file);
+                }
+
+                File.ReadAllBytes(Path.Combine(outside, "victim.so")).Should().Equal(victim);
+                ElfSigner.IsSymbolicLink(Path.Combine(stage, "dirlink")).Should().BeTrue();
+            }
+            finally
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+
+        private static string TempPath() => Path.Combine(Path.GetTempPath(), $"ohos-sign-{Guid.NewGuid():N}");
 
         /// <summary>
         /// Builds the smallest ELF64 the signer accepts: a header, a .shstrtab and its own
@@ -181,6 +439,35 @@ namespace Microsoft.NET.Build.Tasks.UnitTests
             }
 
             return null;
+        }
+
+        /// <summary>Offset of a named section header entry inside the section header table.</summary>
+        private static int FindSectionEntry(byte[] elf, string name)
+        {
+            ulong sectionHeaderTableOffset = ReadU64(elf, 0x28);
+            ushort sectionCount = ReadU16(elf, 0x3c);
+            ushort shstrndx = ReadU16(elf, 0x3e);
+            int shstrtabEntry = (int)(sectionHeaderTableOffset + (ulong)shstrndx * 64);
+            ulong shstrtabOffset = ReadU64(elf, shstrtabEntry + 24);
+            ulong shstrtabSize = ReadU64(elf, shstrtabEntry + 32);
+            byte[] shstrtab = elf.AsSpan((int)shstrtabOffset, (int)shstrtabSize).ToArray();
+
+            for (int i = 0; i < sectionCount; i++)
+            {
+                int entry = (int)sectionHeaderTableOffset + i * 64;
+                int nameOffset = (int)ReadU32(elf, entry);
+                if (nameOffset >= 0 && nameOffset < shstrtab.Length)
+                {
+                    int terminator = Array.IndexOf(shstrtab, (byte)0, nameOffset);
+                    int length = (terminator < 0 ? shstrtab.Length : terminator) - nameOffset;
+                    if (Encoding.ASCII.GetString(shstrtab, nameOffset, length) == name)
+                    {
+                        return entry;
+                    }
+                }
+            }
+
+            throw new InvalidOperationException($"section {name} not found");
         }
 
         private static int Align(int value, int alignment) => (value + alignment - 1) / alignment * alignment;

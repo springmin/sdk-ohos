@@ -881,6 +881,11 @@ Copyright (c) .NET Foundation. All rights reserved.
     device runs need no external tooling. The task skips non-ELF files and files whose
     .codesign section is still valid: re-signing an already-signed ELF on a repeat build
     failed with "Access to the path is denied", so a valid signature must never be rewritten.
+    Re-signing rewrites the existing signature block in place (or appends a new section) and
+    never drops data that follows it, so a SingleFile bundle appended to the apphost survives
+    and repeated builds do not grow the file. Symbolic links in the output tree are skipped
+    with a warning, and a .codesign section this signer did not create is left untouched
+    (with a warning) unless it is replaced explicitly with 'dotnet selfsign --force'.
     Mirrors _EnableMacOSCodeSign; _EnableOpenHarmonyCodeSign opts in/out explicitly.
     ============================================================
      -->
