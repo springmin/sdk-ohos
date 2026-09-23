@@ -64,6 +64,43 @@
         "unix-x64"
       ]
     },
+    "openharmony": {
+      "#import": [
+        "any"
+      ]
+    },
+    "openharmony-arm": {
+      "#import": [
+        "openharmony"
+      ]
+    },
+    "openharmony-arm64": {
+      "#import": [
+        "openharmony"
+      ]
+    },
+    "openharmony-x64": {
+      "#import": [
+        "openharmony"
+      ]
+    },
+    "openbsd": {
+      "#import": [
+        "unix"
+      ]
+    },
+    "openbsd-arm64": {
+      "#import": [
+        "openbsd",
+        "unix-arm64"
+      ]
+    },
+    "openbsd-x64": {
+      "#import": [
+        "openbsd",
+        "unix-x64"
+      ]
+    },
     "haiku": {
       "#import": [
         "unix"
@@ -470,43 +507,6 @@
     "win-x86": {
       "#import": [
         "win"
-      ]
-    },
-    "openharmony": {
-      "#import": [
-        "any"
-      ]
-    },
-    "openharmony-arm": {
-      "#import": [
-        "openharmony"
-      ]
-    },
-    "openharmony-arm64": {
-      "#import": [
-        "openharmony"
-      ]
-    },
-    "openharmony-x64": {
-      "#import": [
-        "openharmony"
-      ]
-    },
-    "openbsd": {
-      "#import": [
-        "unix"
-      ]
-    },
-    "openbsd-arm64": {
-      "#import": [
-        "openbsd",
-        "unix-arm64"
-      ]
-    },
-    "openbsd-x64": {
-      "#import": [
-        "openbsd",
-        "unix-x64"
       ]
     }
   }
