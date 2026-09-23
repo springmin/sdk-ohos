@@ -778,11 +778,13 @@ stage1() {
   export MSBUILDDISABLENODEREUSE=1
   cd "$RUNTIME_REPO"
   # Bootstrap SDK RID graph must carry the openharmony entries (independent RID).
-  # Inject the repo's eng graphs (complete 802-RID files) into every installed
-  # SDK whose graph lacks openharmony — the runtime build actually uses the
-  # global.json SDK version, which may differ from RIDGRAPH_SDKVER. Covers
-  # fresh clones / CI (no pre-seeded .dotnet).
-  local eng_rsp="$SDK_REPO/eng/RuntimeIdentifierGraph.openharmony.json"
+  # Inject the repo's portable graph into every installed SDK whose graph lacks
+  # openharmony — the runtime build actually uses the global.json SDK version,
+  # which may differ from RIDGRAPH_SDKVER. Covers fresh clones / CI (no
+  # pre-seeded .dotnet). Only the portable graph is fork-owned: the legacy
+  # runtime.json is frozen upstream and the shipped layout always takes the
+  # Microsoft.NETCore.Platforms copy, so these .dotnet/ copies are bootstrap
+  # plumbing for RID resolution, not product content.
   local eng_prsp="$SDK_REPO/eng/PortableRuntimeIdentifierGraph.openharmony.json"
   local gjv=""
   if [ -f "$RUNTIME_REPO/global.json" ]; then
@@ -794,10 +796,10 @@ stage1() {
     [ -d "$sdkdir" ] || continue
     local rsp="$sdkdir/RuntimeIdentifierGraph.json"
     if [ -f "$rsp" ] && ! python3 -c "import json,sys; sys.exit(0 if 'openharmony-arm64' in json.load(open('$rsp'))['runtimes'] else 1)" 2>/dev/null; then
-      [ -f "$eng_rsp" ] || die "no eng graph at $eng_rsp"
-      cp -f "$eng_rsp" "$rsp"
-      [ -f "$eng_prsp" ] && cp -f "$eng_prsp" "$sdkdir/PortableRuntimeIdentifierGraph.json"
-      info "injected eng/ openharmony RID graphs into bootstrap SDK $v"
+      [ -f "$eng_prsp" ] || die "no eng portable graph at $eng_prsp"
+      cp -f "$eng_prsp" "$rsp"
+      cp -f "$eng_prsp" "$sdkdir/PortableRuntimeIdentifierGraph.json"
+      info "injected eng/ portable openharmony RID graph into bootstrap SDK $v"
     fi
   done
   local rsp="$RUNTIME_REPO/.dotnet/sdk/$RIDGRAPH_SDKVER/RuntimeIdentifierGraph.json"
@@ -1266,15 +1268,16 @@ stage3() {
     fi
   done
   # NETSDK1083 (openharmony-arm64 not recognized) — the aspnetcore bootstrap SDK's
-  # RuntimeIdentifierGraph.json also needs the openharmony entries. Inject into every
-  # installed SDK (the build uses global.json's, which may not be RIDGRAPH_SDKVER).
+  # legacy-named graph is read by old-TFM tooling, so keep it in sync with the
+  # portable content. Inject into every installed SDK (the build uses global.json's,
+  # which may not be RIDGRAPH_SDKVER). Both copies are .dotnet/ bootstrap plumbing.
   for sd in "$ASCORE_REPO"/.dotnet/sdk/*/; do
     local arsp="$sd/RuntimeIdentifierGraph.json"
     [ -f "$arsp" ] || continue
     if ! python3 -c "import json,sys; sys.exit(0 if 'openharmony-arm64' in json.load(open('$arsp'))['runtimes'] else 1)" 2>/dev/null; then
-      [ -f "$SDK_REPO/eng/RuntimeIdentifierGraph.openharmony.json" ] || die "no eng RID graph for aspnetcore inject"
-      cp -f "$SDK_REPO/eng/RuntimeIdentifierGraph.openharmony.json" "$arsp"
-      info "injected eng/ RID graph into aspnetcore SDK $(basename "$sd")"
+      [ -f "$eng_pgraph" ] || die "no eng portable graph for aspnetcore inject"
+      cp -f "$eng_pgraph" "$arsp"
+      info "injected eng/ portable RID graph into aspnetcore SDK $(basename "$sd")"
     fi
   done
   # aspnetcore's darc-flowed runtime version points at a feed that has no
@@ -1383,7 +1386,6 @@ stage4() {
     /p:MicrosoftAspNetCoreAppRuntimePackageVersion="$rtver" \
     /p:RestoreAdditionalProjectSources="$FEED" \
     /p:PublicBaseURL=http://localhost:$ASSET_PORT/ \
-    /p:RidGraphOverrideRuntimeJson="$PWD/eng/RuntimeIdentifierGraph.openharmony.json" \
     /p:RidGraphOverridePortableJson="$PWD/eng/PortableRuntimeIdentifierGraph.openharmony.json" \
     /p:IncludeAspNetCoreRuntime=false \
     /p:PreReleaseVersionLabel="$LABEL" /p:PreReleaseVersion="$PRE" /p:OfficialBuildId="$BUILDID" \
