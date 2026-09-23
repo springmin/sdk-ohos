@@ -8,7 +8,6 @@
     <InvariantGlobalization>true</InvariantGlobalization>
     <PublishAot>true</PublishAot>
     <StripSymbols>true</StripSymbols>
-    <NoWarn>$(NoWarn);IDE0073</NoWarn>
     <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
     <!-- Independent tool: keep outputs local, don't inherit the repo's artifacts/ redirect -->
     <BaseOutputPath>bin/</BaseOutputPath>
