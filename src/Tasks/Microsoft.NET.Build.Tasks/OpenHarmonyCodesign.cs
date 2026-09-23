@@ -17,6 +17,9 @@ namespace Microsoft.NET.Build.Tasks
     /// rewrite a file outside the output tree. Foreign .codesign sections are kept and reported
     /// instead of being replaced silently; replacing one requires the explicit selfsign --force
     /// opt-in.
+    ///
+    /// Fork-only API surface: this public task needs an API memo before the port can be proposed
+    /// upstream (the shipping selfsign CLI stays internal and hidden).
     /// </summary>
     public sealed class OpenHarmonyCodesign : TaskBase
     {
