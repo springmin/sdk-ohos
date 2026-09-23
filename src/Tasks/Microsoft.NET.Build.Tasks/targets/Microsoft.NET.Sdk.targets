@@ -886,16 +886,36 @@ Copyright (c) .NET Foundation. All rights reserved.
   <PropertyGroup>
     <_EnableOpenHarmonyCodeSign Condition="'$(_EnableOpenHarmonyCodeSign)' == '' and ($(RuntimeIdentifier.StartsWith('openharmony')) or $(AppHostRuntimeIdentifier.StartsWith('openharmony')))">true</_EnableOpenHarmonyCodeSign>
   </PropertyGroup>
+  <Target Name="_OpenHarmonyCodeSignCollectBuildInputs"
+          BeforeTargets="_OpenHarmonyCodeSignBuildOutputs"
+          Condition="'$(_EnableOpenHarmonyCodeSign)' == 'true'">
+    <ItemGroup>
+      <_OpenHarmonyCodeSignBuildInputs Include="$(TargetDir)**/*" />
+    </ItemGroup>
+  </Target>
   <Target Name="_OpenHarmonyCodeSignBuildOutputs"
           AfterTargets="Build"
-          Condition="'$(_EnableOpenHarmonyCodeSign)' == 'true'">
+          Condition="'$(_EnableOpenHarmonyCodeSign)' == 'true'"
+          Inputs="@(_OpenHarmonyCodeSignBuildInputs)"
+          Outputs="$(IntermediateOutputPath)OpenHarmonyCodeSign.stamp">
     <OpenHarmonyCodesign Directories="$(TargetDir)" />
+    <Touch Files="$(IntermediateOutputPath)OpenHarmonyCodeSign.stamp" AlwaysCreate="true" />
   </Target>
 
+  <Target Name="_OpenHarmonyCodeSignCollectPublishInputs"
+          BeforeTargets="_OpenHarmonyCodeSignPublishOutputs"
+          Condition="'$(_EnableOpenHarmonyCodeSign)' == 'true'">
+    <ItemGroup>
+      <_OpenHarmonyCodeSignPublishInputs Include="$(PublishDir)**/*" />
+    </ItemGroup>
+  </Target>
   <Target Name="_OpenHarmonyCodeSignPublishOutputs"
           AfterTargets="Publish"
-          Condition="'$(_EnableOpenHarmonyCodeSign)' == 'true'">
+          Condition="'$(_EnableOpenHarmonyCodeSign)' == 'true'"
+          Inputs="@(_OpenHarmonyCodeSignPublishInputs)"
+          Outputs="$(IntermediateOutputPath)OpenHarmonyCodeSignPublish.stamp">
     <OpenHarmonyCodesign Directories="$(PublishDir)" />
+    <Touch Files="$(IntermediateOutputPath)OpenHarmonyCodeSignPublish.stamp" AlwaysCreate="true" />
   </Target>
 
   <!--

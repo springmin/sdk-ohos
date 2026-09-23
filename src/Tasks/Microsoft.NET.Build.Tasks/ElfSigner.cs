@@ -6,6 +6,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Security.Cryptography;
 
+#nullable enable
+
 namespace Microsoft.NET.Build.Tasks
 {
     /// <summary>
@@ -38,6 +40,42 @@ namespace Microsoft.NET.Build.Tasks
 
         // ".codesign\0" including the trailing NUL (10 bytes)
         private static readonly byte[] s_codesignName = new byte[] { (byte)'.', (byte)'c', (byte)'o', (byte)'d', (byte)'e', (byte)'s', (byte)'i', (byte)'g', (byte)'n', 0 };
+
+        /// <summary>
+        /// Extensions of artifact formats that cannot carry executable ELF content: .hap,
+        /// .nupkg and .zip are zip containers, .pdb is an MSF debug container and
+        /// .json/.xml/.txt are text metadata. These make up the bulk of a build output tree
+        /// (of the measured 532-file MAUI output only 26 files are ELF), so they are the
+        /// files that benefit from the 64-byte header probe below.
+        ///
+        /// The list is diagnostic only: <see cref="SignFileInPlace"/> never skips a file
+        /// because of its extension. Every file's first 64 bytes are probed for the ELF64
+        /// magic, so an ELF that happens to be named .hap is still signed (signing gates
+        /// must not silently drop a misnamed executable) and a text file named .so is still
+        /// skipped without being read in full.
+        /// </summary>
+        private static readonly string[] s_nonExecutableExtensions =
+        {
+            ".hap", ".zip", ".nupkg", ".pdb", ".json", ".xml", ".txt",
+        };
+
+        /// <summary>
+        /// True when <paramref name="path"/> has an extension that is known not to be an
+        /// executable format. Used to describe skipped files in logs; never used to decide
+        /// whether a file is signed (see <see cref="s_nonExecutableExtensions"/>).
+        /// </summary>
+        internal static bool HasNonExecutableExtension(string path)
+        {
+            foreach (string extension in s_nonExecutableExtensions)
+            {
+                if (path.EndsWith(extension, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
 
         /// <summary>Result of an in-place signing request.</summary>
         public enum SignOutcome
@@ -84,6 +122,12 @@ namespace Microsoft.NET.Build.Tasks
         /// descriptor digest), the file is left untouched so repeated builds do not rewrite it.
         /// A foreign .codesign section is also left untouched unless <paramref name="force"/> is
         /// set. Re-signing never drops data that follows the signature block.
+        ///
+        /// Cost contract: only the 64-byte ELF header is read before the file is committed to
+        /// being an ELF, and an already-valid signature is verified by streaming the file page
+        /// by page. The body is materialized only when the signature must actually be (re)written,
+        /// so a 532-file/171MB output tree (26 ELF/30MB, one 32MB .hap) never loads .hap, .pdb
+        /// or .json bodies, and never loads an up-to-date ELF into the LOH.
         /// </summary>
         public static SignOutcome SignFileInPlace(string path, bool force = false)
         {
@@ -92,24 +136,65 @@ namespace Microsoft.NET.Build.Tasks
                 return SignOutcome.NotElf;
             }
 
+            // Probe only the header first: formats such as .hap/.zip/.nupkg (containers),
+            // .pdb (MSF) and .json/.xml/.txt (text) are rejected here after 64 bytes instead
+            // of being read whole. The extension is not consulted: only the magic decides, so
+            // no ELF is ever skipped because of its name.
+            // Reads are unbuffered (bufferSize 1): the access pattern is small scattered
+            // reads plus 4KB signature pages, and a read-ahead buffer would pull up to
+            // 64KB per probe for the ~500 files that are rejected from their header.
+            using (FileStream stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 1))
+            {
+                byte[] header = new byte[64];
+                if (ReadAtMost(stream, header, header.Length) < header.Length || !IsElf64(header))
+                {
+                    return SignOutcome.NotElf;
+                }
+
+                if (!force)
+                {
+                    // Streamed validation: an unchanged, validly signed ELF (the repeat-build
+                    // case) is verified without materializing the body.
+                    CodesignState state = ClassifyCodesign(ElfImage.FromStream(stream), out _, out _, out _, out string? anomaly);
+                    if (state == CodesignState.Malformed)
+                    {
+                        throw new InvalidDataException($"refusing to sign: {anomaly}");
+                    }
+
+                    if (state == CodesignState.ValidSelfSign)
+                    {
+                        return SignOutcome.AlreadyValid;
+                    }
+
+                    if (state == CodesignState.Foreign)
+                    {
+                        return SignOutcome.ForeignSignatureRetained;
+                    }
+                }
+            }
+
+            // The signature must be written (or force was requested): load the bytes and reuse
+            // the in-memory path, which re-parses and re-validates everything before writing.
             byte[] raw = File.ReadAllBytes(path);
             if (!IsElf64(raw))
             {
+                // The file changed between the probe and the read; fail closed as "not an ELF"
+                // rather than signing bytes that were never classified.
                 return SignOutcome.NotElf;
             }
 
-            CodesignState state = ClassifyCodesign(raw, out _, out _, out _, out string anomaly);
-            if (state == CodesignState.Malformed)
+            CodesignState memoryState = ClassifyCodesign(raw, out _, out _, out _, out string? memoryAnomaly);
+            if (memoryState == CodesignState.Malformed)
             {
-                throw new InvalidDataException($"refusing to sign: {anomaly}");
+                throw new InvalidDataException($"refusing to sign: {memoryAnomaly}");
             }
 
-            if (state == CodesignState.ValidSelfSign && !force)
+            if (memoryState == CodesignState.ValidSelfSign && !force)
             {
                 return SignOutcome.AlreadyValid;
             }
 
-            if (state == CodesignState.Foreign && !force)
+            if (memoryState == CodesignState.Foreign && !force)
             {
                 return SignOutcome.ForeignSignatureRetained;
             }
@@ -118,6 +203,24 @@ namespace Microsoft.NET.Build.Tasks
             // FileMode.Create truncates the existing inode in place, preserving its Unix permissions.
             File.WriteAllBytes(path, signed);
             return SignOutcome.Signed;
+        }
+
+        /// <summary>Reads up to <paramref name="count"/> bytes, tolerating short reads.</summary>
+        private static int ReadAtMost(Stream stream, byte[] buffer, int count)
+        {
+            int total = 0;
+            while (total < count)
+            {
+                int read = stream.Read(buffer, total, count - total);
+                if (read <= 0)
+                {
+                    break;
+                }
+
+                total += read;
+            }
+
+            return total;
         }
 
         /// <summary>
@@ -145,14 +248,14 @@ namespace Microsoft.NET.Build.Tasks
         /// through <paramref name="onSymbolicLink"/> and skipped, so signing cannot escape the tree
         /// it was pointed at (and link cycles cannot recurse).
         /// </summary>
-        internal static IEnumerable<string> EnumerateFilesWithoutLinks(string directory, Action<string> onSymbolicLink)
+        internal static IEnumerable<string> EnumerateFilesWithoutLinks(string directory, Action<string>? onSymbolicLink)
         {
             var files = new List<string>();
             EnumerateFilesWithoutLinks(directory, files, onSymbolicLink);
             return files;
         }
 
-        private static void EnumerateFilesWithoutLinks(string directory, List<string> files, Action<string> onSymbolicLink)
+        private static void EnumerateFilesWithoutLinks(string directory, List<string> files, Action<string>? onSymbolicLink)
         {
             foreach (string entry in Directory.EnumerateFileSystemEntries(directory))
             {
@@ -189,13 +292,17 @@ namespace Microsoft.NET.Build.Tasks
             }
         }
 
+        private static CodesignState ClassifyCodesign(byte[] elf, out int csOff, out int csLen, out bool reusable, out string? anomaly) =>
+            ClassifyCodesign(ElfImage.FromArray(elf), out csOff, out csLen, out reusable, out anomaly);
+
         /// <summary>
         /// Decides how to treat an existing .codesign section. <paramref name="reusable"/> is true
         /// when the block has exactly the geometry this signer writes (a 4KB page-aligned block
         /// that overlaps no other section or loadable segment), so it can be rewritten in place
-        /// without touching any other byte.
+        /// without touching any other byte. The image may be file-backed: nothing beyond the
+        /// sections and the signature pages is read.
         /// </summary>
-        private static CodesignState ClassifyCodesign(byte[] elf, out int csOff, out int csLen, out bool reusable, out string anomaly)
+        private static CodesignState ClassifyCodesign(ElfImage elf, out int csOff, out int csLen, out bool reusable, out string? anomaly)
         {
             csOff = 0;
             csLen = 0;
@@ -249,7 +356,7 @@ namespace Microsoft.NET.Build.Tasks
                 csOff = (int)off;
                 csLen = (int)size;
 
-                if (OverlapsOtherContent(elf, eShOff, eShnum, csIdx, csOff, csLen, out string overlap))
+                if (OverlapsOtherContent(elf, eShOff, eShnum, csIdx, csOff, csLen, out string? overlap))
                 {
                     return Malformed($"the .codesign section overlaps {overlap}", out anomaly);
                 }
@@ -273,18 +380,21 @@ namespace Microsoft.NET.Build.Tasks
             }
         }
 
-        private static CodesignState Malformed(string reason, out string anomaly)
+        private static CodesignState Malformed(string reason, out string? anomaly)
         {
             anomaly = reason;
             return CodesignState.Malformed;
         }
+
+        private static bool OverlapsOtherContent(byte[] elf, ulong eShOff, ushort eShnum, int csIdx, int csOff, int csLen, out string? overlap) =>
+            OverlapsOtherContent(ElfImage.FromArray(elf), eShOff, eShnum, csIdx, csOff, csLen, out overlap);
 
         /// <summary>
         /// True when the candidate .codesign block overlaps content owned by another section, a
         /// loadable segment or the ELF bookkeeping tables. Rewriting such a block would corrupt
         /// the binary, so the layout is refused instead.
         /// </summary>
-        private static bool OverlapsOtherContent(byte[] elf, ulong eShOff, ushort eShnum, int csIdx, int csOff, int csLen, out string overlap)
+        private static bool OverlapsOtherContent(ElfImage elf, ulong eShOff, ushort eShnum, int csIdx, int csOff, int csLen, out string? overlap)
         {
             overlap = null;
             ulong csStart = (ulong)csOff;
@@ -375,7 +485,7 @@ namespace Microsoft.NET.Build.Tasks
             return false;
         }
 
-        private static bool IsSelfSignDescriptor(byte[] elf, int csOff, int csLen)
+        private static bool IsSelfSignDescriptor(ElfImage elf, int csOff, int csLen)
         {
             if (csLen < PayloadSize)
             {
@@ -404,7 +514,7 @@ namespace Microsoft.NET.Build.Tasks
         /// descriptor is well-formed, the stored page Merkle root equals the recomputed one, and
         /// the stored signature equals SHA-256 of the descriptor with signSize zeroed.
         /// </summary>
-        private static bool IsValidlySigned(byte[] elf, int csOff, int csLen)
+        private static bool IsValidlySigned(ElfImage elf, int csOff, int csLen)
         {
             try
             {
@@ -422,16 +532,14 @@ namespace Microsoft.NET.Build.Tasks
                     return false;
                 }
 
-                byte[] root = new byte[HashOut];
-                Buffer.BlockCopy(elf, dOff + 16, root, 0, HashOut);
+                byte[] root = elf.ReadRange(dOff + 16, HashOut);
                 byte[] recomputedRoot = MerkleRootHash(elf, csOff, csLen);
                 if (!BytesEqual(root, recomputedRoot))
                 {
                     return false;
                 }
 
-                byte[] signature = new byte[HashOut];
-                Buffer.BlockCopy(elf, dOff + DescSize, signature, 0, HashOut);
+                byte[] signature = elf.ReadRange(dOff + DescSize, HashOut);
                 byte[] expectedSignature = Sha256(BuildDescriptor(0, fileSize, recomputedRoot, flags));
                 return BytesEqual(signature, expectedSignature);
             }
@@ -465,6 +573,184 @@ namespace Microsoft.NET.Build.Tasks
             data[0] == 0x7f && data[1] == (byte)'E' && data[2] == (byte)'L' && data[3] == (byte)'F' &&
             data[4] == 2 && // ELFCLASS64
             data[5] == 1;   // ELFDATA2LSB: the signer reads/writes little-endian fields
+
+        private static bool IsElf64(ElfImage data) =>
+            data.Length >= 64 &&
+            data[0] == 0x7f && data[1] == (byte)'E' && data[2] == (byte)'L' && data[3] == (byte)'F' &&
+            data[4] == 2 && // ELFCLASS64
+            data[5] == 1;   // ELFDATA2LSB: the signer reads/writes little-endian fields
+
+        private static ushort ReadU16(ElfImage b, int off) => b.ReadU16(off);
+
+        private static uint ReadU32(ElfImage b, int off) => b.ReadU32(off);
+
+        private static ulong ReadU64(ElfImage b, int off) => b.ReadU64(off);
+
+        private static bool ByteArrayEquals(ElfImage b, int off, byte[] name) => b.RangeEquals(off, name);
+
+        /// <summary>
+        /// Read-only view of an ELF64 image: either a byte array already in memory (the sign
+        /// path) or an open FileStream (the probe/validation path). File-backed reads are
+        /// bounded by the caller's access pattern: <see cref="SignFileInPlace"/> reads only the
+        /// 64-byte header before deciding whether a file is an ELF, and
+        /// <see cref="MerkleRootHash(ElfImage, int, int)"/> streams one 4KB page at a time.
+        /// The stream is owned by the caller and is not disposed here.
+        /// </summary>
+        private sealed class ElfImage
+        {
+            private readonly byte[]? _data;
+            private readonly FileStream? _stream;
+            private readonly byte[] _scratch = new byte[8];
+
+            public int Length { get; }
+
+            private ElfImage(byte[]? data, FileStream? stream, int length)
+            {
+                _data = data;
+                _stream = stream;
+                Length = length;
+            }
+
+            public static ElfImage FromArray(byte[] data) => new ElfImage(data, null, data.Length);
+
+            public static ElfImage FromStream(FileStream stream)
+            {
+                long length = stream.Length;
+                if (length > int.MaxValue)
+                {
+                    // The signer (and the in-memory path it falls back to) addresses files
+                    // with int offsets; refusing up front is fail-closed and readable.
+                    throw new InvalidDataException("ELF too large to sign");
+                }
+
+                return new ElfImage(null, stream, (int)length);
+            }
+
+            public byte ReadByte(int offset)
+            {
+                if (_data != null)
+                {
+                    return _data[offset];
+                }
+
+                ReadExact(offset, _scratch, 0, 1);
+                return _scratch[0];
+            }
+
+            /// <summary>Byte accessor used by the descriptor checks.</summary>
+            public byte this[int offset] => ReadByte(offset);
+
+            public ushort ReadU16(int offset)
+            {
+                if (_data != null)
+                {
+                    return (ushort)(_data[offset] | (_data[offset + 1] << 8));
+                }
+
+                ReadExact(offset, _scratch, 0, 2);
+                return (ushort)(_scratch[0] | (_scratch[1] << 8));
+            }
+
+            public uint ReadU32(int offset)
+            {
+                if (_data != null)
+                {
+                    return (uint)(_data[offset] | (_data[offset + 1] << 8) | (_data[offset + 2] << 16) | (_data[offset + 3] << 24));
+                }
+
+                ReadExact(offset, _scratch, 0, 4);
+                return (uint)(_scratch[0] | (_scratch[1] << 8) | (_scratch[2] << 16) | (_scratch[3] << 24));
+            }
+
+            public ulong ReadU64(int offset)
+            {
+                if (_data != null)
+                {
+                    return (ulong)_data[offset] | ((ulong)_data[offset + 1] << 8) | ((ulong)_data[offset + 2] << 16) | ((ulong)_data[offset + 3] << 24) |
+                        ((ulong)_data[offset + 4] << 32) | ((ulong)_data[offset + 5] << 40) | ((ulong)_data[offset + 6] << 48) | ((ulong)_data[offset + 7] << 56);
+                }
+
+                ReadExact(offset, _scratch, 0, 8);
+                return (ulong)_scratch[0] | ((ulong)_scratch[1] << 8) | ((ulong)_scratch[2] << 16) | ((ulong)_scratch[3] << 24) |
+                    ((ulong)_scratch[4] << 32) | ((ulong)_scratch[5] << 40) | ((ulong)_scratch[6] << 48) | ((ulong)_scratch[7] << 56);
+            }
+
+            public byte[] ReadRange(int offset, int count)
+            {
+                byte[] result = new byte[count];
+                ReadRangeInto(offset, result, count);
+                return result;
+            }
+
+            public void ReadRangeInto(int offset, byte[] buffer, int count)
+            {
+                if (_data != null)
+                {
+                    Buffer.BlockCopy(_data, offset, buffer, 0, count);
+                    return;
+                }
+
+                ReadExact(offset, buffer, 0, count);
+            }
+
+            public bool RangeEquals(int offset, byte[] expected)
+            {
+                if (offset < 0 || offset > Length - expected.Length)
+                {
+                    // Matches the array path's out-of-range behavior closely enough for the
+                    // classification code, which treats every read failure as "not valid".
+                    throw new InvalidDataException("read outside the ELF image");
+                }
+
+                if (_data != null)
+                {
+                    for (int i = 0; i < expected.Length; i++)
+                    {
+                        if (_data[offset + i] != expected[i])
+                        {
+                            return false;
+                        }
+                    }
+
+                    return true;
+                }
+
+                byte[] probe = new byte[expected.Length];
+                ReadExact(offset, probe, 0, expected.Length);
+                for (int i = 0; i < expected.Length; i++)
+                {
+                    if (probe[i] != expected[i])
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
+            }
+
+            private void ReadExact(int offset, byte[] buffer, int index, int count)
+            {
+                if (offset < 0 || count < 0 || offset > Length - count)
+                {
+                    throw new InvalidDataException("read outside the ELF image");
+                }
+
+                // ReadExact is only reached for a file-backed image (array reads never get here).
+                FileStream stream = _stream!;
+                stream.Seek(offset, SeekOrigin.Begin);
+                int total = 0;
+                while (total < count)
+                {
+                    int read = stream.Read(buffer, index + total, count - total);
+                    if (read <= 0)
+                    {
+                        throw new InvalidDataException("unexpected end of file while reading the ELF image");
+                    }
+
+                    total += read;
+                }
+            }
+        }
 
         private static ushort ReadU16(byte[] b, int off) => (ushort)(b[off] | (b[off + 1] << 8));
 
@@ -513,7 +799,10 @@ namespace Microsoft.NET.Build.Tasks
             }
         }
 
-        private static (ulong eShOff, ushort eShnum, ushort eShstrndx) ParseElfHeader(byte[] elf)
+        private static (ulong eShOff, ushort eShnum, ushort eShstrndx) ParseElfHeader(byte[] elf) =>
+            ParseElfHeader(ElfImage.FromArray(elf));
+
+        private static (ulong eShOff, ushort eShnum, ushort eShstrndx) ParseElfHeader(ElfImage elf)
         {
             if (!IsElf64(elf))
             {
@@ -537,7 +826,10 @@ namespace Microsoft.NET.Build.Tasks
             return (eShOff, eShnum, eShstrndx);
         }
 
-        private static bool TryGetSectionNameTable(byte[] elf, ulong eShOff, ushort eShnum, ushort eShstrndx, out int shstrOff, out int shstrSz)
+        private static bool TryGetSectionNameTable(byte[] elf, ulong eShOff, ushort eShnum, ushort eShstrndx, out int shstrOff, out int shstrSz) =>
+            TryGetSectionNameTable(ElfImage.FromArray(elf), eShOff, eShnum, eShstrndx, out shstrOff, out shstrSz);
+
+        private static bool TryGetSectionNameTable(ElfImage elf, ulong eShOff, ushort eShnum, ushort eShstrndx, out int shstrOff, out int shstrSz)
         {
             shstrOff = 0;
             shstrSz = 0;
@@ -559,7 +851,10 @@ namespace Microsoft.NET.Build.Tasks
             return true;
         }
 
-        private static long FindSectionByName(byte[] elf, ulong eShOff, ushort eShnum, ushort eShstrndx, byte[] name)
+        private static long FindSectionByName(byte[] elf, ulong eShOff, ushort eShnum, ushort eShstrndx, byte[] name) =>
+            FindSectionByName(ElfImage.FromArray(elf), eShOff, eShnum, eShstrndx, name);
+
+        private static long FindSectionByName(ElfImage elf, ulong eShOff, ushort eShnum, ushort eShstrndx, byte[] name)
         {
             if (!TryGetSectionNameTable(elf, eShOff, eShnum, eShstrndx, out int shstrOff, out int shstrSz))
             {
@@ -832,7 +1127,15 @@ namespace Microsoft.NET.Build.Tasks
             Buffer.BlockCopy(signature, 0, buf, csOff + 8 + DescSize, HashOut);
         }
 
-        private static byte[] MerkleRootHash(byte[] data, int csOff, int csLen)
+        private static byte[] MerkleRootHash(byte[] data, int csOff, int csLen) =>
+            MerkleRootHash(ElfImage.FromArray(data), csOff, csLen);
+
+        /// <summary>
+        /// fs-verity page Merkle root. Pages are read one at a time from the image, so a
+        /// file-backed image (the already-signed validation path) never holds more than one
+        /// 4KB page plus the leaf-hash table (32 bytes per page) in memory.
+        /// </summary>
+        private static byte[] MerkleRootHash(ElfImage data, int csOff, int csLen)
         {
             if (data.Length == 0)
             {
@@ -844,6 +1147,7 @@ namespace Microsoft.NET.Build.Tasks
             int csPageEnd = (csOff + csLen + PageSize - 1) / PageSize;
 
             byte[] hashes = new byte[npages * HashOut];
+            byte[] page = new byte[PageSize];
             for (int i = 0; i < npages; i++)
             {
                 if (csLen > 0 && i >= csPageBegin && i < csPageEnd)
@@ -851,10 +1155,10 @@ namespace Microsoft.NET.Build.Tasks
                     continue; // codesign pages: zero leaf hash
                 }
 
-                byte[] page = new byte[PageSize];
                 int off = i * PageSize;
                 int n = Math.Min(PageSize, data.Length - off);
-                Buffer.BlockCopy(data, off, page, 0, n);
+                Array.Clear(page, 0, PageSize);
+                data.ReadRangeInto(off, page, n);
                 byte[] h = Sha256(page);
                 Buffer.BlockCopy(h, 0, hashes, i * HashOut, HashOut);
             }
@@ -872,20 +1176,20 @@ namespace Microsoft.NET.Build.Tasks
                 int packed = cur.Length;
                 if (packed <= PageSize)
                 {
-                    byte[] page = new byte[PageSize];
-                    Buffer.BlockCopy(cur, 0, page, 0, packed);
-                    return Sha256(page);
+                    byte[] combinePage = new byte[PageSize];
+                    Buffer.BlockCopy(cur, 0, combinePage, 0, packed);
+                    return Sha256(combinePage);
                 }
 
                 int nextPages = (packed + PageSize - 1) / PageSize;
                 byte[] next = new byte[nextPages * HashOut];
                 for (int i = 0; i < nextPages; i++)
                 {
-                    byte[] page = new byte[PageSize];
+                    byte[] combinePage = new byte[PageSize];
                     int off = i * PageSize;
                     int n = Math.Min(PageSize, packed - off);
-                    Buffer.BlockCopy(cur, off, page, 0, n);
-                    byte[] h = Sha256(page);
+                    Buffer.BlockCopy(cur, off, combinePage, 0, n);
+                    byte[] h = Sha256(combinePage);
                     Buffer.BlockCopy(h, 0, next, i * HashOut, HashOut);
                 }
 
@@ -915,7 +1219,7 @@ namespace Microsoft.NET.Build.Tasks
                 throw new InvalidDataException("not ELF64");
             }
 
-            CodesignState state = ClassifyCodesign(elf, out int csOff, out int csLen, out bool reusable, out string anomaly);
+            CodesignState state = ClassifyCodesign(elf, out int csOff, out int csLen, out bool reusable, out string? anomaly);
             if (state == CodesignState.Malformed)
             {
                 throw new InvalidDataException($"refusing to sign: {anomaly}");

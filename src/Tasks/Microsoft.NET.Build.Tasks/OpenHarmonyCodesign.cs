@@ -51,6 +51,16 @@ namespace Microsoft.NET.Build.Tasks
                                 case ElfSigner.SignOutcome.ForeignSignatureRetained:
                                     Log.LogWarning(Strings.OpenHarmonyCodesignRetainedForeignSignature, path);
                                     break;
+                                case ElfSigner.SignOutcome.NotElf:
+                                    // Containers/metadata (.hap/.pdb/.json/...) can never be an
+                                    // executable ELF; the signer rejected them from the header
+                                    // bytes alone, so they are only recorded for diagnostics.
+                                    if (ElfSigner.HasNonExecutableExtension(path))
+                                    {
+                                        Log.LogMessage(MessageImportance.Low, "OpenHarmonyCodesign: skipped {0} (known non-executable format)", path);
+                                    }
+
+                                    break;
                             }
                         }
                         catch (Exception ex)

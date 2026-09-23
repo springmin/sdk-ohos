@@ -367,6 +367,160 @@ namespace Microsoft.NET.Build.Tasks.UnitTests
             }
         }
 
+        // ---------------------------------------------------------------------------------
+        // Cost regressions (P12): the header-only probe, the streamed validation and the
+        // extension policy must not change what is signed, only how much is read.
+        // ---------------------------------------------------------------------------------
+
+        [TestMethod]
+        public void SignFileInPlace_RejectsKnownNonExecutableFormatsWithoutSigning()
+        {
+            // .hap/.pdb/.json are the bulk of an output tree and can never be an executable
+            // ELF: they must be rejected from the header bytes and left byte-for-byte alone.
+            ElfSigner.HasNonExecutableExtension("/out/app.hap").Should().BeTrue();
+            ElfSigner.HasNonExecutableExtension("/out/app.PDB").Should().BeTrue();
+            ElfSigner.HasNonExecutableExtension("/out/app.json").Should().BeTrue();
+            ElfSigner.HasNonExecutableExtension("/out/libapp.so").Should().BeFalse();
+
+            byte[] content = Encoding.ASCII.GetBytes("PK\u0003\u0004 not an ELF file at all");
+            foreach (string extension in new[] { ".hap", ".pdb", ".json" })
+            {
+                string path = TempPath() + extension;
+                try
+                {
+                    File.WriteAllBytes(path, content);
+
+                    ElfSigner.SignFileInPlace(path).Should().Be(ElfSigner.SignOutcome.NotElf);
+                    File.ReadAllBytes(path).Should().Equal(content);
+                }
+                finally
+                {
+                    File.Delete(path);
+                }
+            }
+        }
+
+        [TestMethod]
+        public void SignFileInPlace_SignsAnElfRegardlessOfItsExtension()
+        {
+            // The extension is diagnostic only: an ELF that happens to be named .hap must
+            // still be signed, because a signing gate may never silently drop an executable.
+            string path = TempPath() + ".hap";
+            try
+            {
+                File.WriteAllBytes(path, CreateMinimalElf());
+
+                ElfSigner.SignFileInPlace(path).Should().Be(ElfSigner.SignOutcome.Signed);
+                ElfSigner.SignFileInPlace(path).Should().Be(ElfSigner.SignOutcome.AlreadyValid);
+                FindSection(File.ReadAllBytes(path), ".codesign").Should().NotBeNull();
+            }
+            finally
+            {
+                File.Delete(path);
+            }
+        }
+
+        [TestMethod]
+        public void SignFileInPlace_DoesNotMaterializeTheBodyOfANonElfFile()
+        {
+            byte[] content = new byte[16 * 1024 * 1024];
+            content[0] = (byte)'P';
+            content[1] = (byte)'K';
+            string path = TempPath() + ".hap";
+            try
+            {
+                File.WriteAllBytes(path, content);
+                ElfSigner.SignFileInPlace(path).Should().Be(ElfSigner.SignOutcome.NotElf); // warm-up
+
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                ElfSigner.SignFileInPlace(path).Should().Be(ElfSigner.SignOutcome.NotElf);
+                long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+                allocated.Should().BeLessThan(2 * 1024 * 1024, "a 16MB non-ELF must be rejected from its 64-byte header");
+            }
+            finally
+            {
+                File.Delete(path);
+            }
+        }
+
+        [TestMethod]
+        public void SignFileInPlace_StreamsValidationOfAnAlreadySignedLargeFile()
+        {
+            byte[] trailer = new byte[24 * 1024 * 1024];
+            new Random(20260923).NextBytes(trailer);
+            string path = TempPath();
+            try
+            {
+                File.WriteAllBytes(path, CreateMinimalElf(trailer));
+                ElfSigner.SignFileInPlace(path).Should().Be(ElfSigner.SignOutcome.Signed);
+                ElfSigner.SignFileInPlace(path).Should().Be(ElfSigner.SignOutcome.AlreadyValid); // warm-up
+
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                ElfSigner.SignFileInPlace(path).Should().Be(ElfSigner.SignOutcome.AlreadyValid);
+                long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+                allocated.Should().BeLessThan(8 * 1024 * 1024, "validating a 24MB signature must stream the pages, not load the body");
+            }
+            finally
+            {
+                File.Delete(path);
+            }
+        }
+
+        [TestMethod]
+        public void SignFileInPlace_StreamingValidationCoversTheWholeFile()
+        {
+            byte[] elf = CreateMinimalElf();
+            byte[] trailer = new byte[1024 * 1024];
+            new Random(4242).NextBytes(trailer);
+            string path = TempPath();
+            try
+            {
+                File.WriteAllBytes(path, elf.Concat(trailer).ToArray());
+                ElfSigner.SignFileInPlace(path).Should().Be(ElfSigner.SignOutcome.Signed);
+
+                // Flip a byte deep in the trailer: the streamed Merkle root must cover it.
+                int offset = elf.Length + 1234;
+                using (FileStream file = new FileStream(path, FileMode.Open, FileAccess.ReadWrite))
+                {
+                    file.Seek(offset, SeekOrigin.Begin);
+                    int original = file.ReadByte();
+                    file.Seek(offset, SeekOrigin.Begin);
+                    file.WriteByte((byte)(original ^ 0x5a));
+                }
+
+                ElfSigner.SignFileInPlace(path).Should().Be(ElfSigner.SignOutcome.Signed);
+                ElfSigner.SignFileInPlace(path).Should().Be(ElfSigner.SignOutcome.AlreadyValid);
+            }
+            finally
+            {
+                File.Delete(path);
+            }
+        }
+
+        [TestMethod]
+        public void SignFileInPlace_SkipIsIncrementalAndLeavesTheFileUnchanged()
+        {
+            string path = TempPath();
+            try
+            {
+                File.WriteAllBytes(path, CreateMinimalElf());
+                ElfSigner.SignFileInPlace(path).Should().Be(ElfSigner.SignOutcome.Signed);
+
+                byte[] signedBytes = File.ReadAllBytes(path);
+                DateTime signedWriteTime = File.GetLastWriteTimeUtc(path);
+
+                ElfSigner.SignFileInPlace(path).Should().Be(ElfSigner.SignOutcome.AlreadyValid);
+                File.ReadAllBytes(path).Should().Equal(signedBytes);
+                File.GetLastWriteTimeUtc(path).Should().Be(signedWriteTime, "an up-to-date file must not be rewritten");
+            }
+            finally
+            {
+                File.Delete(path);
+            }
+        }
+
         private static string TempPath() => Path.Combine(Path.GetTempPath(), $"openharmony-sign-{Guid.NewGuid():N}");
 
         /// <summary>
