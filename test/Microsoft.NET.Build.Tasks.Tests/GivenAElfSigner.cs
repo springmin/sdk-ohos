@@ -48,7 +48,7 @@ namespace Microsoft.NET.Build.Tasks.UnitTests
             ReadU32(signed, descriptor + 4).Should().Be(32); // signSize
             ReadU64(signed, descriptor + 8).Should().Be((ulong)signed.Length); // dataSize
 
-            // The OHOS kernel requires the rootHash padding, salt, reserved1 and reserved2
+            // The OpenHarmony kernel requires the rootHash padding, salt, reserved1 and reserved2
             // regions to be zero; only the last byte carries csVersion.
             signed.AsSpan(descriptor + 48, 64).ToArray().Should().OnlyContain(b => b == 0);
             ReadU32(signed, descriptor + 112).Should().Be(0x10); // FLAG_SELF_SIGN
@@ -330,7 +330,7 @@ namespace Microsoft.NET.Build.Tasks.UnitTests
         {
             // A link placed in the signed tree must never make the signer rewrite the linked
             // target (D-3/C1); a link cycle must not recurse.
-            string root = Path.Combine(Path.GetTempPath(), $"ohos-sign-links-{Guid.NewGuid():N}");
+            string root = Path.Combine(Path.GetTempPath(), $"openharmony-sign-links-{Guid.NewGuid():N}");
             Directory.CreateDirectory(root);
             string outside = Path.Combine(root, "outside");
             Directory.CreateDirectory(outside);
@@ -367,7 +367,7 @@ namespace Microsoft.NET.Build.Tasks.UnitTests
             }
         }
 
-        private static string TempPath() => Path.Combine(Path.GetTempPath(), $"ohos-sign-{Guid.NewGuid():N}");
+        private static string TempPath() => Path.Combine(Path.GetTempPath(), $"openharmony-sign-{Guid.NewGuid():N}");
 
         /// <summary>
         /// Builds the smallest ELF64 the signer accepts: a header, a .shstrtab and its own

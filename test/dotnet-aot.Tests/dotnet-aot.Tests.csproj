@@ -38,7 +38,7 @@
   <Import Project="..\..\src\Cli\dotnet-aot\AotSourceFiles.props" />
 
   <ItemGroup>
-    <!-- CA1418: OpenHarmony is not in the analyzer's known-platform list yet (no OHOS TFM,
+    <!-- CA1418: OpenHarmony is not in the analyzer's known-platform list yet (no OpenHarmony TFM,
          no guard method in the target framework); this project compiles the same AOT sources
          as dotnet-aot, including OpenHarmonyEnvironmentDefaults.cs. -->
     <SupportedPlatform Include="openharmony" />

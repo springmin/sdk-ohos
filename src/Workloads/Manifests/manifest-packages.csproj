@@ -3,7 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="**\*.Manifest.proj" />
     <!-- OpenHarmony ships no bundled workloads (no Mono/Android/iOS/wasm toolchains
-         for it); skip all workload manifest packs for ohos. -->
+         for it); skip all workload manifest packs for OpenHarmony. -->
     <ProjectReference Remove="**\*.Manifest.proj"
                       Condition="'$(OSName)' == 'openharmony'" />
   </ItemGroup>

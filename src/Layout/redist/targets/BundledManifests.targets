@@ -25,7 +25,7 @@
   </ItemGroup>
 
   <!-- OpenHarmony ships no workloads: the Mono runtime and the platform SDK packs it would
-       reference are not part of the ohos build, so drop every bundled and built-in manifest. -->
+       reference are not part of the OpenHarmony build, so drop every bundled and built-in manifest. -->
   <ItemGroup Condition="'$(OSName)' == 'openharmony'">
     <BundledManifests Remove="@(BundledManifests)" />
     <BuiltinManifests Remove="@(BuiltinManifests)" />
