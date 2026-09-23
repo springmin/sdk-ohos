@@ -56,6 +56,15 @@ INSTALL_DIR=/data/xxx/dotnet sh eng/ohos-install/install-dotnet-ohos.sh sdk
 5. 写入 `DOTNET_ROOT` + `PATH` 到 `~/.bashrc` / `~/.zshrc` / `~/.profile`（已存在则跳过）
 6. `dotnet --list-runtimes` 验证
 
+> **摘要锚定（`eng/ohos-install/versions.env`）**：SDK / Runtime / selfsign /
+> workload bundle 各有外部锚（`SDK_TARBALL_SHA256`、`RUNTIME_TARBALL_SHA256`、
+> `SELFSIGN_SHA256`、`WORKLOAD_BUNDLE_SHA256`）。下载后先用锚校验，**不符即拒绝**
+> （不再回退同 release 的 `SHA256SUMS`/API digest；后者仅作为未命中锚时的次级
+> 证据）。`WORKLOAD_BUNDLE_VERSION` + `WORKLOAD_BUNDLE_SHA256` 随**每次 workload
+> bundle 重打包**一起更新；未命中锚的 bundle（版本变化等）回退既有语义。
+> `WORKLOAD_SHA256=<hex>` 可显式覆盖 bundle 锚（用于更新的包；与锚不符时会告警），
+> `ALLOW_UNVERIFIED=1` 才完全跳过校验（不安全，仅离线/遗留场景）。
+
 > **设备端 NativeAOT 说明**：HarmonyOS 只带 LLVM `libc++_shared.so`，而 ilc（AOT 编译器）
 > 链接 GNU `libstdc++.so.6` + `libgcc_s.so.1`。安装脚本会自动部署这两个库
 > （ILCompiler pack 已携带）。若部署到 `$INSTALL_DIR/lib`（`/lib` 不可写时），

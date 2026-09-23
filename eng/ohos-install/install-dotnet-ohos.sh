@@ -41,11 +41,19 @@
 # executed; downloads land in a mktemp file and only move into place after the
 # digest matches. The expected digest comes from, in order:
 #   1) an anchored pin (versions.env: SDK_TARBALL_SHA256 / RUNTIME_TARBALL_SHA256
-#      / SELFSIGN_SHA256, or WORKLOAD_SHA256), or an explicit env pin:
+#      / SELFSIGN_SHA256 / WORKLOAD_BUNDLE_SHA256 for the workload bundle asset
+#      names pinned there), or an explicit env pin:
 #        TARBALL_SHA256    the sdk/runtime tarball (also local-file installs)
-#        WORKLOAD_SHA256   the workload bundle
+#        WORKLOAD_SHA256   the workload bundle (explicit override of the
+#                          WORKLOAD_BUNDLE_SHA256 anchor, e.g. for a newer
+#                          bundle; a differing pin is reported as a warning)
 #   2) for the pinned GitHub release URLs only, a same-release SHA256SUMS /
 #      <asset>.sha256 / GitHub release digest (with a warning when no pin is set)
+# An anchored workload-bundle digest is checked first and instead of the
+# same-release evidence: a mismatching bundle is refused. WORKLOAD_BUNDLE_VERSION
+# and WORKLOAD_BUNDLE_SHA256 in versions.env are refreshed with every bundle
+# repackage (the rolling openharmony-workload-latest.tar.gz and the versioned
+# openharmony-workload-<version>.tar.gz asset carry the same bytes at release time).
 # A user-supplied URL is NEVER verified against same-origin evidence: it is
 # refused unless an anchored digest is available, because an attacker who
 # controls that host can replace the artifact and its checksum together.
@@ -58,7 +66,8 @@
 # workload bundle is re-verified before reuse and discarded when it cannot be.
 # Release publishers should upload SHA256SUMS next to the artifacts (the
 # ohos-full-build workflow does this for new releases) and update the anchored
-# digests in versions.env.
+# digests in versions.env — WORKLOAD_BUNDLE_VERSION/WORKLOAD_BUNDLE_SHA256 after
+# every workload bundle repackage.
 #
 # Idempotent: safe to re-run (re-extract, re-sign, profile entries deduped).
 # ============================================================================
@@ -100,9 +109,11 @@ ALLOW_MISSING_WORKLOAD="${ALLOW_MISSING_WORKLOAD:-0}"
 # (ohos-workload-<version>.tar.gz: manifests/ + feed/ + install-ohos-workload.sh)
 # next to the SDK tarball. INSTALL_WORKLOAD=0 disables the step; WORKLOAD_BUNDLE
 # points at a local bundle (directory or tarball); WORKLOAD_RELEASE_TAG selects the
-# release whose assets are searched for the bundle. A refused/absent bundle (and a
-# failed workload install) fails the installer; ALLOW_MISSING_WORKLOAD=1 downgrades
-# that to a warning and continues without the workload.
+# release whose assets are searched for the bundle; WORKLOAD_SHA256 pins a bundle
+# digest explicitly (overrides the WORKLOAD_BUNDLE_SHA256 anchor). A refused/absent
+# bundle (and a failed workload install) fails the installer;
+# ALLOW_MISSING_WORKLOAD=1 downgrades that to a warning and continues without the
+# workload.
 
 info() { printf '==> %s\n' "$*"; }
 die()  { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
@@ -532,6 +543,54 @@ workload_error() { # <message> -> 0 when opted out, 1 otherwise
     return 1
 }
 
+# ------------------------------------------------- workload bundle digest
+# Effective digest resolution for the workload bundle (see the header):
+#   1) WORKLOAD_SHA256          explicit caller pin; overrides the anchor below
+#                               (a differing value is reported as a warning)
+#   2) WORKLOAD_BUNDLE_SHA256   external anchor from versions.env, keyed by the
+#                               exact bundle asset name (versioned + latest)
+#   3) pinned release URLs only same-release SHA256SUMS / <asset>.sha256 / API
+#                               digest, with the usual warning
+# An anchored name whose bytes do not match is refused: the anchor is checked
+# first and instead of the same-release evidence. Refresh
+# WORKLOAD_BUNDLE_VERSION/WORKLOAD_BUNDLE_SHA256 with every bundle repackage.
+# workload_anchor_sha256 <asset-file-name> -> anchor to enforce, or empty
+# (empty when WORKLOAD_SHA256 is set: the caller pin replaces the anchor).
+workload_anchor_sha256() {
+    WAS_ANCHOR="$(anchored_asset_sha256 "$1" | tr 'A-F' 'a-f')"
+    [ -z "$WAS_ANCHOR" ] && return 0
+    if [ -n "${WORKLOAD_SHA256:-}" ]; then
+        if [ "$(printf '%s' "$WORKLOAD_SHA256" | tr 'A-F' 'a-f')" != "$WAS_ANCHOR" ]; then
+            warn_echo "WARN: WORKLOAD_SHA256 overrides WORKLOAD_BUNDLE_SHA256 for $1 (pinned: ${WAS_ANCHOR})"
+        fi
+        return 0
+    fi
+    printf '%s' "$WAS_ANCHOR"
+}
+
+# workload_expected_sha256 <asset-file-name> <url> -> effective digest, or empty.
+# Used to re-verify a cached bundle without a download (anchor first, then the
+# caller pin, then same-release evidence for pinned release URLs).
+workload_expected_sha256() {
+    WES_ANCHOR="$(workload_anchor_sha256 "$1")"
+    if [ -n "$WES_ANCHOR" ]; then printf '%s' "$WES_ANCHOR"; return 0; fi
+    if [ -n "${WORKLOAD_SHA256:-}" ]; then printf '%s' "$WORKLOAD_SHA256"; return 0; fi
+    resolve_expected_sha256 "$2" "$1" || true
+}
+
+# download_workload_bundle <url> <out> <asset-file-name> <what>
+# The anchored digest (when the asset name is pinned) is passed as the anchor so
+# download_verified checks it instead of, and before, same-release evidence.
+download_workload_bundle() {
+    DWB_ANCHOR="$(workload_anchor_sha256 "$3")"
+    DWB_WHAT="$4"
+    if [ -n "$DWB_ANCHOR" ]; then
+        DWB_WHAT="$4 (WORKLOAD_BUNDLE_SHA256 anchor)"
+        info "verifying ${3} against the pinned WORKLOAD_BUNDLE_SHA256 anchor"
+    fi
+    download_verified "$1" "$2" "$DWB_WHAT" "${WORKLOAD_SHA256:-}" "$DWB_ANCHOR"
+}
+
 install_workload() {
     [ "${INSTALL_WORKLOAD:-1}" = "1" ] || { info "workload install skipped (INSTALL_WORKLOAD=0)"; return 0; }
     [ -x "${INSTALL_DIR}/dotnet" ] || { info "no dotnet in ${INSTALL_DIR}; skipping the workload"; return 0; }
@@ -551,8 +610,12 @@ install_workload() {
                 tb="$(ls "${SCRIPT_DIR}"/"$pat"-*.tar.gz 2>/dev/null | tail -1 || true)"
             fi
             if [ -n "$tb" ]; then
-                if [ -f "${tb}.sha256" ] || [ -n "${WORKLOAD_SHA256:-}" ] || [ "$ALLOW_UNVERIFIED" = "1" ]; then
-                    verify_local_file "$tb" "${WORKLOAD_SHA256:-}" "workload bundle $(basename "$tb")" || tb=""
+                # the versions.env bundle anchor applies to a local copy of a pinned
+                # bundle too; WORKLOAD_SHA256 still overrides it (workload_anchor_sha256)
+                bpin="$(workload_anchor_sha256 "$(basename "$tb")")"
+                [ -n "$bpin" ] || bpin="${WORKLOAD_SHA256:-}"
+                if [ -f "${tb}.sha256" ] || [ -n "$bpin" ] || [ "$ALLOW_UNVERIFIED" = "1" ]; then
+                    verify_local_file "$tb" "$bpin" "workload bundle $(basename "$tb")" || tb=""
                 else
                     info "ignoring local workload bundle without checksum: $tb"
                     tb=""
@@ -566,8 +629,7 @@ install_workload() {
             latest_url="https://github.com/${GH_USER}/sdk-ohos/releases/download/workload-latest/openharmony-workload-latest.tar.gz"
             latest_tb="${INSTALL_DIR}/workload/openharmony-workload-latest.tar.gz"
             if [ -f "$latest_tb" ]; then
-                latest_sha="${WORKLOAD_SHA256:-}"
-                if [ -z "$latest_sha" ]; then latest_sha="$(resolve_expected_sha256 "$latest_url" "openharmony-workload-latest.tar.gz")" || latest_sha=""; fi
+                latest_sha="$(workload_expected_sha256 "openharmony-workload-latest.tar.gz" "$latest_url")"
                 if [ -z "$latest_sha" ] || ! verify_sha256 "$latest_tb" "$latest_sha" "cached workload bundle"; then
                     info "dropping cached workload bundle (no verifiable checksum)"
                     rm -f "$latest_tb"
@@ -576,7 +638,8 @@ install_workload() {
             if [ ! -f "$latest_tb" ] || [ -n "$(find "$latest_tb" -mtime +7 2>/dev/null)" ]; then
                 mkdir -p "${INSTALL_DIR}/workload"
                 if curl -fsIL --connect-timeout 20 "$latest_url" >/dev/null 2>&1; then
-                    download_verified "$latest_url" "$latest_tb" "workload bundle (workload-latest)" "${WORKLOAD_SHA256:-}" \
+                    download_workload_bundle "$latest_url" "$latest_tb" "openharmony-workload-latest.tar.gz" \
+                        "workload bundle (workload-latest)" \
                         || rm -f "$latest_tb"
                 fi
             fi
@@ -612,15 +675,14 @@ install_workload() {
                 tb="${INSTALL_DIR}/workload/${asset}"
                 wurl="https://github.com/${GH_USER}/sdk-ohos/releases/download/${rel_tag}/${asset}"
                 if [ -f "$tb" ]; then
-                    wsha="${WORKLOAD_SHA256:-}"
-                    if [ -z "$wsha" ]; then wsha="$(resolve_expected_sha256 "$wurl" "$asset")" || wsha=""; fi
+                    wsha="$(workload_expected_sha256 "$asset" "$wurl")"
                     if [ -z "$wsha" ] || ! verify_sha256 "$tb" "$wsha" "cached workload bundle $asset"; then
                         info "dropping cached workload bundle $asset (no verifiable checksum)"
                         rm -f "$tb"
                     fi
                 fi
                 if [ ! -f "$tb" ]; then
-                    download_verified "$wurl" "$tb" "workload bundle $asset" "${WORKLOAD_SHA256:-}" || tb=""
+                    download_workload_bundle "$wurl" "$tb" "$asset" "workload bundle $asset" || tb=""
                 fi
             fi
         fi
@@ -640,7 +702,10 @@ install_workload() {
         return $?
     fi
     if [ -f "$bundle" ]; then
-        if ! verify_local_file "$bundle" "${WORKLOAD_SHA256:-}" "workload bundle $(basename "$bundle")"; then
+        # local bundle handed to the installer: anchor by name first, then WORKLOAD_SHA256
+        fpin="$(workload_anchor_sha256 "$(basename "$bundle")")"
+        [ -n "$fpin" ] || fpin="${WORKLOAD_SHA256:-}"
+        if ! verify_local_file "$bundle" "$fpin" "workload bundle $(basename "$bundle")"; then
             workload_error "refusing unverified workload bundle $bundle"
             return $?
         fi

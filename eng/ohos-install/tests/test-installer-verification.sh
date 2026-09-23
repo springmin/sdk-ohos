@@ -124,6 +124,88 @@ installer_tests() {
     [ "$found" = "$fake_home/.harmonybrew/bin/binary-sign-tool" ] \
         && pass "an executable harmonybrew candidate is selected" \
         || fail "an executable harmonybrew candidate is selected: $found"
+
+    # ------------------------------------------------- workload bundle anchor
+    wl_asset="openharmony-workload-${WORKLOAD_BUNDLE_VERSION}.tar.gz"
+    wl_url="https://github.com/${GH_USER}/sdk-ohos/releases/download/workload-latest/${wl_asset}"
+
+    wl_anchor="$(workload_anchor_sha256 "$wl_asset")"
+    if [ "$wl_anchor" = "$WORKLOAD_BUNDLE_SHA256" ] && printf '%s' "$wl_anchor" | grep -qE '^[0-9a-f]{64}$'; then
+        pass "the versioned workload bundle name resolves to the pinned 64-hex anchor"
+    else
+        fail "the versioned workload bundle name resolves to the pinned 64-hex anchor: $wl_anchor"
+    fi
+    [ "$(workload_anchor_sha256 openharmony-workload-latest.tar.gz)" = "$WORKLOAD_BUNDLE_SHA256" ] \
+        && pass "the rolling workload bundle name resolves to the pinned anchor" \
+        || fail "the rolling workload bundle name resolves to the pinned anchor: $(workload_anchor_sha256 openharmony-workload-latest.tar.gz)"
+    [ -z "$(workload_anchor_sha256 openharmony-workload-0.0.0-other.tar.gz)" ] \
+        && pass "an unpinned workload bundle name resolves to no anchor" \
+        || fail "an unpinned workload bundle name resolves to no anchor: $(workload_anchor_sha256 openharmony-workload-0.0.0-other.tar.gz)"
+
+    WORKLOAD_BUNDLE_SHA256="$good"
+    export WORKLOAD_BUNDLE_SHA256
+    out="$(download_workload_bundle "$wl_url" "$TMP/wl1" "$wl_asset" "workload bundle" 2>&1)"; rc=$?
+    expect_rc "$rc" 0 "a workload bundle matching the anchor verifies" "$out"
+
+    WORKLOAD_BUNDLE_SHA256="$(printf '%s' "$good" | tr 'a-f' 'A-F')"
+    export WORKLOAD_BUNDLE_SHA256
+    out="$(download_workload_bundle "$wl_url" "$TMP/wl2" "$wl_asset" "workload bundle" 2>&1)"; rc=$?
+    expect_rc "$rc" 0 "an upper-case workload anchor is normalized" "$out"
+
+    # Same-release evidence that WOULD accept the file: the anchor must still win.
+    resolve_expected_sha256() { printf '%s' "$good"; }
+    WORKLOAD_BUNDLE_SHA256="0000000000000000000000000000000000000000000000000000000000000000"
+    export WORKLOAD_BUNDLE_SHA256
+    out="$(download_workload_bundle "$wl_url" "$TMP/wl3" "$wl_asset" "workload bundle" 2>&1)"; rc=$?
+    expect_rc "$rc" 1 "an anchored mismatch is not rescued by same-release evidence" "$out"
+    expect_msg "$out" "sha256 mismatch" "the workload anchor mismatch is named"
+    expect_msg "$out" "mismatch for workload bundle (WORKLOAD_BUNDLE_SHA256 anchor)" "the mismatch names the anchor as the pin source"
+    [ ! -f "$TMP/wl3" ] \
+        && pass "a refused workload bundle is not moved into place" \
+        || fail "a refused workload bundle is not moved into place"
+
+    # No anchor for the asset name -> the pre-existing same-release semantics apply.
+    WORKLOAD_BUNDLE_SHA256=""
+    export WORKLOAD_BUNDLE_SHA256
+    out="$(download_workload_bundle "$wl_url" "$TMP/wl4" "openharmony-workload-1.0.0-preview.25.tar.gz" "workload bundle" 2>&1)"; rc=$?
+    expect_rc "$rc" 0 "a bundle without an anchor falls back to same-release evidence" "$out"
+    expect_msg "$out" "using the release's own checksum evidence" "the same-release fallback is warned about"
+
+    resolve_expected_sha256() { return 1; }
+    out="$(download_workload_bundle "$wl_url" "$TMP/wl5" "openharmony-workload-1.0.0-preview.25.tar.gz" "workload bundle" 2>&1)"; rc=$?
+    expect_rc "$rc" 1 "without anchor and same-release evidence the download is refused" "$out"
+    expect_msg "$out" "no sha256 available" "the missing-evidence refusal is explained"
+
+    # Documented escape hatch: WORKLOAD_SHA256 replaces the anchor (with a warning).
+    resolve_expected_sha256() { printf '%s' "$good"; }
+    WORKLOAD_BUNDLE_SHA256="0000000000000000000000000000000000000000000000000000000000000000"
+    WORKLOAD_SHA256="$good"
+    export WORKLOAD_BUNDLE_SHA256 WORKLOAD_SHA256
+    out="$(download_workload_bundle "$wl_url" "$TMP/wl6" "$wl_asset" "workload bundle" 2>&1)"; rc=$?
+    expect_rc "$rc" 0 "WORKLOAD_SHA256 overrides the bundle anchor" "$out"
+    expect_msg "$out" "WORKLOAD_SHA256 overrides WORKLOAD_BUNDLE_SHA256" "the override is reported as a warning"
+    WORKLOAD_SHA256=""
+    export WORKLOAD_SHA256
+
+    # install_workload(): a local copy of the pinned bundle is anchored before the
+    # network is consulted; curl is stubbed out so no request can leave.
+    wl_install="$TMP/wl-install"
+    mkdir -p "$wl_install/workload"
+    printf '#!/bin/sh\nexit 0\n' > "$wl_install/dotnet"
+    chmod +x "$wl_install/dotnet"
+    cp -f "$artifact" "$wl_install/workload/$wl_asset"
+
+    WORKLOAD_BUNDLE_SHA256="0000000000000000000000000000000000000000000000000000000000000000"
+    export WORKLOAD_BUNDLE_SHA256
+    out="$(curl() { return 1; }; ALLOW_MISSING_WORKLOAD=0; INSTALL_DIR="$wl_install"; export ALLOW_MISSING_WORKLOAD INSTALL_DIR; install_workload 2>&1)"; rc=$?
+    expect_rc "$rc" 1 "a local bundle mismatching the anchor is refused before any download" "$out"
+    expect_msg "$out" "sha256 mismatch" "the local bundle anchor mismatch is named"
+
+    WORKLOAD_BUNDLE_SHA256="$good"
+    export WORKLOAD_BUNDLE_SHA256
+    out="$(curl() { return 1; }; ALLOW_MISSING_WORKLOAD=0; INSTALL_DIR="$wl_install"; export ALLOW_MISSING_WORKLOAD INSTALL_DIR; install_workload 2>&1)"; rc=$?
+    expect_msg "$out" "could not extract" "a local bundle matching the anchor passes verification"
+    [ "$rc" -ne 0 ] || fail "the stubbed extraction failure must not report success"
 }
 
 
