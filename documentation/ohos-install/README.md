@@ -69,6 +69,10 @@ INSTALL_DIR=/data/xxx/dotnet sh eng/ohos-install/install-dotnet-ohos.sh sdk
 > 链接 GNU `libstdc++.so.6` + `libgcc_s.so.1`。安装脚本会自动部署这两个库
 > （ILCompiler pack 已携带）。若部署到 `$INSTALL_DIR/lib`（`/lib` 不可写时），
 > 运行 ilc 需 `LD_LIBRARY_PATH=$INSTALL_DIR/lib`。
+>
+> **NativeAOT 发布（实验）**：`dotnet publish -r openharmony-arm64 -p:PublishAot=true`
+> 的完整流程、RID → pack 解析映射、离线 pack 获取（release `aot-packs-*` +
+> `fetch-nativeaot-packs.sh`）与已知限制见 **[NATIVE-AOT.md](NATIVE-AOT.md)**。
 
 ### 方式 B：手动安装
 

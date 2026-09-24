@@ -71,17 +71,20 @@
     },
     "openharmony-arm": {
       "#import": [
-        "openharmony"
+        "openharmony",
+        "linux-musl-arm"
       ]
     },
     "openharmony-arm64": {
       "#import": [
-        "openharmony"
+        "openharmony",
+        "linux-musl-arm64"
       ]
     },
     "openharmony-x64": {
       "#import": [
-        "openharmony"
+        "openharmony",
+        "linux-musl-x64"
       ]
     },
     "openbsd": {
