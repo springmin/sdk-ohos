@@ -143,3 +143,33 @@ hello aot openharmony
 - 原生路径：解析到 `runtime.openharmony-arm64.Microsoft.DotNet.ILCompiler` +
   `Microsoft.NETCore.App.Runtime.NativeAOT.openharmony-arm64`，ilc 编译、链接、
   签名全部成功，产物在 Publish 后可直接运行。
+- 离线路径：清空 NuGet 缓存，仅以 release `aot-packs-11.0.0-rc.1` 的
+  `feed-real/` + workload `.feed` 为源，重新 publish 并运行成功。
+
+## 7. Workload / CLI 开关评估
+
+- **workload 无需改动**：AOT 的 host ILCompiler pack 与 target NativeAOT
+  runtime pack 是 restore 期的 `PackageDownload`/runtime pack，不是 workload
+  pack；OpenHarmony workload（`Microsoft.OpenHarmony.Sdk` 等）只提供
+  Ref/Runtime/Sdk，无需新增 pack 定义或 `RuntimeHostConfigurationOption`。
+- **`UseAppHost` 无需改动**：SDK 在 `PublishAot=true` 时已经令
+  `_RuntimeIdentifierUsesAppHost=false`（`Microsoft.NET.RuntimeIdentifierInference.targets`），
+  AOT 产物本身就是可执行体，不需要 apphost。
+- **`src/Cli/dotnet-aot` 无需同步**：它是 SDK 自身 NativeAOT 构建用的 host
+  （`dn`），不参与用户项目的 publish；SDK 仓库构建对 openharmony 保持
+  `NativeAotSupported=false`（`Directory.Build.props`）是有意为之，避免在 SDK
+  构建期拉取不存在的 openharmony AOT 工具链。
+- **stock SDK（官方 SDK + workload）**：SDK 的 RID 列表不含 openharmony，可
+  显式指向随仓库发布的 RID 图并加上镜像 feed：
+
+  ```sh
+  dotnet publish -r openharmony-arm64 -p:PublishAot=true \
+      -p:BundledRuntimeIdentifierGraphFile=<repo>/eng/PortableRuntimeIdentifierGraph.openharmony.json
+  # NuGet.config 加 <add key="aot-packs" value=".../aot-packs" />
+  ```
+
+  该路径按 §3 回落到 linux-musl pack（host 为 win-x64 时用镜像的
+  `runtime.win-x64...ilc`）。若希望 stock SDK 直接认 openharmony pack，可在
+  workload manifest targets 中用 `KnownILCompilerPack Update` 追加 openharmony
+  RID（跟随 ohos-workload 发版）——当前版本未包含，作为后续增强。
+
