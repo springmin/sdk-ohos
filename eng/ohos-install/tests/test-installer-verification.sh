@@ -50,7 +50,9 @@ installer_tests() {
     expect_rc "$rc" 1 "http:// is refused" "$out"
     expect_msg "$out" "insecure http://" "the http refusal is explained"
 
-    out="$(download http://mirror.example/x 2>&1)"; rc=$?
+    # Pass a destination: dash aborts on the unset $2 (set -u) before the
+    # http:// refusal, so a one-argument call would report rc=2, not rc=1.
+    out="$(download http://mirror.example/x "$TMP/refused-http" 2>&1)"; rc=$?
     expect_rc "$rc" 1 "download() refuses plaintext http" "$out"
 
     download() { cp -f "$artifact" "$2"; }   # mock transport
