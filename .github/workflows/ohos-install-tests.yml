@@ -1,0 +1,49 @@
+name: ohos-install-tests
+
+# Regression gate for the OpenHarmony installer/build-script hardening. The
+# three suites are pure shell + python3 and fully offline (download transports
+# and package sources are mocked), so this job needs no apt-get, no cache and
+# no secrets: checkout + run. Keep it that way - a test that needs the network
+# does not belong in this workflow.
+#
+# Least privilege: the checkout is read-only, nothing is pushed or published,
+# no secrets are requested.
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push supersedes an in-flight run; the suites are seconds long.
+concurrency:
+  group: ohos-install-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  install-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out sdk-ohos
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      # Each suite is a separate step so a red run names the failing contract
+      # immediately. `!cancelled()` keeps the remaining suites running to a
+      # verdict even after one fails; any failure still fails the job.
+      # Add a step here when a new eng/ohos-install/tests/test-*.sh lands.
+
+      - name: Installer download verification (D-4)
+        if: ${{ !cancelled() }}
+        run: sh eng/ohos-install/tests/test-installer-verification.sh
+
+      - name: Hostfeed digest enforcement (H-C1)
+        if: ${{ !cancelled() }}
+        run: sh eng/ohos-install/tests/test-hostfeed-verification.sh
+
+      - name: Codesign FileWrites clean contract (audit V2)
+        if: ${{ !cancelled() }}
+        run: sh eng/ohos-install/tests/test-codesign-filewrites.sh

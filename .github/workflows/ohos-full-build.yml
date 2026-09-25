@@ -123,6 +123,34 @@ jobs:
           echo "buildid=$BUILDID rid=$RID crossgen2=$STOCK_CROSSGEN2_VERSION"
           echo "runtime=$RT_VERSION sdk=$SDK_VERSION"
 
+      - name: "Preflight: dispatched refs must carry the pinned band"
+        run: |
+          set -euo pipefail
+          # runtime_ref/aspnetcore_ref/sdk_ref are moving refs, so the workflow
+          # can be dispatched against an experimental merge branch that is not
+          # buildable with the pinned band yet. Both 2026-09-25 failures came
+          # from exactly that - not from the runner and not from these scripts:
+          #   * run 36129693381 (runtime_ref=pr/ohos-sandbox-fixes): the ref had
+          #     no OpenHarmony case in eng/build.sh, so the host subset aborted
+          #     with "Unsupported target OS 'openharmony'".
+          #   * run 36131775031 (runtime_ref=verify/ohos-stack-upstream): the ref
+          #     had merged upstream main before being re-pinned to the band, so
+          #     eng/Versions.props carried ProductVersion 12.0.0 while the
+          #     bootstrap band is 11.0.0; the in-tree ILLink.Tasks then asked
+          #     for Microsoft.NETCore.App 12.0.0 and app-host launch failed with
+          #     MSB6006 "dotnet" exited with code 150 (exit 150 = missing host
+          #     framework, the NETSDK1112 diag lines were the build script's own
+          #     dump, not the root error).
+          # Fail in seconds with the real reason instead of after the ~10 minute
+          # download/bootstrap phase.
+          grep -q 'openharmony' "$GITHUB_WORKSPACE/runtime/eng/build.sh" \
+            || { echo "::error::the dispatched runtime_ref has no OpenHarmony support in eng/build.sh (see run 36129693381); dispatch a ref based on feature/openharmony or re-pin the branch first"; exit 1; }
+          product_version="$(sed -n 's/.*<ProductVersion>\([^<]*\)<\/ProductVersion>.*/\1/p' "$GITHUB_WORKSPACE/runtime/eng/Versions.props" | head -n 1)"
+          case "$product_version" in
+            "${VERSION_BAND%.*}".*) echo "runtime band $product_version matches the pinned VERSION_BAND $VERSION_BAND" ;;
+            *) echo "::error::the dispatched runtime_ref is at band '${product_version:-unknown}' but VERSION_BAND is $VERSION_BAND; re-pin the ref to the band (see run 36131775031) or bump versions.env/CI pins before dispatching"; exit 1 ;;
+          esac
+
       - name: Install host build deps
         run: |
           sudo apt-get update -qq
