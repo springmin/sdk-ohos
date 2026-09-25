@@ -900,6 +900,12 @@ Copyright (c) .NET Foundation. All rights reserved.
           Outputs="$(IntermediateOutputPath)OpenHarmonyCodeSign.stamp">
     <OpenHarmonyCodesign Directories="$(TargetDir)" />
     <Touch Files="$(IntermediateOutputPath)OpenHarmonyCodeSign.stamp" AlwaysCreate="true" />
+    <!-- Clean contract: the codesign pass rewrites the build outputs in place; the stamp is the
+         only residue it leaves in the object tree. Register it in the same target that creates it
+         so `dotnet clean` removes it. -->
+    <ItemGroup>
+      <FileWrites Include="$(IntermediateOutputPath)OpenHarmonyCodeSign.stamp" />
+    </ItemGroup>
   </Target>
 
   <Target Name="_OpenHarmonyCodeSignCollectPublishInputs"
@@ -916,6 +922,11 @@ Copyright (c) .NET Foundation. All rights reserved.
           Outputs="$(IntermediateOutputPath)OpenHarmonyCodeSignPublish.stamp">
     <OpenHarmonyCodesign Directories="$(PublishDir)" />
     <Touch Files="$(IntermediateOutputPath)OpenHarmonyCodeSignPublish.stamp" AlwaysCreate="true" />
+    <!-- Clean contract: same as the build pass above; the publish stamp must be removed by
+         `dotnet clean` as well. -->
+    <ItemGroup>
+      <FileWrites Include="$(IntermediateOutputPath)OpenHarmonyCodeSignPublish.stamp" />
+    </ItemGroup>
   </Target>
 
   <!--
