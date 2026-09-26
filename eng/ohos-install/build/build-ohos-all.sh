@@ -606,6 +606,7 @@ PYEOF
   # runs before the shims (facades) are compiled, and restore needs the
   # bootstrap ref pack before any local ref exists. Handle each once and
   # retry; normal incremental runs never take these paths.
+  seed_musl_runtime_pack_alias_from_release
   local attempt=0
   local fixed=""
   local alog="$WORK/build-attempt.log"    # per-attempt output for self-heal detection
@@ -769,6 +770,53 @@ ensure_nuget_runtime_pack() {
     fi
   done
   return 1
+}
+
+# Alias the freshly built OpenHarmony runtime pack as the portable
+# linux-musl-<arch> runtime pack. The stock/bootstrap SDK's KnownRuntimePack has no
+# openharmony RID, so self-contained in-build tool publishes (ILCompiler_publish)
+# resolve the pack through the injected RID graph to linux-musl-<arch>; that package
+# does not exist at this build version on any feed. Seeding it from the local build
+# into both the NuGet global packages folder and the SDK packs root keeps the AOT
+# stage offline and version-aligned.
+seed_musl_runtime_pack_alias_from_release() {
+  # Runs before the clr+libs+packs build: self-contained in-build tool publishes
+  # (ILCompiler_publish) resolve Microsoft.NETCore.App.Runtime.linux-musl-<arch>
+  # through the injected RID graph import (openharmony-<arch> -> linux-musl-<arch>)
+  # while the stock/bootstrap SDK has no openharmony RID. That package does not exist
+  # on any feed, so alias the published OpenHarmony runtime pack as it for every
+  # version the SDK may request and seed it before the build starts.
+  local rid="$RID"
+  local src="$WORK/Microsoft.NETCore.App.Runtime.$rid.$RT_VERSION.nupkg"
+  if [ ! -f "$src" ]; then
+    local url="https://github.com/${GH_USER}/runtime-ohos/releases/download/v${RT_VERSION}-ohos/Microsoft.NETCore.App.Runtime.$rid.$RT_VERSION.nupkg"
+    info "fetching published OpenHarmony runtime pack for the linux-musl alias..."
+    if ! fetch_verified "$url" "$src" "" "OpenHarmony runtime pack $RT_VERSION"; then
+      info "runtime pack alias: fetch failed for $rid; skipping"
+      return 0
+    fi
+  fi
+  local arch="${rid##*-}"
+  local id="microsoft.netcore.app.runtime.linux-musl-$arch"
+  local packs_root="$RUNTIME_REPO/.dotnet/packs/Microsoft.NETCore.App.Runtime.linux-musl-$arch"
+  local ver
+  for ver in "$VERSION_BAND" "$BOOTSTRAP_RUNTIME_VERSION" "$HOST_PACK_BRANCH_VERSION" "$RT_VERSION"; do
+    [ -n "$ver" ] || continue
+    local nuget_dir="$HOME/.nuget/packages/$id/$ver"
+    local packs_dir="$packs_root/$ver"
+    if [ -f "$nuget_dir/.ohos-alias" ] && [ -d "$packs_dir/runtimes" ]; then continue; fi
+    rm -rf "$nuget_dir" "$packs_dir"
+    mkdir -p "$nuget_dir" "$packs_dir"
+    if ! python3 "$SCRIPT_DIR/alias-runtime-pack.py" "$src" "$nuget_dir" "$id" "$ver" "$rid" >> "$LOG" 2>&1; then
+      info "runtime pack alias failed: $id $ver"
+      rm -rf "$nuget_dir" "$packs_dir"
+      continue
+    fi
+    (cd "$packs_dir" && python3 -c "import zipfile; zipfile.ZipFile('$nuget_dir/$id.$ver.nupkg').extractall('.')")
+    touch "$nuget_dir/.ohos-alias"
+    [ -d "$FEED" ] && cp -f "$nuget_dir/$id.$ver.nupkg" "$FEED/" 2>/dev/null || true
+    info "seeded OHOS runtime pack alias: $id $ver"
+  done
 }
 
 # ---- 1. runtime cross build -------------------------------------------------
