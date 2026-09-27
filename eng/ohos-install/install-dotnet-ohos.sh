@@ -443,12 +443,46 @@ resolve_choice() { # "sdk"|"runtime"|local path|url
     esac
 }
 
+# ------------------------------------------------------------- extraction
+# OpenHarmony's default tar (toybox) silently skips members it fails to write
+# (it reports "bad symlink" for some PAX entries and leaves them out, e.g. the
+# ref pack's analyzers/ subtree). Prefer Python's tarfile, which extracts
+# exactly; fall back to tar with an explicit warning on toybox builds.
+extract_tar_python() { # <archive> <dest> -> 0 on success
+    python3 - "$1" "$2" <<'PY'
+import sys, tarfile
+t = tarfile.open(sys.argv[1], 'r:*')
+try:
+    t.extractall(sys.argv[2], filter='fully_trusted')
+except TypeError:  # Python < 3.12 has no filter= parameter
+    t.extractall(sys.argv[2])
+PY
+}
+
+extract_tar() { # <archive> <dest> -> 0 on success
+    ET_ARC="$1"; ET_DEST="$2"
+    mkdir -p "$ET_DEST" || return 1
+    if command -v python3 >/dev/null 2>&1; then
+        if extract_tar_python "$ET_ARC" "$ET_DEST"; then
+            return 0
+        fi
+        warn_echo "python3 extraction failed for $(basename "$ET_ARC"); falling back to tar"
+    fi
+    tar zxf "$ET_ARC" -C "$ET_DEST" || return 1
+    case "$(tar --version 2>&1 | head -1)" in
+        *toybox*)
+            warn_echo "WARNING: $(tar --version 2>&1 | head -1) can silently skip members while extracting; install python3 (or use GNU tar) and re-run if files are missing: $(basename "$ET_ARC")"
+            ;;
+    esac
+    return 0
+}
+
 # --------------------------------------------------------------- install
 install_tarball() {
     tb="$1"
     info "extracting $(basename "$tb") -> ${INSTALL_DIR}"
     mkdir -p "$INSTALL_DIR" || die "cannot create ${INSTALL_DIR}"
-    tar zxf "$tb" -C "$INSTALL_DIR" || die "tar extraction failed: ${tb}"
+    extract_tar "$tb" "$INSTALL_DIR" || die "tar extraction failed: ${tb}"
 }
 
 # ------------------------------------------------------------------ selfsign
@@ -688,7 +722,7 @@ install_workload() {
         fi
         if [ -n "$tb" ]; then
             WL_TMP="$(mktemp -d)"
-            if ! tar zxf "$tb" -C "$WL_TMP"; then
+            if ! extract_tar "$tb" "$WL_TMP"; then
                 rm -rf "$WL_TMP"; WL_TMP=""
                 workload_error "could not extract workload bundle $tb"
                 return $?
@@ -710,7 +744,7 @@ install_workload() {
             return $?
         fi
         WL_TMP="$(mktemp -d)"
-        if ! tar zxf "$bundle" -C "$WL_TMP"; then
+        if ! extract_tar "$bundle" "$WL_TMP"; then
             rm -rf "$WL_TMP"; WL_TMP=""
             workload_error "could not extract workload bundle $bundle"
             return $?
@@ -842,6 +876,8 @@ EOF
 for tool in tar file readelf mktemp; do
     command -v "$tool" >/dev/null 2>&1 || die "required tool not found: $tool"
 done
+command -v python3 >/dev/null 2>&1 || \
+    warn_echo "note: python3 not found; tar extraction on toybox systems can silently skip members"
 
 # resolve artifact (default: sdk)
 ARG="${1:-sdk}"
