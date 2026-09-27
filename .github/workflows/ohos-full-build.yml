@@ -93,6 +93,25 @@ jobs:
           path: aspnetcore
           submodules: recursive
 
+      - name: Resolve stage SHAs + cache keys
+        id: stage-shas
+        run: |
+          set -euo pipefail
+          rt="$(git -C runtime rev-parse HEAD)"
+          asp="$(git -C aspnetcore rev-parse HEAD)"
+          # hashFiles runs before any cache restore, so a restored .work/ can
+          # never feed back into the key. The same expressions feed the
+          # restore and save steps, so the two keys always match.
+          scripts='${{ hashFiles('sdk/eng/ohos-install/**', '!sdk/eng/ohos-install/.work/**') }}'
+          {
+            echo "rt=$rt"
+            echo "asp=$asp"
+            echo "rt_key=ohos-rt-${{ inputs.rid }}-${{ inputs.buildid }}-${{ inputs.in_tree_r2r }}-${{ inputs.crossgen2_version }}-$rt-$scripts"
+            echo "asp_key=ohos-asp-${{ inputs.rid }}-${{ inputs.buildid }}-$rt-$asp-$scripts"
+          } >> "$GITHUB_OUTPUT"
+          echo "runtime=$rt aspnetcore=$asp scripts=$scripts"
+          echo "cache keys: rt=${{ inputs.rid }}-$rt-$scripts asp=${{ inputs.rid }}-$rt-$asp-$scripts"
+
       - name: Resolve version pins (sdk/eng/ohos-install/versions.env)
         env:
           BUILDID_INPUT: ${{ inputs.buildid }}
@@ -184,9 +203,9 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "CI-env digests: ndk=$ndk openssl=$openssl icu=$icu"
 
-      - name: Cache NDK/OpenSSL/ICU env
+      - name: Restore NDK/OpenSSL/ICU env cache
         id: cache-env
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: ~/.ohos-ci-env
           # key includes the exact verified artifact digests + script/versions
@@ -195,6 +214,17 @@ jobs:
       - name: Prepare NDK + OpenSSL + ICU
         if: steps.cache-env.outputs.cache-hit != 'true'
         run: bash sdk/eng/ohos-install/build/ohos-ci-env.sh --prefix "$HOME/.ohos-ci-env"
+
+      - name: Save NDK/OpenSSL/ICU env cache
+        # Save immediately after a successful prepare: actions/cache only saves
+        # on job success, and a later build failure used to throw away the
+        # ~7 minute env build.
+        if: steps.cache-env.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.ohos-ci-env
+          key: ohos-ci-env-${{ inputs.rid }}-${{ steps.env-digests.outputs.ndk }}-${{ steps.env-digests.outputs.openssl }}-${{ steps.env-digests.outputs.icu }}-${{ hashFiles('sdk/eng/ohos-install/build/ohos-ci-env.sh', 'sdk/eng/ohos-install/versions.env') }}
 
       - name: Export env
         run: |
@@ -317,16 +347,91 @@ jobs:
           fi
           ls "$PKROOT" 2>&1 | head -4
 
+      - name: Restore runtime stage cache
+        id: cache-rt
+        uses: actions/cache/restore@v4
+        with:
+          # $WORK: feed (runtime nupkgs), assets (runtime tarball), rt-version.txt,
+          # the selfsign binary, the stock crossgen2 tools and the R2R-PGO mibc the
+          # aspnetcore overlay consumes; third-party/ holds the verified crossgen2 +
+          # reference pack nupkgs; runtime Shipping feeds the artifact upload and
+          # release publish when stage 1 is skipped.
+          path: |
+            sdk/eng/ohos-install/.work/feed
+            sdk/eng/ohos-install/.work/assets
+            sdk/eng/ohos-install/.work/rt-version.txt
+            sdk/eng/ohos-install/.work/selfsign
+            sdk/eng/ohos-install/.work/stock-crossgen2
+            sdk/eng/ohos-install/build/third-party
+            runtime/artifacts/packages/Release/Shipping
+            runtime/artifacts/bin/coreclr/**/StandardOptimizationData.mibc
+          key: ${{ steps.stage-shas.outputs.rt_key }}
+
+      - name: Restore aspnetcore stage cache
+        id: cache-asp
+        uses: actions/cache/restore@v4
+        with:
+          # The aspnetcore cache re-captures $WORK: restoring it overlays the
+          # runtime cache with the cumulative feed (runtime + aspnetcore nupkgs)
+          # and the overlayed aspnetcore Shipping artifacts.
+          path: |
+            sdk/eng/ohos-install/.work/feed
+            sdk/eng/ohos-install/.work/assets
+            sdk/eng/ohos-install/.work/rt-version.txt
+            sdk/eng/ohos-install/.work/selfsign
+            sdk/eng/ohos-install/.work/stock-crossgen2
+            sdk/eng/ohos-install/build/third-party
+            aspnetcore/artifacts/packages/Release/Shipping
+          key: ${{ steps.stage-shas.outputs.asp_key }}
+
       - name: Build runtime -> aspnetcore -> sdk
         run: |
           set +e
+          EXTRA=""
+          if [ "${{ steps.cache-rt.outputs.cache-hit }}" = "true" ]; then EXTRA="$EXTRA --skip-runtime"; fi
+          if [ "${{ steps.cache-asp.outputs.cache-hit }}" = "true" ]; then EXTRA="$EXTRA --skip-aspnetcore"; fi
+          echo "stage caches: runtime=${{ steps.cache-rt.outputs.cache-hit || 'false' }} aspnetcore=${{ steps.cache-asp.outputs.cache-hit || 'false' }}; extra flags:${EXTRA:- (none)}"
           bash sdk/eng/ohos-install/build/build-ohos-all.sh \
-            --buildid="$BUILDID" --rid="$RID" > /tmp/build.log 2>&1
+            --buildid="$BUILDID" --rid="$RID" $EXTRA > /tmp/build.log 2>&1
           rc=$?
           tail -400 /tmp/build.log
           echo "--- build markers (crossgen2 probe / framework R2R / aspnetcore R2R / in-tree R2R / PGO) ---"
           grep -aE "crossgen2 probe|framework R2R|aspnetcore R2R|in-tree R2R|PGO mibc|re-versioning host pack" /tmp/build.log | tail -40 || true
           exit $rc
+
+      - name: Save runtime stage cache
+        # Save after a successful build. Both saves run before the artifact
+        # upload; only a green build reaches them (a failed build step stops the
+        # job), so incomplete stages are never cached.
+        if: steps.cache-rt.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            sdk/eng/ohos-install/.work/feed
+            sdk/eng/ohos-install/.work/assets
+            sdk/eng/ohos-install/.work/rt-version.txt
+            sdk/eng/ohos-install/.work/selfsign
+            sdk/eng/ohos-install/.work/stock-crossgen2
+            sdk/eng/ohos-install/build/third-party
+            runtime/artifacts/packages/Release/Shipping
+            runtime/artifacts/bin/coreclr/**/StandardOptimizationData.mibc
+          key: ${{ steps.stage-shas.outputs.rt_key }}
+
+      - name: Save aspnetcore stage cache
+        if: steps.cache-asp.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            sdk/eng/ohos-install/.work/feed
+            sdk/eng/ohos-install/.work/assets
+            sdk/eng/ohos-install/.work/rt-version.txt
+            sdk/eng/ohos-install/.work/selfsign
+            sdk/eng/ohos-install/.work/stock-crossgen2
+            sdk/eng/ohos-install/build/third-party
+            aspnetcore/artifacts/packages/Release/Shipping
+          key: ${{ steps.stage-shas.outputs.asp_key }}
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
