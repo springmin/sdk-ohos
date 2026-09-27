@@ -307,7 +307,9 @@ install_openssl() {
   ln -sf "$llvm/llvm-nm"      "$wrap/$trip-nm"
   export PATH="$wrap:$PATH"
   ( cd "$src"
-    perl Configure "linux-${ARCH/-/}" no-shared no-tests \
+    # -fPIC: the OpenHarmony crypto shim links these archives statically
+    # (LinkStaticOpenSsl=true); non-PIC objects fail that link.
+    perl Configure "linux-${ARCH/-/}" no-shared no-tests -fPIC \
       --prefix="$work/install" --cross-compile-prefix="$trip-" -static
     make -j"$(nproc)" >/dev/null
     make install_sw >/dev/null )

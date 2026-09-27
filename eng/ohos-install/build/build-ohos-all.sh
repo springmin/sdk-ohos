@@ -611,8 +611,14 @@ PYEOF
   local fixed=""
   local alog="$WORK/build-attempt.log"    # per-attempt output for self-heal detection
   while :; do
+    # Link OpenSSL statically into the crypto shim for OpenHarmony: the
+    # fail-closed shim (2026-09-23 TLS policy) refuses to dlopen sibling
+    # libssl.so.3/libcrypto.so.3 unless they ship next to it and are signed;
+    # static linking removes that deployment dependency. Requires the CI
+    # OpenSSL build to use -fPIC (see ohos-ci-env.sh).
     if ./build.sh -os openharmony -arch "$ARCH" --cross -c "$CONFIG" -lc "$CONFIG" -rc "$CONFIG" \
         -subset clr+libs+packs \
+        /p:LinkStaticOpenSsl=true \
         /p:UseBootstrapLayout=true /p:BuildHostTools=true /p:ApiCompatValidateAssemblies=false \
         /p:RuntimeIdentifierGraphPath="$rsp" /p:IncludeSymbols=false \
         "/p:RestoreConfigFile=$NUGET_CONFIG" \
