@@ -1345,8 +1345,13 @@ stage3() {
   #   aspnetcore:         ASPNETCORE_DIRECTTLS_001
   # Removal: drop these codes (or this list) once the cross-compiled aspnetcore
   # build is warning-clean for openharmony-*.
+  # No-NodeJS subset build: Microsoft.AspNetCore.App.Internal.Assets now uses the SDK
+  # Static Web Assets "asset groups" model and its consumers read the project's
+  # staticwebassets.build.json manifest, which is not produced with node/JS off.
+  # This is a runtime-pack-only build, so exclude the components' web-asset reference.
   ./eng/build.sh --os-name "$(echo "$RID" | cut -d- -f1)" --arch "$ARCH" -c "$CONFIG" \
     --no-build-nodejs \
+    -p:IncludeComponentsWebAssets=false \
     --projects "$(pwd)/src/Framework/App.Runtime/src/aspnetcore-runtime.proj" \
     -p:PublicBaseURL="http://localhost:$ASSET_PORT/" \
     -p:PublishReadyToRun=false -p:NativeAotSupported=false \
