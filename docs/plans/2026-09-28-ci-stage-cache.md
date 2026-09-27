@@ -48,3 +48,16 @@ inputs changed are rebuilt.
 - Edge case: runtime cache evicted + aspnetcore cache hit -> stage 1 rebuilds
   and the cached aspnetcore outputs are reused (same inputs by key); timing
   only, no correctness impact.
+
+## 5. Verification (2026-09-28)
+
+| Run | Refs | Stage caches | Duration |
+|---|---|---|---|
+| 36351296885 | branch refs (cold) | - | 58m06s |
+| 36354820829 | branch refs, runtime advanced in between | runtime=false aspnetcore=false (key includes the runtime SHA: correct miss) | 32m26s |
+| 36356790450 | pinned SHAs equal to run1 (runtime `b935cb97b77`, aspnetcore `07ed2fe38d`, sdk `82dc57c64c`) | **runtime=true aspnetcore=true** (`--skip-runtime --skip-aspnetcore`) | **10m02s** |
+
+The run3 build step log shows:
+`stage caches: runtime=true aspnetcore=true; extra flags: --skip-runtime --skip-aspnetcore`.
+A sdk-only edit therefore re-runs stages 2+4+5 only, cutting the iteration from
+~58 minutes to ~10-25 minutes depending on stage-4 cost.
