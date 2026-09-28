@@ -804,8 +804,21 @@ seed_musl_runtime_pack_alias_from_release() {
   local arch="${rid##*-}"
   local id="microsoft.netcore.app.runtime.linux-musl-$arch"
   local packs_root="$RUNTIME_REPO/.dotnet/packs/Microsoft.NETCore.App.Runtime.linux-musl-$arch"
+  # Versions the SDK may request: the band, the bootstrap/host pins, and the
+  # ref version each product repo currently pins. The last one moves with the
+  # sources (the rc2 merge took MicrosoftNETCoreAppRefPackageVersion from
+  # rc.1.26431.109 to rc.2.26465.108, which the pin-only list did not cover
+  # and the in-build ILC publish then failed with NETSDK1112); parsing keeps
+  # the alias list in step with the band without another pin to maintain.
+  local ref_vers=""
+  local props refver
+  for props in "$RUNTIME_REPO/eng/Version.Details.props" "$ASCORE_REPO/eng/Version.Details.props"; do
+    [ -f "$props" ] || continue
+    refver="$(sed -n 's/.*<MicrosoftNETCoreAppRefPackageVersion>\([^<]*\)<\/MicrosoftNETCoreAppRefPackageVersion>.*/\1/p' "$props" | head -1)"
+    [ -n "$refver" ] && ref_vers="$ref_vers $refver"
+  done
   local ver
-  for ver in "$VERSION_BAND" "$BOOTSTRAP_RUNTIME_VERSION" "$HOST_PACK_BRANCH_VERSION" "$RT_VERSION"; do
+  for ver in "$VERSION_BAND" "$BOOTSTRAP_RUNTIME_VERSION" "$HOST_PACK_BRANCH_VERSION" "$RT_VERSION" $ref_vers; do
     [ -n "$ver" ] || continue
     local nuget_dir="$HOME/.nuget/packages/$id/$ver"
     local packs_dir="$packs_root/$ver"
