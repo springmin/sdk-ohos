@@ -573,20 +573,20 @@ prebuild_platform_ref() {
 
 refresh_bootstrap_ref_from_local() {
   local n=0 d f
-  local refver
-  refver="$(bootstrap_ref_version)"
+  # Refresh at the depth the SDK actually reads: every location stores the
+  # assemblies under a ref/<tfm>/ (or <bootstrap>/ref/ref/<tfm>/) subdirectory.
+  # Iterations 5-9 copied into the bare ref/ dir, which the compiler never
+  # reads - the diagnostic build showed TargetingPackPath resolving to
+  # artifacts/bootstrap/<rid>/microsoft.netcore.app/ref/ref/net11.0/... while
+  # the refresh had written .../ref/<file>.dll.
   local -a dirs=()
-  # The bootstrap layout directory the clean build complains about...
-  dirs+=("$RUNTIME_REPO/artifacts/bootstrap/openharmony-$ARCH/microsoft.netcore.app/ref")
-  # ...and every Ref pack the SDK may resolve the platform assemblies from.
-  # A clean bootstrap-layout build compiles the libraries against the *pack*
-  # (KnownFrameworkReference), not the bootstrap layout dir, so the pack's ref
-  # assemblies must be refreshed too or the rc2-only types stay missing.
-  for d in "$RUNTIME_REPO"/.dotnet/packs/Microsoft.NETCore.App.Ref/*/ref \
+  dirs+=("$RUNTIME_REPO/artifacts/bootstrap/openharmony-$ARCH/microsoft.netcore.app/ref/ref/$TFM")
+  for d in "$RUNTIME_REPO"/.dotnet/packs/Microsoft.NETCore.App.Ref/*/ref/"$TFM" \
            "$RUNTIME_REPO"/artifacts/bin/microsoft.netcore.app.ref/ref/"$TFM" \
            "$HOME"/.nuget/packages/microsoft.netcore.app.ref/*/ref/"$TFM"; do
     [ -d "$d" ] && dirs+=("$d")
   done
+  mkdir -p "$RUNTIME_REPO/artifacts/bootstrap/openharmony-$ARCH/microsoft.netcore.app/ref/ref/$TFM"
   for d in "${dirs[@]}"; do
     [ -d "$d" ] || continue
     local copied=0
