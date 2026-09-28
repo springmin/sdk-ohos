@@ -860,6 +860,15 @@ verify_host_pack_cache() { # <id> <ver> <expected-hex> -> 0 when the cache is us
   if [ -z "$nupkg" ]; then
     return 1
   fi
+  # A pack this script re-versioned is trusted: the re-version step only runs
+  # from a source pack that was digest-verified at re-version time and marks
+  # the result with .nupkg.metadata {"source":"local"}. No in-repo pin can
+  # exist for a build-id-derived version, so this marker is the evidence.
+  if [ -f "$dir/.nupkg.metadata" ] && grep -q '"source": "local"' "$dir/.nupkg.metadata" 2>/dev/null; then
+    ls "$dir"/*.nuspec >/dev/null 2>&1 || return 1
+    info "cached $1 $2 is a local re-versioned pack (source digest-verified at re-version time)"
+    return 0
+  fi
   if [ -z "$3" ]; then
     info "no anchored digest to verify cached $1 $2 against"
     return 1
