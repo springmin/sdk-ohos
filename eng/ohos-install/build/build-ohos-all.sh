@@ -435,6 +435,26 @@ sign_all() {
   python3 "$SCRIPT_DIR/sign-ohos-pre.py" "$SELFSIGN_BIN" "$@" || die "signing failed"
 }
 
+# MSBuild named pipes are hardcoded to /tmp on Unix; OpenHarmony denies AF_UNIX
+# bind() there (EACCES) so task hosts / the MSBuild server / worker nodes crash
+# (exit 134) and the parent fails with MSB4216 after 30 s x 5 retries. This tool
+# flips the one IL instruction that builds the pipe path to Path.GetTempPath()
+# (TMPDIR-aware); verified on device: Blazor WASM build 5:06 failure -> 15.4 s.
+ensure_msbuild_pipe_patcher() {
+  local dir="$WORK/msbuild-pipe-patch"
+  if [ ! -f "$dir/msbuild-pipe-patch.dll" ]; then
+    info "building msbuild-pipe-patch (Mono.Cecil)..."
+    local dotnet_bin="${DOTNET:-$RUNTIME_REPO/.dotnet/dotnet}"
+    "$dotnet_bin" publish "$SCRIPT_DIR/msbuild-pipe-patch/msbuild-pipe-patch.csproj" \
+      -c Release -o "$dir" --nologo \
+      -p:ImportDirectoryBuildProps=false -p:ImportDirectoryBuildTargets=false \
+      2>&1 | tail -1 || die "msbuild-pipe-patch build failed"
+    [ -f "$dir/msbuild-pipe-patch.dll" ] || die "msbuild-pipe-patch publish produced no dll"
+  fi
+  MSBUILD_PIPE_PATCHER="$dir/msbuild-pipe-patch.dll"
+  MSBUILD_PIPE_PATCHER_DOTNET="${DOTNET:-$RUNTIME_REPO/.dotnet/dotnet}"
+}
+
 # singlefilehost links against libruntimeinfo.a; its ninja target is not
 # ordered first on a clean build (link fails with "cannot open libruntimeinfo.a").
 ensure_runtimeinfo() {
@@ -1450,6 +1470,15 @@ stage4() {
     /p:PreReleaseVersionLabel="$LABEL" /p:PreReleaseVersion="$PRE" /p:OfficialBuildId="$BUILDID" \
     2>&1 | tee -a "$LOG" || die "sdk build failed"
   info "sdk redist produced under $SDK_REPO/artifacts/bin/redist/$CONFIG/dotnet"
+  # Patch the shipped MSBuild before signing: every Microsoft.Build.Framework.dll
+  # copy (layout + tarball, excluding ref assemblies) must resolve named pipes via
+  # TMPDIR because OpenHarmony denies AF_UNIX bind() in /tmp.
+  ensure_msbuild_pipe_patcher
+  info "patching MSBuild named-pipe paths in the SDK layout + tarball"
+  python3 "$SCRIPT_DIR/patch-msbuild-pipe.py" \
+    --sdk-root "$SDK_REPO" --config "$CONFIG" --rid "$RID" \
+    --dotnet "$MSBUILD_PIPE_PATCHER_DOTNET" --patcher "$MSBUILD_PIPE_PATCHER" \
+    || die "MSBuild named-pipe patch failed"
   # pre-sign the SDK tarball (every ELF in the redist: dotnet host + all so)
   local sdk_tb
   sdk_tb=$(find "$SDK_REPO/artifacts" -maxdepth 5 -name "dotnet-sdk-*-$RID.tar.gz" | head -1)
