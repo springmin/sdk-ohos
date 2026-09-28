@@ -548,6 +548,29 @@ seed_bootstrap_ref() {
 # ref assemblies under artifacts/bin/<lib>/ref/Release/<tfm>; overlay them onto
 # the bootstrap ref directory and retry (the seed is explicitly a stand-in the
 # local refs are meant to overwrite - see seed_bootstrap_ref).
+# A clean bootstrap-layout build resolves the platform assemblies from the Ref
+# pack, so the in-tree ref for a library the pack is older than is never built
+# on its own (nothing asks for it as a project reference). Pre-build the
+# System.Security.Cryptography ref project - the one carrying the rc2-only
+# types the failing libraries reference - before refreshing the pack copies.
+prebuild_platform_ref() {
+  local proj="$RUNTIME_REPO/src/libraries/System.Security.Cryptography/ref/System.Security.Cryptography.csproj"
+  [ -f "$proj" ] || return 1
+  local rsp="$RUNTIME_REPO/.dotnet/sdk/$RIDGRAPH_SDKVER/RuntimeIdentifierGraph.json"
+  info "pre-building the System.Security.Cryptography ref (rc2-only crypto types)"
+  (cd "$RUNTIME_REPO" && ./.dotnet/dotnet build "$proj" -c "$CONFIG" \
+    -p:TargetOS=openharmony -p:TargetArchitecture="$ARCH" -p:PortableOS=openharmony -p:UseBootstrapLayout=true \
+    "-p:RuntimeIdentifierGraphPath=$rsp" -p:IncludeSymbols=false \
+    -p:PreReleaseVersionLabel="$LABEL" -p:PreReleaseVersion="$PRE" -p:OfficialBuildId="$BUILDID" \
+    "/p:RestoreConfigFile=$NUGET_CONFIG" "/p:RestoreAdditionalProjectSources=$FEED" \
+    -p:ApiCompatValidateAssemblies=false -v:q -nologo) >>"$LOG" 2>&1 || {
+      warn_echo "WARN: pre-building the S.C.Crypto ref failed; continuing with the refresh only"
+      return 1
+    }
+  info "S.C.Crypto ref built"
+  return 0
+}
+
 refresh_bootstrap_ref_from_local() {
   local n=0 d f
   local refver
@@ -740,7 +763,8 @@ PYEOF
     fi
     if grep -qE "error CS0234|error CS0246" "$alog" && grep -qE "CompositeMLKem|Hpke" "$alog"; then
       if [ "$attempt" -ge 4 ]; then die "in-tree ref refresh did not fix the missing platform types"; fi
-      info "libraries need the in-tree platform refs (rc2-only crypto types missing from the seeded pack) — refreshing the bootstrap ref and retrying (attempt $((attempt+1)))"
+      info "libraries need the in-tree platform refs (rc2-only crypto types missing from the seeded pack) — pre-building the ref and retrying (attempt $((attempt+1)))"
+      prebuild_platform_ref || true
       refresh_bootstrap_ref_from_local || die "no in-tree ref assemblies to refresh the bootstrap ref with"
       fixed="$fixed bootstrap-ref-local"
       attempt=$((attempt+1))
