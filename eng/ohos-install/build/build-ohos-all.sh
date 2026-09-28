@@ -549,17 +549,29 @@ seed_bootstrap_ref() {
 # the bootstrap ref directory and retry (the seed is explicitly a stand-in the
 # local refs are meant to overwrite - see seed_bootstrap_ref).
 refresh_bootstrap_ref_from_local() {
-  local bdir="$RUNTIME_REPO/artifacts/bootstrap/openharmony-$ARCH/microsoft.netcore.app/ref"
-  [ -d "$bdir" ] || return 1
   local n=0 d f
-  for d in "$RUNTIME_REPO"/artifacts/bin/*/ref/Release/"$TFM"; do
-    [ -d "$d" ] || continue
-    for f in "$d"/*.dll; do
-      [ -f "$f" ] || continue
-      cp -f "$f" "$bdir/" && n=$((n+1))
-    done
+  local refver
+  refver="$(bootstrap_ref_version)"
+  local -a dirs=()
+  # The bootstrap layout directory the clean build complains about...
+  dirs+=("$RUNTIME_REPO/artifacts/bootstrap/openharmony-$ARCH/microsoft.netcore.app/ref")
+  # ...and every Ref pack the SDK may resolve the platform assemblies from.
+  # A clean bootstrap-layout build compiles the libraries against the *pack*
+  # (KnownFrameworkReference), not the bootstrap layout dir, so the pack's ref
+  # assemblies must be refreshed too or the rc2-only types stay missing.
+  for d in "$RUNTIME_REPO"/.dotnet/packs/Microsoft.NETCore.App.Ref/*/ref; do
+    [ -d "$d" ] && dirs+=("$d")
   done
-  info "refreshed bootstrap ref assemblies from in-tree ref outputs ($n file(s))"
+  for d in "${dirs[@]}"; do
+    [ -d "$d" ] || continue
+    local copied=0
+    for f in "$RUNTIME_REPO"/artifacts/bin/*/ref/Release/"$TFM"/*.dll; do
+      [ -f "$f" ] || continue
+      cp -f "$f" "$d/" && copied=$((copied+1)) && n=$((n+1))
+    done
+    [ "$copied" -gt 0 ] && info "  refreshed $copied ref assembly(ies) in $d"
+  done
+  info "refreshed bootstrap/platform ref assemblies from in-tree ref outputs ($n copy(ies))"
   [ "$n" -gt 0 ]
 }
 
