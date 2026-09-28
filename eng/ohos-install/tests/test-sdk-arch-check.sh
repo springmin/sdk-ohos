@@ -140,7 +140,9 @@ case "$out" in
 esac
 
 # ---- build-script wiring ----------------------------------------------------
-BUILD_SCRIPT="$OHOS_DIR/build/build-ohos-all.sh"
+# Stage 4 (and with it the dotnet-aot prune/verify helpers) was split out of
+# build-ohos-all.sh into build/pack-sdk.sh; read them from their owner script.
+BUILD_SCRIPT="$OHOS_DIR/build/pack-sdk.sh"
 SDK_REPO="$TMP/sdkrepo"
 CONFIG=Release
 mkdir -p "$SDK_REPO/artifacts/bin/redist/Release/sdk/1.0"
