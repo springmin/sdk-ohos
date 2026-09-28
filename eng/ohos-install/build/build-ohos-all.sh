@@ -1011,6 +1011,44 @@ seed_musl_runtime_pack_alias_from_release() {
   done
 }
 
+# The product version (RT_VERSION) only becomes known once stage 1 has built the
+# packs, and the pre-build alias seed above cannot cover it. The aspnetcore
+# shared framework (stage 3) restores
+# Microsoft.NETCore.App.Runtime.linux-musl-<arch> at exactly that product
+# version (NU1102 otherwise), so alias the freshly built OpenHarmony runtime
+# pack for it before the aspnetcore build starts. Idempotent via .ohos-alias.
+seed_musl_runtime_pack_alias_for_product_version() {
+  local rid="$RID"
+  local src="$RUNTIME_REPO/artifacts/packages/$CONFIG/Shipping/Microsoft.NETCore.App.Runtime.$rid.$RT_VERSION.nupkg"
+  if [ ! -f "$src" ]; then
+    src="$WORK/Microsoft.NETCore.App.Runtime.$rid.$RT_VERSION.nupkg"
+  fi
+  if [ ! -f "$src" ]; then
+    info "musl alias for $RT_VERSION: no runtime pack source found; skipping"
+    return 0
+  fi
+  local arch="${rid##*-}"
+  local id="microsoft.netcore.app.runtime.linux-musl-$arch"
+  local ver="$RT_VERSION"
+  local nuget_dir="$HOME/.nuget/packages/$id/$ver"
+  if [ -f "$nuget_dir/.ohos-alias" ]; then
+    return 0
+  fi
+  rm -rf "$nuget_dir"
+  mkdir -p "$nuget_dir"
+  if ! python3 "$SCRIPT_DIR/alias-runtime-pack.py" "$src" "$nuget_dir" "$id" "$ver" "$rid" >> "$LOG" 2>&1; then
+    info "musl alias failed: $id $ver"
+    rm -rf "$nuget_dir"
+    return 0
+  fi
+  touch "$nuget_dir/.ohos-alias"
+  [ -d "$FEED" ] && cp -f "$nuget_dir/$id.$ver.nupkg" "$FEED/" 2>/dev/null || true
+  local packs_dir="$RUNTIME_REPO/.dotnet/packs/Microsoft.NETCore.App.Runtime.linux-musl-$arch/$ver"
+  mkdir -p "$packs_dir"
+  (cd "$packs_dir" && python3 -c "import zipfile; zipfile.ZipFile('$nuget_dir/$id.$ver.nupkg').extractall('.')")
+  info "seeded OHOS runtime pack alias (product version): $id $ver"
+}
+
 # ---- 1. runtime cross build -------------------------------------------------
 RUNTIME_RID_DIR=""       # e.g. artifacts/bin/coreclr/openharmony.arm64.Release
 stage1() {
@@ -1496,6 +1534,9 @@ stage3() {
   info "Stage 3: aspnetcore runtime build (App.Runtime + shared framework)"
   [ -f "$WORK/rt-version.txt" ] && RT_VERSION=$(cat "$WORK/rt-version.txt")
   RT_VERSION="${RT_VERSION:-$VERSION_BAND-$LABEL.$PRE.$BUILDID}"
+  # The product version is only known after stage 1; seed the musl alias for it
+  # from the freshly built runtime pack (the pre-build seed cannot cover it).
+  seed_musl_runtime_pack_alias_for_product_version
   cd "$ASCORE_REPO"
   local eng_pgraph="$SDK_REPO/eng/PortableRuntimeIdentifierGraph.openharmony.json"
   [ -f "$eng_pgraph" ] || die "no eng portable graph at $eng_pgraph"
