@@ -462,15 +462,22 @@ verify_sdk_tarball_arch() {
 
 # MSBuild named pipes are hardcoded to /tmp on Unix; OpenHarmony denies AF_UNIX
 # bind() there (EACCES) so task hosts / the MSBuild server / worker nodes crash
-# (exit 134) and the parent fails with MSB4216 after 30 s x 5 retries. This tool
-# flips the one IL instruction that builds the pipe path to Path.GetTempPath()
-# (TMPDIR-aware); verified on device: Blazor WASM build 5:06 failure -> 15.4 s.
+# (exit 134) and the parent fails with MSB4216 after 30 s x 5 retries. The Roslyn
+# compiler server has the same bug (csc/vbc fall back to in-process compilation
+# after a ~20 s connect timeout). This tool flips the one IL instruction that
+# builds each pipe path to Path.GetTempPath() (TMPDIR-aware); verified on device:
+# Blazor WASM build 5:06 failure -> 15.4 s success, shared-compile build 30 s -> 11 s.
 ensure_msbuild_pipe_patcher() {
   local dir="$WORK/msbuild-pipe-patch"
-  if [ ! -f "$dir/msbuild-pipe-patch.dll" ]; then
+  local src="$SCRIPT_DIR/msbuild-pipe-patch"
+  # Rebuild when the tool's sources changed (e.g. Roslyn targets were added); a
+  # stale cached patcher would silently skip the new files.
+  if [ ! -f "$dir/msbuild-pipe-patch.dll" ] \
+     || [ "$src/Program.cs" -nt "$dir/msbuild-pipe-patch.dll" ] \
+     || [ "$src/msbuild-pipe-patch.csproj" -nt "$dir/msbuild-pipe-patch.dll" ]; then
     info "building msbuild-pipe-patch (Mono.Cecil)..."
     local dotnet_bin="${DOTNET:-$RUNTIME_REPO/.dotnet/dotnet}"
-    "$dotnet_bin" publish "$SCRIPT_DIR/msbuild-pipe-patch/msbuild-pipe-patch.csproj" \
+    "$dotnet_bin" publish "$src/msbuild-pipe-patch.csproj" \
       -c Release -o "$dir" --nologo \
       -p:ImportDirectoryBuildProps=false -p:ImportDirectoryBuildTargets=false \
       2>&1 | tail -1 || die "msbuild-pipe-patch build failed"
@@ -1498,11 +1505,13 @@ stage4() {
     /p:PreReleaseVersionLabel="$LABEL" /p:PreReleaseVersion="$PRE" /p:OfficialBuildId="$BUILDID" \
     2>&1 | tee -a "$LOG" || die "sdk build failed"
   info "sdk redist produced under $SDK_REPO/artifacts/bin/redist/$CONFIG/dotnet"
-  # Patch the shipped MSBuild before signing: every Microsoft.Build.Framework.dll
-  # copy (layout + tarball, excluding ref assemblies) must resolve named pipes via
-  # TMPDIR because OpenHarmony denies AF_UNIX bind() in /tmp.
+  # Patch the shipped MSBuild + Roslyn compiler-server named pipes before
+  # signing: every pipe-bearing DLL (layout + tarball, excluding ref assemblies)
+  # must resolve pipes via TMPDIR because OpenHarmony denies AF_UNIX bind() in
+  # /tmp. Otherwise task hosts fail with MSB4216 and csc/vbc silently fall back
+  # to in-process compilation after a ~20 s compiler-server connect timeout.
   ensure_msbuild_pipe_patcher
-  info "patching MSBuild named-pipe paths in the SDK layout + tarball"
+  info "patching MSBuild/Roslyn named-pipe paths in the SDK layout + tarball"
   python3 "$SCRIPT_DIR/patch-msbuild-pipe.py" \
     --sdk-root "$SDK_REPO" --config "$CONFIG" --rid "$RID" \
     --dotnet "$MSBUILD_PIPE_PATCHER_DOTNET" --patcher "$MSBUILD_PIPE_PATCHER" \
