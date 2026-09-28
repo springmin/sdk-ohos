@@ -764,7 +764,16 @@ PYEOF
       continue
     fi
     if grep -qE "error CS0234|error CS0246" "$alog" && grep -qE "CompositeMLKem|Hpke" "$alog"; then
-      if [ "$attempt" -ge 4 ]; then die "in-tree ref refresh did not fix the missing platform types"; fi
+      if [ "$attempt" -ge 4 ]; then
+        echo "--- missing-platform-type errors (attempt $attempt) ---" | tee -a "$LOG"
+        grep -E "error CS0234|error CS0246" "$alog" | head -6 | tee -a "$LOG" || true
+        echo "--- Bcl.Cryptography reference diag (which S.C.Crypto does csc see) ---" | tee -a "$LOG"
+        (cd "$RUNTIME_REPO" && ./.dotnet/dotnet build src/libraries/Microsoft.Bcl.Cryptography/src/Microsoft.Bcl.Cryptography.csproj -f net11.0 \
+          -p:TargetOS=openharmony -p:TargetArchitecture="$ARCH" -p:UseBootstrapLayout=true \
+          -p:ApiCompatValidateAssemblies=false -v:diag 2>&1 \
+          | grep -E "System.Security.Cryptography.dll|TargetingPackPath|error CS0234" | head -8) 2>/dev/null | tee -a "$LOG" || true
+        die "in-tree ref refresh did not fix the missing platform types"
+      fi
       info "libraries need the in-tree platform refs (rc2-only crypto types missing from the seeded pack) — pre-building the ref and retrying (attempt $((attempt+1)))"
       # Diagnostics: which copies of the assembly actually carry the rc2 types?
       local refdll bref
