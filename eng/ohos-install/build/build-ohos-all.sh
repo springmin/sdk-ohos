@@ -541,6 +541,28 @@ seed_bootstrap_ref() {
   info "seeded bootstrap ref pack from SDK Ref ($(basename "$sdkref"))"
 }
 
+# The rc2 sources declare platform APIs (CompositeMLKem, Hpke...) that even the
+# official rc2 Ref pack predates, so a clean build compiling the libraries
+# against the seeded bootstrap ref fails with CS0234/CS0246 in
+# Microsoft.Bcl.Cryptography and friends. The in-tree build produces matching
+# ref assemblies under artifacts/bin/<lib>/ref/Release/<tfm>; overlay them onto
+# the bootstrap ref directory and retry (the seed is explicitly a stand-in the
+# local refs are meant to overwrite - see seed_bootstrap_ref).
+refresh_bootstrap_ref_from_local() {
+  local bdir="$RUNTIME_REPO/artifacts/bootstrap/openharmony-$ARCH/microsoft.netcore.app/ref"
+  [ -d "$bdir" ] || return 1
+  local n=0 d f
+  for d in "$RUNTIME_REPO"/artifacts/bin/*/ref/Release/"$TFM"; do
+    [ -d "$d" ] || continue
+    for f in "$d"/*.dll; do
+      [ -f "$f" ] || continue
+      cp -f "$f" "$bdir/" && n=$((n+1))
+    done
+  done
+  info "refreshed bootstrap ref assemblies from in-tree ref outputs ($n file(s))"
+  [ "$n" -gt 0 ]
+}
+
 build_clr_libs_packs() {
   # --- in-tree R2R preparation (A/B, OHOS_IN_TREE_R2R=1) ---------------------
   # Seed the PGO mibc at $(CoreCLRArtifactsPath)StandardOptimizationData.mibc
@@ -701,6 +723,14 @@ PYEOF
       info "sfx-finish missing facades on clean build — compiling shims and retrying (attempt $((attempt+1)))"
       compile_shims_into_layout || die "shim compile/copy failed"
       fixed="shims"
+      attempt=$((attempt+1))
+      continue
+    fi
+    if grep -qE "error CS0234|error CS0246" "$alog" && grep -qE "CompositeMLKem|Hpke" "$alog"; then
+      if [ "$attempt" -ge 4 ]; then die "in-tree ref refresh did not fix the missing platform types"; fi
+      info "libraries need the in-tree platform refs (rc2-only crypto types missing from the seeded pack) — refreshing the bootstrap ref and retrying (attempt $((attempt+1)))"
+      refresh_bootstrap_ref_from_local || die "no in-tree ref assemblies to refresh the bootstrap ref with"
+      fixed="$fixed bootstrap-ref-local"
       attempt=$((attempt+1))
       continue
     fi
