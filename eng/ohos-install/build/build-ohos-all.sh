@@ -582,7 +582,9 @@ refresh_bootstrap_ref_from_local() {
   # A clean bootstrap-layout build compiles the libraries against the *pack*
   # (KnownFrameworkReference), not the bootstrap layout dir, so the pack's ref
   # assemblies must be refreshed too or the rc2-only types stay missing.
-  for d in "$RUNTIME_REPO"/.dotnet/packs/Microsoft.NETCore.App.Ref/*/ref; do
+  for d in "$RUNTIME_REPO"/.dotnet/packs/Microsoft.NETCore.App.Ref/*/ref \
+           "$RUNTIME_REPO"/artifacts/bin/microsoft.netcore.app.ref/ref/"$TFM" \
+           "$HOME"/.nuget/packages/microsoft.netcore.app.ref/*/ref/"$TFM"; do
     [ -d "$d" ] && dirs+=("$d")
   done
   for d in "${dirs[@]}"; do
@@ -764,6 +766,18 @@ PYEOF
     if grep -qE "error CS0234|error CS0246" "$alog" && grep -qE "CompositeMLKem|Hpke" "$alog"; then
       if [ "$attempt" -ge 4 ]; then die "in-tree ref refresh did not fix the missing platform types"; fi
       info "libraries need the in-tree platform refs (rc2-only crypto types missing from the seeded pack) — pre-building the ref and retrying (attempt $((attempt+1)))"
+      # Diagnostics: which copies of the assembly actually carry the rc2 types?
+      local refdll bref
+      refdll="$(find "$RUNTIME_REPO/artifacts/bin" -path "*System.Security.Cryptography/ref/*" -name "System.Security.Cryptography.dll" 2>/dev/null | head -1)"
+      if [ -n "$refdll" ]; then
+        if grep -q "CompositeMLKem" "$refdll"; then info "  in-tree S.C.Crypto ref has the rc2 types ($refdll)"; else warn_echo "  in-tree S.C.Crypto ref LACKS the rc2 types ($refdll)"; fi
+      else
+        warn_echo "  no in-tree S.C.Crypto ref assembly under artifacts/bin yet"
+      fi
+      bref="$RUNTIME_REPO/artifacts/bootstrap/openharmony-$ARCH/microsoft.netcore.app/ref/System.Security.Cryptography.dll"
+      if [ -f "$bref" ]; then
+        if grep -q "CompositeMLKem" "$bref"; then info "  bootstrap ref copy has the rc2 types"; else warn_echo "  bootstrap ref copy LACKS the rc2 types ($bref)"; fi
+      fi
       prebuild_platform_ref || true
       refresh_bootstrap_ref_from_local || die "no in-tree ref assemblies to refresh the bootstrap ref with"
       fixed="$fixed bootstrap-ref-local"
@@ -771,6 +785,13 @@ PYEOF
       continue
     fi
     echo "--- NETSDK1112 diag ---" | tee -a "$LOG"
+    if grep -qE "CompositeMLKem|Hpke" "$alog" 2>/dev/null; then
+      echo "--- Bcl.Cryptography reference diag (which S.C.Crypto does csc see) ---" | tee -a "$LOG"
+      (cd "$RUNTIME_REPO" && ./.dotnet/dotnet build src/libraries/Microsoft.Bcl.Cryptography/src/Microsoft.Bcl.Cryptography.csproj -f net11.0 \
+        -p:TargetOS=openharmony -p:TargetArchitecture="$ARCH" -p:UseBootstrapLayout=true \
+        -p:ApiCompatValidateAssemblies=false -v:diag 2>&1 \
+        | grep -E "System.Security.Cryptography.dll|TargetingPackPath|error CS0234" | head -8) 2>/dev/null | tee -a "$LOG" || true
+    fi
     echo "--- manual Bcl.Numerics netstandard2.1 diag ---" | tee -a "$LOG"
     if grep -q "Bcl.Numerics" "$alog" 2>/dev/null; then
       (cd "$RUNTIME_REPO" && ./.dotnet/dotnet build src/libraries/Microsoft.Bcl.Numerics/src/Microsoft.Bcl.Numerics.csproj -f netstandard2.1         -p:TargetOS=openharmony -p:TargetArchitecture=arm64 -p:UseBootstrapLayout=true -v:diag 2>&1 |         grep -iE "References=|/r:|netstandard.dll|System.Runtime.dll|ResolveFrameworkReferences|CS0518|netstandard.library" | head -12) 2>/dev/null | tee -a "$LOG" || true
