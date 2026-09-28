@@ -681,6 +681,8 @@ for tfm, fr in proj.get('frameworks',{}).items():
     echo "--- nuget linux-x64 cache ---" | tee -a "$LOG"
     ls "$HOME/.nuget/packages/microsoft.netcore.app.runtime.linux-x64/" 2>/dev/null | tee -a "$LOG" || true
     ls "$HOME/.nuget/packages/microsoft.netcore.app.runtime.linux-x64/$BOOTSTRAP_RUNTIME_VERSION/" 2>/dev/null | head -6 | tee -a "$LOG"
+    echo "--- nuget linux-musl-arm64 alias cache ---" | tee -a "$LOG"
+    ls "$HOME/.nuget/packages/microsoft.netcore.app.runtime.linux-musl-arm64/" 2>/dev/null | tee -a "$LOG" || true
     echo "--- last attempt log tail ---" | tee -a "$LOG"
     tail -40 "$alog" | tee -a "$LOG"
     echo "--- configure platform lines ---" | tee -a "$LOG"
@@ -811,11 +813,24 @@ seed_musl_runtime_pack_alias_from_release() {
   # and the in-build ILC publish then failed with NETSDK1112); parsing keeps
   # the alias list in step with the band without another pin to maintain.
   local ref_vers=""
-  local props refver
+  local props refver sdkpin
   for props in "$RUNTIME_REPO/eng/Version.Details.props" "$ASCORE_REPO/eng/Version.Details.props"; do
     [ -f "$props" ] || continue
     refver="$(sed -n 's/.*<MicrosoftNETCoreAppRefPackageVersion>\([^<]*\)<\/MicrosoftNETCoreAppRefPackageVersion>.*/\1/p' "$props" | head -1)"
     [ -n "$refver" ] && ref_vers="$ref_vers $refver"
+  done
+  # The bootstrap SDK each repo pins installs its own runtime, and the
+  # self-contained in-build tool publishes resolve the target-RID runtime pack
+  # at exactly that SDK runtime version. The rc2 merge took the runtime and
+  # aspnetcore global.json SDK pins from 11.0.100-rc.1.26420.103 to
+  # 11.0.100-rc.1.26425.128; the former maps to a runtime version that was
+  # already seeded (the bootstrap pin), the latter did not and the runtime
+  # build failed with NETSDK1112. Derive it (11.0.100-X -> 11.0.0-X) so an SDK
+  # pin move cannot leave the alias list behind again.
+  for props in "$RUNTIME_REPO/global.json" "$ASCORE_REPO/global.json"; do
+    [ -f "$props" ] || continue
+    sdkpin="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\(11\.0\.100-[^"]*\)".*/\1/p' "$props" | head -1)"
+    [ -n "$sdkpin" ] && ref_vers="$ref_vers 11.0.0-${sdkpin#11.0.100-}"
   done
   local ver
   for ver in "$VERSION_BAND" "$BOOTSTRAP_RUNTIME_VERSION" "$HOST_PACK_BRANCH_VERSION" "$RT_VERSION" $ref_vers; do
