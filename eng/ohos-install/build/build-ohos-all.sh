@@ -44,6 +44,11 @@
 # / GitHub release-asset digest). Unverifiable downloads are refused unless
 # ALLOW_UNVERIFIED=1 (insecure).
 #
+# Verification (P1-2): openharmony builds no NativeAOT payload, so the SDK must not
+# contain a dotnet-aot native library. Stale copies are pruned from the reused redist
+# layout before the build and the packaged tarball is checked before it is signed
+# (see check-sdk-arch.py).
+#
 # Required env:
 #   OHOS_NDK_HOME     OpenHarmony NDK root (e.g. $HOME/hmos-tools/sdk/default/openharmony)
 #   RUNTIME_REPO SDK_REPO ASCORE_REPO  (defaults: this sdk checkout plus its sibling
@@ -433,6 +438,26 @@ ensure_selfsign() {
 sign_all() {
   ensure_selfsign
   python3 "$SCRIPT_DIR/sign-ohos-pre.py" "$SELFSIGN_BIN" "$@" || die "signing failed"
+}
+
+# openharmony has no NativeAOT toolchain, so PublishDotnetAot is gated off and the
+# build does not produce libdotnet-aot. The redist layout under artifacts/bin/redist
+# is reused between builds and is never cleaned, so a stale copy (for example an
+# x86-64 library from a host-RID build or a dotnet-aot test run on the build machine)
+# would be copied into the SDK tarball and `dotnet` would try to dlopen it on every
+# startup. Prune it before the build and verify the packaged archive afterwards.
+SDK_ARCH_CHECK="$SCRIPT_DIR/check-sdk-arch.py"
+prune_stale_sdk_aot_libs() {
+  local redist="$SDK_REPO/artifacts/bin/redist/$CONFIG"
+  [ -d "$redist" ] || return 0
+  python3 "$SDK_ARCH_CHECK" prune "$redist" \
+    || die "failed to prune stale dotnet-aot libraries from $redist"
+}
+
+verify_sdk_tarball_arch() {
+  local tarball="$1"
+  python3 "$SDK_ARCH_CHECK" verify "$tarball" \
+    || die "SDK tarball $tarball contains a foreign-architecture dotnet-aot library"
 }
 
 # MSBuild named pipes are hardcoded to /tmp on Unix; OpenHarmony denies AF_UNIX
@@ -1457,6 +1482,9 @@ stage4() {
   RT_VERSION="${RT_VERSION:-$VERSION_BAND-$LABEL.$PRE.$BUILDID}"
   cd "$SDK_REPO"
   local rtver="$RT_VERSION"
+  # A stale dotnet-aot library in the reused redist layout would be archived into
+  # the SDK tarball even though this build does not produce one (see the helper).
+  prune_stale_sdk_aot_libs
   # override ONLY Host/Runtime package versions (Ref/ILLink/Crossgen2 keep the
   # darc-flowed official versions — see Directory.Build.props =='' guards)
   ./build.sh -os openharmony -arch "$ARCH" -c "$CONFIG" \
@@ -1482,6 +1510,7 @@ stage4() {
   # pre-sign the SDK tarball (every ELF in the redist: dotnet host + all so)
   local sdk_tb
   sdk_tb=$(find "$SDK_REPO/artifacts" -maxdepth 5 -name "dotnet-sdk-*-$RID.tar.gz" | head -1)
+  [ -n "$sdk_tb" ] && verify_sdk_tarball_arch "$sdk_tb"
   [ -n "$sdk_tb" ] && sign_all "$sdk_tb"
 }
 

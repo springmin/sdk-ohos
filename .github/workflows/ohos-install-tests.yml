@@ -47,3 +47,7 @@ jobs:
       - name: Codesign FileWrites clean contract (audit V2)
         if: ${{ !cancelled() }}
         run: sh eng/ohos-install/tests/test-codesign-filewrites.sh
+
+      - name: SDK tarball architecture guard (libdotnet-aot, P1-2)
+        if: ${{ !cancelled() }}
+        run: sh eng/ohos-install/tests/test-sdk-arch-check.sh

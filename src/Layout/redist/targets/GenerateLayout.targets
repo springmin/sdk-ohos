@@ -554,16 +554,19 @@
     Linux via the azurelinux cross containers that provide a cross toolchain and target sysroot via
     ROOTFS_DIR). See the _ShouldPublishDotnetAot property in src/Layout/Directory.Build.props.
   -->
+  <!-- Define platform-specific native library naming. Used by PublishDotnetAot,
+       ChmodPublishDir and RemoveStaleDotnetAotLibrary, so it lives at project scope. -->
+  <PropertyGroup>
+    <_DotnetAotNativeLibPrefix Condition="'$(OSName)' != 'win'">lib</_DotnetAotNativeLibPrefix>
+    <_DotnetAotNativeLibExtension Condition="'$(OSName)' == 'win'">.dll</_DotnetAotNativeLibExtension>
+    <_DotnetAotNativeLibExtension Condition="'$(OSName)' == 'osx'">.dylib</_DotnetAotNativeLibExtension>
+    <_DotnetAotNativeLibExtension Condition="'$(_DotnetAotNativeLibExtension)' == ''">.so</_DotnetAotNativeLibExtension>
+    <_DotnetAotNativeLibName>$(_DotnetAotNativeLibPrefix)dotnet-aot$(_DotnetAotNativeLibExtension)</_DotnetAotNativeLibName>
+  </PropertyGroup>
+
   <Target Name="PublishDotnetAot"
           Condition="'$(_ShouldPublishDotnetAot)' == 'true'">
     <PropertyGroup>
-      <!-- Define platform-specific native library naming -->
-      <_DotnetAotNativeLibPrefix Condition="'$(OSName)' != 'win'">lib</_DotnetAotNativeLibPrefix>
-      <_DotnetAotNativeLibExtension Condition="'$(OSName)' == 'win'">.dll</_DotnetAotNativeLibExtension>
-      <_DotnetAotNativeLibExtension Condition="'$(OSName)' == 'osx'">.dylib</_DotnetAotNativeLibExtension>
-      <_DotnetAotNativeLibExtension Condition="'$(_DotnetAotNativeLibExtension)' == ''">.so</_DotnetAotNativeLibExtension>
-      <_DotnetAotNativeLibName>$(_DotnetAotNativeLibPrefix)dotnet-aot$(_DotnetAotNativeLibExtension)</_DotnetAotNativeLibName>
-
       <!--
         Global properties for the dotnet-aot Publish below. _IsPublishing=true is always required
         (see the note below). The outer build's target properties are already global and are inherited
@@ -611,6 +614,24 @@
       SourceFiles="@(_DotnetAotNativeLib->'%(OutputPath)')"
       DestinationFolder="$(OutputPath)"
       SkipUnchangedFiles="true" />
+  </Target>
+
+  <!--
+    $(OutputPath) - the sdk/$(Version) part of the layout - is reused across builds and is not
+    cleaned, so a libdotnet-aot native library built earlier for a different RID (for example a
+    linux-x64 host build or test run sharing the same checkout) can survive in it. Where this
+    build does not publish dotnet-aot (_ShouldPublishDotnetAot is false: openharmony and
+    linux-musl have no NativeAOT toolchain, and the target OS must match the host OS), the stale
+    library must not be packaged into the SDK archive: the CLI muxer looks for libdotnet-aot in
+    the SDK directory on every startup and would try - and fail - to load a foreign-architecture
+    library (on an arm64 device: "Failed to load .../libdotnet-aot.so, error: Error loading
+    shared library ld-linux-x86-64.so.2"). dotnet-aot is optional (the muxer falls back to the
+    managed dotnet.dll), so removing the stale file is safe. Runs as part of GenerateSdkLayout,
+    before GenerateInstallerLayout copies the layout into the archives.
+  -->
+  <Target Name="RemoveStaleDotnetAotLibrary"
+          Condition="'$(_ShouldPublishDotnetAot)' != 'true'">
+    <Delete Files="$(OutputPath)$(_DotnetAotNativeLibName)" />
   </Target>
 
   <Target Name="ChmodPublishDir"
@@ -703,7 +724,8 @@
                             DeleteSymbolsFromPublishDir;
                             RetargetTools;
                             RemoveResourcesFromDotnetDeps;
-                            ChmodPublishDir"
+                            ChmodPublishDir;
+                            RemoveStaleDotnetAotLibrary"
           AfterTargets="AfterBuild" />
 
 </Project>
