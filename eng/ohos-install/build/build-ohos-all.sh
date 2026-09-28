@@ -589,10 +589,16 @@ refresh_bootstrap_ref_from_local() {
   mkdir -p "$RUNTIME_REPO/artifacts/bootstrap/openharmony-$ARCH/microsoft.netcore.app/ref/ref/$TFM"
   for d in "${dirs[@]}"; do
     [ -d "$d" ] || continue
-    local copied=0
+    local copied=0 dest
     for f in "$RUNTIME_REPO"/artifacts/bin/*/ref/Release/"$TFM"/*.dll; do
       [ -f "$f" ] || continue
-      cp -f "$f" "$d/" && copied=$((copied+1)) && n=$((n+1))
+      dest="$d/$(basename "$f")"
+      # Replace only files the platform pack already ships: adding in-tree refs
+      # for non-platform libraries (illink, System.Windows.Extensions, ...)
+      # pollutes the pack and the sharedfx dependency validation then fails on
+      # their missing dependencies.
+      [ -f "$dest" ] || continue
+      cp -f "$f" "$dest" && copied=$((copied+1)) && n=$((n+1))
     done
     [ "$copied" -gt 0 ] && info "  refreshed $copied ref assembly(ies) in $d"
   done
