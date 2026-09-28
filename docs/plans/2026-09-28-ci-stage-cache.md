@@ -92,7 +92,16 @@ caches at all.
 | 36356790450 | pinned SHAs equal to run1 (runtime `b935cb97b77`, aspnetcore `07ed2fe38d`, sdk `82dc57c64c`) | **runtime=true aspnetcore=true** (`--skip-runtime --skip-aspnetcore`) | **10m02s** |
 | 36373081395 | item-5 branch, first run with the **stage-scoped** keys | runtime=false aspnetcore=false (new key format, cold by design) | ~60 min |
 | 36377101149 | same refs as 36373081395 | **runtime=true aspnetcore=true** (`--skip-runtime --skip-aspnetcore`) | **12m09s** |
-| 36391100465 | **stage-4 split** (`83b5a2f8d8`) + digest `key_suffix`, cold by design | see run | see run |
+| 36391100465 | **stage-4 split** (`83b5a2f8d8`) + digest `key_suffix`, cold by design | runtime=false aspnetcore=false; **saved** both under the new keys (suffix `a376ca73…`) | 58m (cold) |
+
+Run 36391100465 also exercises the split in the real pipeline: the stage-4
+packaging path logs `msbuild-pipe-patch: patched=16 noop=0 skipped=0
+tarballs=1` and `verify: ... contains no dotnet-aot native library` from
+`build/pack-sdk.sh`, and the save lines carry the composite keys
+(`ohos-rt-...-<scripts_rt>-<key_suffix>` / `ohos-asp-...-<scripts_asp>-<key_suffix>`).
+A warm re-dispatch with unchanged refs is the remaining confirmation that an
+SDK-packaging-only edit keeps the ~13 min path (queue it after the rc2
+validation run so the caches it saves are the ones being re-read).
 
 The run3/run5 build-step logs show
 `stage caches: runtime=true aspnetcore=true; extra flags: --skip-runtime --skip-aspnetcore`.
