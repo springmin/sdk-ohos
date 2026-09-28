@@ -107,7 +107,10 @@ jobs:
           #
           #   scripts_rt  = stage 1 (runtime) inputs: the helpers
           #                 build-ohos-all.sh invokes up to the pre-sign step,
-          #                 plus the version pins and the toolchain script.
+          #                 plus the version pins, the toolchain script, the
+          #                 shared signing helpers, and the sdk-checkout files
+          #                 those stages consume (RID graph / selfsign
+          #                 ElfSigner source / global.json SDK pin).
           #   scripts_asp = stage 3 (aspnetcore) inputs. Stage 3 consumes the
           #                 stage 1 outputs (feed, runtime layout, R2R assets,
           #                 PGO mibc, stock crossgen2), so it must stay a
@@ -116,27 +119,38 @@ jobs:
           #                 rt; an aspnetcore-only helper is hashed into
           #                 asp_scripts here and left out of scripts_rt.
           #   scripts     = whole-tree hash, kept as the identity digest of
-          #                 the sdk packaging stage (stage 4). Stage 4 has no
-          #                 skip gate and always runs, so this output is
+          #                 the sdk packaging stage (stage 4: build/pack-sdk.sh
+          #                 + its helpers, covered by the glob below). Stage 4
+          #                 has no skip gate and always runs, so this output is
           #                 informational (and is the key to use if stage 4
           #                 ever gains a cache).
           #
           # Groups: versions.env, build/build-ohos-all.sh and
           # build/ohos-ci-env.sh (toolchain), plus the helpers shared by
           # stages 1+3 - build/crossgen-framework.py, build/overlay-pack.py,
-          # build/overlay-tarball.py, build/sign-ohos-pre.py, selfsign.cs +
+          # build/overlay-tarball.py, build/sign-ohos-pre.py,
+          # build/ohos-sign-common.sh (sign_all/ensure_selfsign), selfsign.cs +
           # selfsign.csproj (and the Directory.Build.* scoping their build) -
-          # go into both keys. build/alias-runtime-pack.py,
+          # go into both keys. Three sdk-checkout files outside
+          # eng/ohos-install/ are stages-1+3 inputs too:
+          # eng/PortableRuntimeIdentifierGraph.openharmony.json is injected
+          # into the runtime/aspnetcore bootstrap SDKs (RID resolution),
+          # src/Tasks/Microsoft.NET.Build.Tasks/ElfSigner.cs is compiled into
+          # the selfsign tool used for the pre-sign step, and global.json pins
+          # the SDK that publishes that tool (the publish runs from the sdk
+          # checkout and walks up to it).
+          # build/alias-runtime-pack.py,
           # build/assemble-ilc-pack.py, build/assemble-crossgen2-pack.py,
           # build/pack-runtime.py and build/replace-pack-corelib.py are
           # runtime-only (they stay in asp through the superset rule).
           # install-dotnet-{ohos,runtime}.sh are consumer installers that no
           # stage executes but are kept in both keys by the conservative
           # "when a file's stage is unclear, include it" policy.
-          # Deliberately excluded: build/msbuild-pipe-patch/**,
-          # build/patch-msbuild-pipe.py, build/check-sdk-arch.py (stage 4
-          # only), tests/**, docs, fetch-nativeaot-packs.sh,
-          # sign-ohos-release.sh, dotnet-ohos, build/reversion-nupkg.py.
+          # Deliberately excluded: build/pack-sdk.sh (stage 4 only),
+          # build/msbuild-pipe-patch/**, build/patch-msbuild-pipe.py,
+          # build/check-sdk-arch.py (stage 4 only), tests/**, docs,
+          # fetch-nativeaot-packs.sh, sign-ohos-release.sh, dotnet-ohos,
+          # build/reversion-nupkg.py.
           #
           # Maintenance: a new runtime/stage-1 helper goes into scripts_rt
           # (literal pattern below, plus the guard list); a new
@@ -150,11 +164,22 @@ jobs:
           # when any listed file is missing - keep the guard in sync on
           # rename.
           #
-          # Caveat: build/build-ohos-all.sh is a single file owning all
-          # stages, so an edit anywhere inside it (stage 4 included) still
-          # flips both keys; keep new packaging-only logic in separate files.
+          # Caveat: build/build-ohos-all.sh still owns stages 1-3 (environment
+          # checks, argument parsing, cache/skip logic) and is hashed in full,
+          # so an edit anywhere inside it flips both keys. Stage 4 no longer
+          # lives there: it moved to build/pack-sdk.sh, covered by the
+          # whole-tree 'scripts' hash only, so an SDK-packaging-only edit does
+          # not invalidate the runtime/aspnetcore caches.
+          #
+          # Toolchain digests: the NDK / OpenSSL / ICU digests and the
+          # dotnet-install.sh pin are resolved by the 'Resolve CI-env
+          # checksums' step, which runs after this one and reads optional
+          # workflow inputs, so they cannot be folded in here. The rt/asp
+          # restore+save steps append that step's 'key_suffix' output (sha256
+          # over the four digests) to both keys instead, so a toolchain change
+          # can no longer hit a stage cache built with the old toolchain.
           # ------------------------------------------------------------------
-          rt_scripts='${{ hashFiles('sdk/eng/ohos-install/versions.env', 'sdk/eng/ohos-install/build/build-ohos-all.sh', 'sdk/eng/ohos-install/build/ohos-ci-env.sh', 'sdk/eng/ohos-install/build/crossgen-framework.py', 'sdk/eng/ohos-install/build/overlay-pack.py', 'sdk/eng/ohos-install/build/overlay-tarball.py', 'sdk/eng/ohos-install/build/sign-ohos-pre.py', 'sdk/eng/ohos-install/selfsign.cs', 'sdk/eng/ohos-install/selfsign.csproj', 'sdk/eng/ohos-install/Directory.Build.props', 'sdk/eng/ohos-install/Directory.Build.targets', 'sdk/eng/ohos-install/install-dotnet-ohos.sh', 'sdk/eng/ohos-install/install-dotnet-runtime.sh', 'sdk/eng/ohos-install/build/alias-runtime-pack.py', 'sdk/eng/ohos-install/build/assemble-crossgen2-pack.py', 'sdk/eng/ohos-install/build/assemble-ilc-pack.py', 'sdk/eng/ohos-install/build/pack-runtime.py', 'sdk/eng/ohos-install/build/replace-pack-corelib.py') }}'
+          rt_scripts='${{ hashFiles('sdk/eng/ohos-install/versions.env', 'sdk/eng/ohos-install/build/build-ohos-all.sh', 'sdk/eng/ohos-install/build/ohos-ci-env.sh', 'sdk/eng/ohos-install/build/crossgen-framework.py', 'sdk/eng/ohos-install/build/overlay-pack.py', 'sdk/eng/ohos-install/build/overlay-tarball.py', 'sdk/eng/ohos-install/build/sign-ohos-pre.py', 'sdk/eng/ohos-install/build/ohos-sign-common.sh', 'sdk/eng/ohos-install/selfsign.cs', 'sdk/eng/ohos-install/selfsign.csproj', 'sdk/eng/ohos-install/Directory.Build.props', 'sdk/eng/ohos-install/Directory.Build.targets', 'sdk/eng/ohos-install/install-dotnet-ohos.sh', 'sdk/eng/ohos-install/install-dotnet-runtime.sh', 'sdk/eng/ohos-install/build/alias-runtime-pack.py', 'sdk/eng/ohos-install/build/assemble-crossgen2-pack.py', 'sdk/eng/ohos-install/build/assemble-ilc-pack.py', 'sdk/eng/ohos-install/build/pack-runtime.py', 'sdk/eng/ohos-install/build/replace-pack-corelib.py', 'sdk/eng/PortableRuntimeIdentifierGraph.openharmony.json', 'sdk/global.json', 'sdk/src/Tasks/Microsoft.NET.Build.Tasks/ElfSigner.cs') }}'
           asp_scripts="$rt_scripts"   # + aspnetcore-only helpers when any appear
           scripts='${{ hashFiles('sdk/eng/ohos-install/**', '!sdk/eng/ohos-install/.work/**') }}'
           # Fail closed when a listed stage input is missing: hashFiles drops
@@ -167,6 +192,7 @@ jobs:
             sdk/eng/ohos-install/build/overlay-pack.py \
             sdk/eng/ohos-install/build/overlay-tarball.py \
             sdk/eng/ohos-install/build/sign-ohos-pre.py \
+            sdk/eng/ohos-install/build/ohos-sign-common.sh \
             sdk/eng/ohos-install/selfsign.cs \
             sdk/eng/ohos-install/selfsign.csproj \
             sdk/eng/ohos-install/Directory.Build.props \
@@ -177,7 +203,10 @@ jobs:
             sdk/eng/ohos-install/build/assemble-crossgen2-pack.py \
             sdk/eng/ohos-install/build/assemble-ilc-pack.py \
             sdk/eng/ohos-install/build/pack-runtime.py \
-            sdk/eng/ohos-install/build/replace-pack-corelib.py; do
+            sdk/eng/ohos-install/build/replace-pack-corelib.py \
+            sdk/eng/PortableRuntimeIdentifierGraph.openharmony.json \
+            sdk/global.json \
+            sdk/src/Tasks/Microsoft.NET.Build.Tasks/ElfSigner.cs; do
             [ -f "$f" ] || { echo "::error::stage cache-key input missing: $f (update the pattern list in 'Resolve stage SHAs + cache keys')"; exit 1; }
           done
           {
@@ -272,6 +301,16 @@ jobs:
           ndk="$(resolve "$PIN_NDK" ndk)"
           openssl="$(resolve "$PIN_OPENSSL" openssl)"
           icu="$(resolve "$PIN_ICU" icu)"
+          # rt/asp stage cache keys include the toolchain digests: a changed
+          # NDK / OpenSSL / ICU (or the mutable dotnet-install.sh pin)
+          # produces different build outputs, so a stage cache built with the
+          # old toolchain must not survive it. These inputs resolve here -
+          # after "Resolve stage SHAs" already computed rt_key/asp_key (the
+          # pins are optional inputs, so they cannot be part of that step) -
+          # hence the composite key_suffix output the restore/save steps
+          # append to both keys (the identical expression keeps them aligned).
+          key_suffix="$(printf 'ndk=%s\nopenssl=%s\nicu=%s\ndotnet-install=%s\n' \
+            "$ndk" "$openssl" "$icu" "$DOTNET_INSTALL_SHA256" | sha256sum | cut -d' ' -f1)"
           {
             echo "NDK_SHA256=$ndk"
             echo "OPENSSL_SHA256=$openssl"
@@ -281,8 +320,10 @@ jobs:
             echo "ndk=$ndk"
             echo "openssl=$openssl"
             echo "icu=$icu"
+            echo "key_suffix=$key_suffix"
           } >> "$GITHUB_OUTPUT"
           echo "CI-env digests: ndk=$ndk openssl=$openssl icu=$icu"
+          echo "rt/asp stage key suffix: $key_suffix"
 
       - name: Restore NDK/OpenSSL/ICU env cache
         id: cache-env
@@ -446,7 +487,7 @@ jobs:
             sdk/eng/ohos-install/build/third-party
             runtime/artifacts/packages/Release/Shipping
             runtime/artifacts/bin/coreclr/**/StandardOptimizationData.mibc
-          key: ${{ steps.stage-shas.outputs.rt_key }}
+          key: ${{ steps.stage-shas.outputs.rt_key }}-${{ steps.env-digests.outputs.key_suffix }}
 
       - name: Restore aspnetcore stage cache
         id: cache-asp
@@ -463,7 +504,7 @@ jobs:
             sdk/eng/ohos-install/.work/stock-crossgen2
             sdk/eng/ohos-install/build/third-party
             aspnetcore/artifacts/packages/Release/Shipping
-          key: ${{ steps.stage-shas.outputs.asp_key }}
+          key: ${{ steps.stage-shas.outputs.asp_key }}-${{ steps.env-digests.outputs.key_suffix }}
 
       - name: Build runtime -> aspnetcore -> sdk
         run: |
@@ -497,7 +538,7 @@ jobs:
             sdk/eng/ohos-install/build/third-party
             runtime/artifacts/packages/Release/Shipping
             runtime/artifacts/bin/coreclr/**/StandardOptimizationData.mibc
-          key: ${{ steps.stage-shas.outputs.rt_key }}
+          key: ${{ steps.stage-shas.outputs.rt_key }}-${{ steps.env-digests.outputs.key_suffix }}
 
       - name: Save aspnetcore stage cache
         if: steps.cache-asp.outputs.cache-hit != 'true'
@@ -512,7 +553,7 @@ jobs:
             sdk/eng/ohos-install/.work/stock-crossgen2
             sdk/eng/ohos-install/build/third-party
             aspnetcore/artifacts/packages/Release/Shipping
-          key: ${{ steps.stage-shas.outputs.asp_key }}
+          key: ${{ steps.stage-shas.outputs.asp_key }}-${{ steps.env-digests.outputs.key_suffix }}
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4

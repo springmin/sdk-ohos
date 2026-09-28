@@ -30,7 +30,12 @@
 #    aspnetcore-ohos release) are intentional deviations — full-support =true
 #    variant is in sdk docs/plans 12.4.
 #  - Pre-package .codesign signing (sign-ohos-pre.py) is OpenHarmony-only (device loads
-#    only signed ELF); moved from install-dotnet-ohos.sh sign_all().
+#    only signed ELF); moved from install-dotnet-ohos.sh sign_all(). The helpers are
+#    shared with stage 4 via ohos-sign-common.sh.
+#  - Stage 4 (SDK redist build + packaging: MSBuild/Roslyn pipe patch, dotnet-aot
+#    arch guard, tarball signing) lives in pack-sdk.sh; this script owns stages
+#    1-3 and delegates to it, so SDK-packaging edits stay out of the runtime/
+#    aspnetcore stage cache keys in .github/workflows/ohos-full-build.yml.
 #
 # Usage:
 #   sh build-ohos-all.sh [--arch arm64] [--rid openharmony-arm64] [--config Release]
@@ -419,73 +424,15 @@ ensure_stock_crossgen2() {
 }
 
 
-# sign every ELF inside a .nupkg (OpenHarmony .codesign) — idempotent (skips signed)
-ensure_selfsign() {
-  local selfsign="$WORK/selfsign"
-  if [ ! -x "$selfsign" ]; then
-    info "building selfsign (sdk eng/ohos-install)..."
-    local dotnet_bin="${DOTNET:-$RUNTIME_REPO/.dotnet/dotnet}"
-    (cd "$SDK_REPO/eng/ohos-install" && \
-      "$dotnet_bin" publish selfsign.csproj -c Release -r linux-x64 -p:PublishAot=true \
-        -o "$WORK/selfsign-out") 2>&1 | tail -1 || die "selfsign build failed"
-    cp -f "$WORK/selfsign-out/selfsign" "$selfsign" && chmod +x "$selfsign"
-  fi
-  SELFSIGN_BIN="$selfsign"
-}
-
-# sign every ELF in the given nupkg/tar.gz/dir (device needs .codesign on all
-# loaded ELF). Moved from install-dotnet-ohos.sh sign_all() to pre-package time.
-sign_all() {
-  ensure_selfsign
-  python3 "$SCRIPT_DIR/sign-ohos-pre.py" "$SELFSIGN_BIN" "$@" || die "signing failed"
-}
-
-# openharmony has no NativeAOT toolchain, so PublishDotnetAot is gated off and the
-# build does not produce libdotnet-aot. The redist layout under artifacts/bin/redist
-# is reused between builds and is never cleaned, so a stale copy (for example an
-# x86-64 library from a host-RID build or a dotnet-aot test run on the build machine)
-# would be copied into the SDK tarball and `dotnet` would try to dlopen it on every
-# startup. Prune it before the build and verify the packaged archive afterwards.
-SDK_ARCH_CHECK="$SCRIPT_DIR/check-sdk-arch.py"
-prune_stale_sdk_aot_libs() {
-  local redist="$SDK_REPO/artifacts/bin/redist/$CONFIG"
-  [ -d "$redist" ] || return 0
-  python3 "$SDK_ARCH_CHECK" prune "$redist" \
-    || die "failed to prune stale dotnet-aot libraries from $redist"
-}
-
-verify_sdk_tarball_arch() {
-  local tarball="$1"
-  python3 "$SDK_ARCH_CHECK" verify "$tarball" \
-    || die "SDK tarball $tarball contains a foreign-architecture dotnet-aot library"
-}
-
-# MSBuild named pipes are hardcoded to /tmp on Unix; OpenHarmony denies AF_UNIX
-# bind() there (EACCES) so task hosts / the MSBuild server / worker nodes crash
-# (exit 134) and the parent fails with MSB4216 after 30 s x 5 retries. The Roslyn
-# compiler server has the same bug (csc/vbc fall back to in-process compilation
-# after a ~20 s connect timeout). This tool flips the one IL instruction that
-# builds each pipe path to Path.GetTempPath() (TMPDIR-aware); verified on device:
-# Blazor WASM build 5:06 failure -> 15.4 s success, shared-compile build 30 s -> 11 s.
-ensure_msbuild_pipe_patcher() {
-  local dir="$WORK/msbuild-pipe-patch"
-  local src="$SCRIPT_DIR/msbuild-pipe-patch"
-  # Rebuild when the tool's sources changed (e.g. Roslyn targets were added); a
-  # stale cached patcher would silently skip the new files.
-  if [ ! -f "$dir/msbuild-pipe-patch.dll" ] \
-     || [ "$src/Program.cs" -nt "$dir/msbuild-pipe-patch.dll" ] \
-     || [ "$src/msbuild-pipe-patch.csproj" -nt "$dir/msbuild-pipe-patch.dll" ]; then
-    info "building msbuild-pipe-patch (Mono.Cecil)..."
-    local dotnet_bin="${DOTNET:-$RUNTIME_REPO/.dotnet/dotnet}"
-    "$dotnet_bin" publish "$src/msbuild-pipe-patch.csproj" \
-      -c Release -o "$dir" --nologo \
-      -p:ImportDirectoryBuildProps=false -p:ImportDirectoryBuildTargets=false \
-      2>&1 | tail -1 || die "msbuild-pipe-patch build failed"
-    [ -f "$dir/msbuild-pipe-patch.dll" ] || die "msbuild-pipe-patch publish produced no dll"
-  fi
-  MSBUILD_PIPE_PATCHER="$dir/msbuild-pipe-patch.dll"
-  MSBUILD_PIPE_PATCHER_DOTNET="${DOTNET:-$RUNTIME_REPO/.dotnet/dotnet}"
-}
+# ---- pre-package signing helpers (shared with stage 4 / pack-sdk.sh) --------
+# Signing (ensure_selfsign/sign_all) is shared with stage 4 via
+# ohos-sign-common.sh; its implementation therefore exists exactly once.
+# The stage-4-only helpers (dotnet-aot arch guard via check-sdk-arch.py, the
+# named-pipe patcher, SDK tarball signing) live in pack-sdk.sh, so editing them
+# does not flip the runtime/aspnetcore stage cache keys (stages 1+3 never
+# consume them).
+# shellcheck source=ohos-sign-common.sh
+. "$SCRIPT_DIR/ohos-sign-common.sh"
 
 # singlefilehost links against libruntimeinfo.a; its ninja target is not
 # ordered first on a clean build (link fails with "cannot open libruntimeinfo.a").
@@ -1482,45 +1429,24 @@ PY
   info "aspnetcore packs staged into feed (signed)"
 }
 
-# ---- 4. sdk build -----------------------------------------------------------
+# ---- 4. sdk build + packaging (pack-sdk.sh) ---------------------------------
+# Stage 4 was split into eng/ohos-install/build/pack-sdk.sh so an edit to the
+# SDK packaging logic does not flip the runtime/aspnetcore stage cache keys
+# (.github/workflows/ohos-full-build.yml, "Resolve stage SHAs + cache keys").
+# build-ohos-all.sh remains the only external entry point and keeps the
+# --skip-sdk/--stage-only=4 semantics; pack-sdk.sh receives the resolved
+# parameters explicitly and appends to the same log.
 stage4() {
-  info "Stage 4: sdk redist build (consumes runtime+aspnetcore feed)"
-  [ -f "$WORK/rt-version.txt" ] && RT_VERSION=$(cat "$WORK/rt-version.txt")
-  RT_VERSION="${RT_VERSION:-$VERSION_BAND-$LABEL.$PRE.$BUILDID}"
-  cd "$SDK_REPO"
-  local rtver="$RT_VERSION"
-  # A stale dotnet-aot library in the reused redist layout would be archived into
-  # the SDK tarball even though this build does not produce one (see the helper).
-  prune_stale_sdk_aot_libs
-  # override ONLY Host/Runtime package versions (Ref/ILLink/Crossgen2 keep the
-  # darc-flowed official versions — see Directory.Build.props =='' guards)
-  ./build.sh -os openharmony -arch "$ARCH" -c "$CONFIG" \
-    /p:MicrosoftNETCoreAppHostPackageVersion="$rtver" \
-    /p:MicrosoftNETCoreAppRuntimePackageVersion="$rtver" \
-    /p:MicrosoftAspNetCoreAppRuntimePackageVersion="$rtver" \
-    /p:RestoreAdditionalProjectSources="$FEED" \
-    /p:PublicBaseURL=http://localhost:$ASSET_PORT/ \
-    /p:RidGraphOverridePortableJson="$PWD/eng/PortableRuntimeIdentifierGraph.openharmony.json" \
-    /p:IncludeAspNetCoreRuntime=false \
-    /p:PreReleaseVersionLabel="$LABEL" /p:PreReleaseVersion="$PRE" /p:OfficialBuildId="$BUILDID" \
-    2>&1 | tee -a "$LOG" || die "sdk build failed"
-  info "sdk redist produced under $SDK_REPO/artifacts/bin/redist/$CONFIG/dotnet"
-  # Patch the shipped MSBuild + Roslyn compiler-server named pipes before
-  # signing: every pipe-bearing DLL (layout + tarball, excluding ref assemblies)
-  # must resolve pipes via TMPDIR because OpenHarmony denies AF_UNIX bind() in
-  # /tmp. Otherwise task hosts fail with MSB4216 and csc/vbc silently fall back
-  # to in-process compilation after a ~20 s compiler-server connect timeout.
-  ensure_msbuild_pipe_patcher
-  info "patching MSBuild/Roslyn named-pipe paths in the SDK layout + tarball"
-  python3 "$SCRIPT_DIR/patch-msbuild-pipe.py" \
-    --sdk-root "$SDK_REPO" --config "$CONFIG" --rid "$RID" \
-    --dotnet "$MSBUILD_PIPE_PATCHER_DOTNET" --patcher "$MSBUILD_PIPE_PATCHER" \
-    || die "MSBuild named-pipe patch failed"
-  # pre-sign the SDK tarball (every ELF in the redist: dotnet host + all so)
-  local sdk_tb
-  sdk_tb=$(find "$SDK_REPO/artifacts" -maxdepth 5 -name "dotnet-sdk-*-$RID.tar.gz" | head -1)
-  [ -n "$sdk_tb" ] && verify_sdk_tarball_arch "$sdk_tb"
-  [ -n "$sdk_tb" ] && sign_all "$sdk_tb"
+  bash "$SCRIPT_DIR/pack-sdk.sh" \
+    --sdk-repo="$SDK_REPO" \
+    --runtime-repo="$RUNTIME_REPO" \
+    --work="$WORK" \
+    --feed="$FEED" \
+    --log="$LOG" \
+    --arch="$ARCH" \
+    --rid="$RID" \
+    --config="$CONFIG" \
+    --buildid="$BUILDID"
 }
 
 # ---- 5. collect + self-check ------------------------------------------------
