@@ -479,11 +479,58 @@ compile_shims_into_layout() {
 # seed the bootstrap ref pack from the bootstrap SDK's Ref pack (clean builds:
 # the local targeting-pack Error fires before anything has produced a local
 # ref; the SDK's ref is a version-neutral stand-in — local packs overwrite it)
+bootstrap_ref_version() { # -> the ref version the sources pin, or empty
+  local props="$RUNTIME_REPO/eng/Version.Details.props"
+  [ -f "$props" ] || return 0
+  sed -n 's/.*<MicrosoftNETCoreAppRefPackageVersion>\([^<]*\)<\/MicrosoftNETCoreAppRefPackageVersion>.*/\1/p' "$props" | head -1
+}
+
+# Ensure that seeded pack matches the sources. The rc2 sources use rc2-only
+# platform APIs (Hpke, CompositeMLKem...), so the rc.1 Ref pack shipped with
+# the bootstrap SDK cannot compile them (CS0234 in Microsoft.Bcl.Cryptography).
+# Fetch Microsoft.NETCore.App.Ref at the pinned version from the public dnceng
+# dotnet11 feed (digest-pinned in versions.env) and extract it under the
+# bootstrap packs so seed_bootstrap_ref prefers it.
+ensure_bootstrap_ref_pack() {
+  local refver
+  refver="$(bootstrap_ref_version)"
+  [ -n "$refver" ] || return 0
+  local packs="$RUNTIME_REPO/.dotnet/packs/Microsoft.NETCore.App.Ref"
+  if [ -d "$packs/$refver/ref" ] && [ -f "$packs/$refver/data/FrameworkList.xml" ]; then
+    return 0
+  fi
+  local id="microsoft.netcore.app.ref"
+  local url="https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet11/nuget/v3/flat2/$id/$refver/$id.$refver.nupkg"
+  local sha tmp="$WORK/$id.$refver.nupkg"
+  sha="$(dnceng_ref_pack_sha256 "$refver")"
+  info "bootstrap Ref pack $refver missing; fetching from the dnceng dotnet11 feed"
+  if ! fetch_verified "$url" "$tmp" "$sha" "bootstrap Ref pack $refver"; then
+    warn_echo "WARN: bootstrap Ref pack $refver could not be fetched; the build may fail on rc2-only APIs"
+    return 0
+  fi
+  local dst="$packs/$refver"
+  mkdir -p "$dst"
+  if ! python3 - "$tmp" "$dst" <<'PY'
+import sys, zipfile
+zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])
+PY
+  then
+    warn_echo "WARN: extracting bootstrap Ref pack $refver failed"
+    return 0
+  fi
+  if [ ! -f "$dst/data/FrameworkList.xml" ]; then
+    warn_echo "WARN: bootstrap Ref pack $refver extract is incomplete"
+    return 0
+  fi
+  info "bootstrap Ref pack $refver ready (dnceng)"
+}
+
 seed_bootstrap_ref() {
   local sdkref=""
   local packs="$RUNTIME_REPO/.dotnet/packs/Microsoft.NETCore.App.Ref"
-  local p
-  for p in "$packs/$REFERENCE_RUNTIME_PACK_VERSION" "$packs/$BOOTSTRAP_SDK_VERSION" "$packs/$RIDGRAPH_SDKVER" $(ls -d "$packs"/*/ 2>/dev/null); do
+  local p refver
+  refver="$(bootstrap_ref_version)"
+  for p in ${refver:+"$packs/$refver"} "$packs/$REFERENCE_RUNTIME_PACK_VERSION" "$packs/$BOOTSTRAP_SDK_VERSION" "$packs/$RIDGRAPH_SDKVER" $(ls -d "$packs"/*/ 2>/dev/null); do
     [ -d "$p/ref" ] && [ -f "$p/data/FrameworkList.xml" ] && { sdkref="$p"; break; }
   done
   [ -n "$sdkref" ] || die "no SDK Ref pack to seed bootstrap (looked under $packs)"
@@ -606,6 +653,7 @@ PYEOF
   # bootstrap ref pack before any local ref exists. Handle each once and
   # retry; normal incremental runs never take these paths.
   seed_musl_runtime_pack_alias_from_release
+  ensure_bootstrap_ref_pack
   local attempt=0
   local fixed=""
   local alog="$WORK/build-attempt.log"    # per-attempt output for self-heal detection
