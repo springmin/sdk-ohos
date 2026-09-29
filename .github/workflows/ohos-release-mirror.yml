@@ -56,6 +56,16 @@ jobs:
           DST="v$VERSION-openharmony"
           OWNER="${{ github.repository_owner }}"
           echo "mirroring $OWNER/$REPO $SRC -> $DST (asset_prefix='$ASSET_PREFIX')"
+          # The destination release is created once per version line; keep this
+          # idempotent so re-runs (and the first mirror of a new line) work.
+          case "$REPO" in
+            runtime-ohos)    TITLE="OpenHarmony arm64 Runtime $VERSION (post-rename)" ;;
+            aspnetcore-ohos) TITLE="OpenHarmony arm64 ASP.NET Core $VERSION (post-rename)" ;;
+            sdk-ohos)        TITLE="OpenHarmony SDK $VERSION (post-rename)" ;;
+            *)               TITLE="OpenHarmony $VERSION (post-rename)" ;;
+          esac
+          gh release create "$DST" --repo "$OWNER/$REPO" --title "$TITLE" \
+            --notes "Post-rename distribution line mirrored from $SRC (ohos-release-mirror.yml)." || true
 
           mkdir -p dl
           gh api "repos/$OWNER/$REPO/releases/tags/$SRC" \
