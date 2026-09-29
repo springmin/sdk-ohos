@@ -205,12 +205,27 @@ stage_selfsign_release_assets() {
   cp -f "$SDK_REPO/eng/PortableRuntimeIdentifierGraph.openharmony.json" \
         "$graphdir/PortableRuntimeIdentifierGraph.json" || die "selfsign RID graph staging failed"
   local graph="$graphdir/PortableRuntimeIdentifierGraph.json"
+  # The fork ships the OpenHarmony-target ilc under the linux-x64 host pack name
+  # (its tools/ilc is aarch64), which cannot execute on the CI host. Publish
+  # against a filtered view of the feed without that package so restore takes
+  # the official linux-x64 host ilc from the dnceng dotnet11 feed (already a
+  # source in the repo NuGet.config); our patched microsoft.dotnet.ilcompiler
+  # meta-package and the OpenHarmony target packs still come from the feed.
+  local ffeed="$WORK/selfsign-feed"
+  rm -rf "$ffeed"
+  mkdir -p "$ffeed"
+  find "$FEED" -maxdepth 1 -name "*.nupkg" \
+    ! -name "runtime.linux-x64.Microsoft.DotNet.ILCompiler*" \
+    -exec cp -l -f {} "$ffeed/" \; 2>/dev/null \
+  || find "$FEED" -maxdepth 1 -name "*.nupkg" \
+    ! -name "runtime.linux-x64.Microsoft.DotNet.ILCompiler*" \
+    -exec cp -f {} "$ffeed/" \;
   local publog="$WORK/selfsign-ohos-publish.log"
   if ! (cd "$SDK_REPO/eng/ohos-install" && "$dotnet_bin" publish selfsign.csproj \
       -c "$CONFIG" -r openharmony-arm64 -p:PublishAot=true -p:CompressSymbols=false \
       -p:RuntimeFrameworkVersion="$RT_VERSION" \
       "-p:BundledRuntimeIdentifierGraphFile=$graph" \
-      "/p:RestoreAdditionalProjectSources=$FEED" \
+      "/p:RestoreAdditionalProjectSources=$ffeed" \
       -o "$out" ${extra[@]+"${extra[@]}"}) > "$publog" 2>&1; then
     echo "WARN: selfsign-ohos-arm64 publish failed; last 80 log lines:" | tee -a "$LOG"
     tail -80 "$publog" | tee -a "$LOG"
