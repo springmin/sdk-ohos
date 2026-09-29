@@ -173,6 +173,15 @@ stage_selfsign_release_assets() {
   ensure_selfsign
   cp -f "$SELFSIGN_BIN" "$ship/selfsign-linux-x64" || die "selfsign-linux-x64 staging failed"
   info "staged selfsign-linux-x64"
+  # The cross-built openharmony-arm64 signer SIGSEGVs on device (2026-09-29,
+  # rc=139; libs/LD_LIBRARY_PATH ruled out) - and a broken signer is worse than
+  # none, because install-dotnet-ohos.sh prefers it and then fails every file.
+  # Keep the publish opt-in until the build is fixed (the device-built asset is
+  # the documented working path); installs fall back to binary-sign-tool.
+  if [ "${OHOS_SELFSIGN_PUBLISH:-0}" != 1 ]; then
+    info "selfsign-ohos-arm64 publish disabled (OHOS_SELFSIGN_PUBLISH=1 enables it)"
+    return 0
+  fi
   local proj="$SDK_REPO/eng/ohos-install/selfsign.csproj"
   if [ ! -f "$proj" ]; then
     die "selfsign project missing at $proj (cannot stage selfsign-ohos-arm64)"
