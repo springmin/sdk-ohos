@@ -193,6 +193,16 @@ stage_selfsign_release_assets() {
   if [ -d "$sysroot" ]; then
     extra+=("-p:SysRoot=$sysroot")
   fi
+  # The OpenHarmony NativeAOT pack's crypto shim leaves the OpenSSL symbols for
+  # the app link to resolve (the runtime links OpenSSL statically on OHOS), so
+  # pass the CI's cross-built static libssl/libcrypto via the extension targets.
+  local ssl_dir="${OPENSSL_DIR:-/tmp/openssl-ohos/install}"
+  if [ -f "$ssl_dir/lib/libcrypto.a" ] && [ -f "$ssl_dir/lib/libssl.a" ]; then
+    extra+=("-p:CustomAfterMicrosoftCommonTargets=$SCRIPT_DIR/selfsign-ohos-link.targets")
+    extra+=("-p:OhosStaticOpenSslDir=$ssl_dir/lib")
+  else
+    echo "WARN: static OpenSSL not found under $ssl_dir/lib; the selfsign link may fail on OpenSSL symbols" | tee -a "$LOG"
+  fi
   rm -rf "$out"
   info "publishing selfsign for openharmony-arm64 (NativeAOT cross, feed packs)"
   # The SDK derives RuntimeIdentifierGraphPath as

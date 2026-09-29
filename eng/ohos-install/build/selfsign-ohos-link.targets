@@ -1,0 +1,15 @@
+<Project>
+  <!-- Injected into the selfsign OpenHarmony AOT publish via
+       CustomAfterMicrosoftCommonTargets (see pack-sdk.sh). The OpenHarmony
+       NativeAOT runtime pack ships the OpenSsl crypto shim with the OpenSSL
+       symbols left undefined (the runtime links OpenSSL statically on
+       OpenHarmony), so the app link must provide the CI's static
+       libssl/libcrypto. Only active when the caller passes the directory. -->
+  <ItemGroup Condition="'$(PublishAot)' == 'true' and '$(OhosStaticOpenSslDir)' != ''">
+    <LinkerArg Include="-L$(OhosStaticOpenSslDir)" />
+    <LinkerArg Include="-Wl,-Bstatic" />
+    <LinkerArg Include="-lssl" />
+    <LinkerArg Include="-lcrypto" />
+    <LinkerArg Include="-Wl,-Bdynamic" />
+  </ItemGroup>
+</Project>
