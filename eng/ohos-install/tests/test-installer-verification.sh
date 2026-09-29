@@ -76,6 +76,11 @@ installer_tests() {
     out="$(resolve_expected_sha256 "$url" "$SELFSIGN_ASSET" 2>&1)"; rc=$?
     expect_rc "$rc" 1 "same-origin checksums cannot be resolved for non-pinned hosts" "$out"
 
+    # The rc.2 line intentionally leaves the default SELFSIGN_SHA256 empty (the
+    # cross-built signer asset is being reworked; see versions.env), so pin a
+    # mismatching digest explicitly instead of relying on the default pin.
+    SELFSIGN_SHA256="0000000000000000000000000000000000000000000000000000000000000000"
+    export SELFSIGN_SHA256
     verify_selfsign_asset "$artifact" >/dev/null 2>&1; rc=$?
     expect_rc "$rc" 1 "a selfsign file that does not match the pin is rejected" ""
     SELFSIGN_SHA256="$good"
