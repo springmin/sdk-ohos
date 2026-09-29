@@ -199,9 +199,25 @@ download() { # url -> file
     esac
     info "downloading ${url}"
     if command -v curl >/dev/null 2>&1; then
-        # https only, and a redirect may not downgrade the connection to http
-        curl -fsSL --proto '=https' --proto-redir '=https' \
-            --retry 3 --retry-delay 2 --connect-timeout 30 -o "$out" "$url" || return 1
+        # https only, and a redirect may not downgrade the connection to http.
+        # github.com release assets stall without a total timeout on some
+        # networks (observed on device), so bound each attempt and retry
+        # through the gh-proxy mirror before giving up.
+        : "${OHOS_INSTALL_PROXY:=https://gh-proxy.com}"
+        DL_URLS="$url"; DL_OK=0; DL_U=""
+        case "$url" in
+            https://github.com/*) [ -n "$OHOS_INSTALL_PROXY" ] && DL_URLS="$url $OHOS_INSTALL_PROXY/$url" ;;
+        esac
+        for DL_U in $DL_URLS; do
+            if curl -fsSL --proto '=https' --proto-redir '=https' \
+                --retry 3 --retry-delay 2 --connect-timeout 30 --max-time 1800 \
+                -o "$out" "$DL_U"; then
+                DL_OK=1
+                break
+            fi
+            rm -f "$out"
+        done
+        [ "$DL_OK" = 1 ] || return 1
     elif command -v wget >/dev/null 2>&1; then
         [ -n "$WGET_TLS_OPTS" ] || {
             printf 'ERROR: wget does not support --https-only; install curl or a wget that can refuse http redirects\n' >&2
