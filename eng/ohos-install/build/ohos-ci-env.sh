@@ -184,7 +184,27 @@ download_verified() { # <url> <dest> <what> <digest|"">; downloads to .part, ver
     return 1
   fi
   log "Downloading $what..."
-  curl -fL --retry 3 -o "$dest.part" "$url" || { rm -f "$dest.part"; echo "ERROR: download failed: $url" >&2; return 1; }
+  # github.com release assets intermittently answer 5xx / reset the TLS session
+  # (openssl-3.3.1.tar.gz failed a whole run that way); retry through the
+  # gh-proxy mirror before giving up. The digest check below still applies.
+  : "${OHOS_CI_PROXY:=https://gh-proxy.com}"
+  local -a urls=("$url")
+  case "$url" in
+    https://github.com/*) [ -n "$OHOS_CI_PROXY" ] && urls+=("$OHOS_CI_PROXY/$url") ;;
+  esac
+  local u ok=0
+  for u in "${urls[@]}"; do
+    if curl -fL --retry 3 -o "$dest.part" "$u"; then
+      ok=1
+      break
+    fi
+    [ "$u" = "$url" ] && log "direct download failed; trying mirrors for $what"
+  done
+  if [ "$ok" != 1 ]; then
+    rm -f "$dest.part"
+    echo "ERROR: download failed: $url" >&2
+    return 1
+  fi
   if [ -n "$digest" ]; then
     verify_digest "$dest.part" "$digest" "$what" || { rm -f "$dest.part"; return 1; }
   else
