@@ -844,6 +844,11 @@ for tfm, fr in proj.get('frameworks',{}).items():
 # expected digest for a host runtime pack (dnceng pins or the GitHub release
 # digest of the 'host-runtime-packs' release); empty when unavailable.
 host_pack_expected_sha256() { # <id> <ver> <url> -> hex or empty
+  # A local pin wins: the github host-runtime-packs release has no SHA256SUMS,
+  # so the network-derived lookup can fail transiently and refuse a valid pack.
+  local pin
+  pin="$(host_pack_sha256 "$1" "$2")"
+  if [ -n "$pin" ]; then printf '%s' "$pin"; return 0; fi
   case "$3" in
     *pkgs.dev.azure.com*) printf '%s' "${HOST_PACK_SHA256:-$(dnceng_pkg_sha256 "$1" "$2")}" ;;
     https://github.com/*) github_asset_sha256 "$GH_USER" sdk-ohos host-runtime-packs "$1.$2.nupkg" || true ;;
