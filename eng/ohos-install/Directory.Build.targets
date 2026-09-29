@@ -1,3 +1,21 @@
 <Project>
   <!-- Isolate this standalone tool from the SDK repo's artifacts/ redirect. -->
+  <!-- OpenHarmony NativeAOT overlay for this standalone tool only: a bootstrap
+       (host) SDK's known-pack RID lists do not carry openharmony-*, and its
+       bundled runtime version is not the fork's product version, so a cross
+       publish would fall back to stock/bundled packs (NETSDK1203/1204 on
+       stricter SDKs). While publishing for an openharmony RID, add the RID to
+       the ILCompiler and runtime pack lists and pin the ILCompiler pack to the
+       requested framework version, so restore resolves the fork's packs from
+       the local feed. No effect on SDKs that already know the RID (device /
+       future fork SDKs), nor on non-AOT or non-openharmony builds. -->
+  <ItemGroup Condition="'$(PublishAot)' == 'true' and $(RuntimeIdentifier.StartsWith('openharmony-'))">
+    <KnownILCompilerPack Update="Microsoft.DotNet.ILCompiler"
+                         ILCompilerRuntimeIdentifiers="$(ILCompilerRuntimeIdentifiers);$(RuntimeIdentifier)" />
+    <KnownILCompilerPack Update="Microsoft.DotNet.ILCompiler"
+                         ILCompilerPackVersion="$(RuntimeFrameworkVersion)"
+                         Condition="'$(RuntimeFrameworkVersion)' != ''" />
+    <KnownRuntimePack Update="Microsoft.NETCore.App"
+                      RuntimePackRuntimeIdentifiers="$(RuntimePackRuntimeIdentifiers);$(RuntimeIdentifier)" />
+  </ItemGroup>
 </Project>

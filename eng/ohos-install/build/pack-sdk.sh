@@ -156,3 +156,59 @@ python3 "$SCRIPT_DIR/patch-msbuild-pipe.py" \
 sdk_tb=$(find "$SDK_REPO/artifacts" -maxdepth 5 -name "dotnet-sdk-*-$RID.tar.gz" | head -1)
 [ -n "$sdk_tb" ] && verify_sdk_tarball_arch "$sdk_tb"
 [ -n "$sdk_tb" ] && sign_all "$sdk_tb"
+
+# ---- 5. selfsign release assets (prebuilt signing tools) --------------------
+# The sdk release ships the prebuilt signing tools the installer consumes:
+# selfsign-linux-x64 (host pre-signing) and selfsign-ohos-arm64 (device;
+# SELFSIGN_ASSET in versions.env). The linux-x64 binary comes from
+# ensure_selfsign. The openharmony-arm64 one is a NativeAOT cross publish
+# against the feed's OpenHarmony packs: the host x64 ilc compiles, the OHOS
+# NDK clang links, and eng/ohos-install/Directory.Build.targets adds the RID
+# to the bootstrap SDK's known-pack lists. The asset name carries no version,
+# so SELFSIGN_SHA256 in versions.env must be re-anchored to the produced
+# binary after every release that rebuilds it.
+stage_selfsign_release_assets() {
+  local ship="$SDK_REPO/artifacts/packages/$CONFIG/Shipping"
+  mkdir -p "$ship"
+  ensure_selfsign
+  cp -f "$SELFSIGN_BIN" "$ship/selfsign-linux-x64" || die "selfsign-linux-x64 staging failed"
+  info "staged selfsign-linux-x64"
+  local proj="$SDK_REPO/eng/ohos-install/selfsign.csproj"
+  if [ ! -f "$proj" ]; then
+    echo "WARN: no selfsign project; skipping selfsign-ohos-arm64" | tee -a "$LOG"
+    return 0
+  fi
+  local out="$WORK/selfsign-ohos-out"
+  local dotnet_bin="${DOTNET:-$RUNTIME_REPO/.dotnet/dotnet}"
+  [ -x "$dotnet_bin" ] || dotnet_bin="$(command -v dotnet)"
+  local llvm="${OHOS_NDK_HOME:-}/native/llvm/bin"
+  local sysroot="${OHOS_NDK_HOME:-}/native/sysroot"
+  local -a extra=()
+  if [ -x "$llvm/aarch64-unknown-linux-ohos-clang" ]; then
+    extra+=("-p:CppCompiler=$llvm/aarch64-unknown-linux-ohos-clang")
+  fi
+  if [ -x "$llvm/aarch64-unknown-linux-ohos-clang++" ]; then
+    extra+=("-p:CppLinker=$llvm/aarch64-unknown-linux-ohos-clang++")
+  fi
+  if [ -d "$sysroot" ]; then
+    extra+=("-p:SysRoot=$sysroot")
+  fi
+  rm -rf "$out"
+  info "publishing selfsign for openharmony-arm64 (NativeAOT cross, feed packs)"
+  if ! (cd "$SDK_REPO/eng/ohos-install" && "$dotnet_bin" publish selfsign.csproj \
+      -c "$CONFIG" -r openharmony-arm64 -p:PublishAot=true -p:CompressSymbols=false \
+      -p:RuntimeFrameworkVersion="$RT_VERSION" \
+      "-p:BundledRuntimeIdentifierGraphFile=$SDK_REPO/eng/PortableRuntimeIdentifierGraph.openharmony.json" \
+      "/p:RestoreAdditionalProjectSources=$FEED" \
+      -o "$out" ${extra[@]+"${extra[@]}"}) >> "$LOG" 2>&1; then
+    echo "WARN: selfsign-ohos-arm64 publish failed (see the build log); the release will lack it" | tee -a "$LOG"
+    return 0
+  fi
+  if [ ! -f "$out/selfsign" ]; then
+    echo "WARN: selfsign-ohos-arm64 publish produced no binary" | tee -a "$LOG"
+    return 0
+  fi
+  cp -f "$out/selfsign" "$ship/selfsign-ohos-arm64" || die "selfsign-ohos-arm64 staging failed"
+  info "staged selfsign-ohos-arm64 ($(stat -c%s "$ship/selfsign-ohos-arm64") bytes, sha256 $(sha256sum "$ship/selfsign-ohos-arm64" | cut -d' ' -f1))"
+}
+stage_selfsign_release_assets
