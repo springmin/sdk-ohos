@@ -175,8 +175,7 @@ stage_selfsign_release_assets() {
   info "staged selfsign-linux-x64"
   local proj="$SDK_REPO/eng/ohos-install/selfsign.csproj"
   if [ ! -f "$proj" ]; then
-    echo "WARN: no selfsign project; skipping selfsign-ohos-arm64" | tee -a "$LOG"
-    return 0
+    die "selfsign project missing at $proj (cannot stage selfsign-ohos-arm64)"
   fi
   local out="$WORK/selfsign-ohos-out"
   local dotnet_bin="${DOTNET:-$RUNTIME_REPO/.dotnet/dotnet}"
@@ -237,15 +236,14 @@ stage_selfsign_release_assets() {
       "-p:BundledRuntimeIdentifierGraphFile=$graph" \
       "/p:RestoreAdditionalProjectSources=$ffeed" \
       -o "$out" ${extra[@]+"${extra[@]}"}) > "$publog" 2>&1; then
-    echo "WARN: selfsign-ohos-arm64 publish failed; last 80 log lines:" | tee -a "$LOG"
+    echo "ERROR: selfsign-ohos-arm64 publish failed; last 80 log lines:" | tee -a "$LOG"
     tail -80 "$publog" | tee -a "$LOG"
     cat "$publog" >> "$LOG"
-    return 0
+    die "selfsign-ohos-arm64 publish failed"
   fi
   cat "$publog" >> "$LOG"
   if [ ! -f "$out/selfsign" ]; then
-    echo "WARN: selfsign-ohos-arm64 publish produced no binary" | tee -a "$LOG"
-    return 0
+    die "selfsign-ohos-arm64 publish produced no binary"
   fi
   cp -f "$out/selfsign" "$ship/selfsign-ohos-arm64" || die "selfsign-ohos-arm64 staging failed"
   info "staged selfsign-ohos-arm64 ($(stat -c%s "$ship/selfsign-ohos-arm64") bytes, sha256 $(sha256sum "$ship/selfsign-ohos-arm64" | cut -d' ' -f1))"
