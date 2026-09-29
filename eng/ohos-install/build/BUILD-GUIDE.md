@@ -3,7 +3,7 @@
 构建 .NET（runtime → aspnetcore → sdk）的 OpenHarmony (OHOS, RID `openharmony-arm64`) 交叉产物。
 
 版本 pin（runtime/aspnetcore/SDK、crossgen2、digest、TFM 等）统一在 `eng/ohos-install/versions.env`；
-本页示例对应当前默认值：runtime/aspnetcore `11.0.0-rc.1.26451.109` · SDK `11.0.100-rc.2.26451.109`
+本页示例对应当前默认值：runtime/aspnetcore `11.0.0-rc.2.26451.112` · SDK `11.0.100-rc.2.26451.112`
 （由 `--buildid` 决定；三仓需保持同一版本使 feed 可解析）
 
 ---
@@ -66,7 +66,7 @@ sh build-ohos-all.sh \
 
 - 本地收集：`sdk-ohos/eng/ohos-install/.work/output/`（29 文件）
 - 各仓自身 Shipping：`<repo>/artifacts/packages/Release/Shipping/`（含
-  `dotnet-sdk-11.0.100-rc.2.26451.109-openharmony-arm64.tar.gz` 160MB、runtime/aspnetcore tar、
+  `dotnet-sdk-11.0.100-rc.2.26451.112-openharmony-arm64.tar.gz` 180MB、runtime/aspnetcore tar、
   NativeAOT/ILCompiler/Host/Crossgen2/Ref 等 nupkg，均已 `.codesign` 预签名）
 - `Microsoft.NETCore.App.Crossgen2.openharmony-arm64` 为**未裁剪的 split 布局**（`PublishSingleFile=false` +
   `PublishTrimmed=false` + runtime pack 框架覆盖 + `runtimepack` deps 条目；由 `assemble-crossgen2-pack.py` 组装）：
@@ -78,10 +78,10 @@ sh build-ohos-all.sh \
   （`overlay-pack.py`）、layout 与 runtime tarball（`overlay-tarball.py`）——SDK 共享框架因此也是 R2R。
   设备端自包含 + `PublishReadyToRun` 发布变为"只编 app"（2026-09-13 实测 43 s；此前 >15 min 停滞）。
   `OHOS_FRAMEWORK_R2R=0` 可关闭该步骤。
-- SDK redist 目录：`<sdk>/artifacts/bin/redist/Release/dotnet`（内嵌 real runtime 26451.109）
+- SDK redist 目录：`<sdk>/artifacts/bin/redist/Release/dotnet`（内嵌 real runtime 26451.112）
 - 设备部署：见 `DEVICE-DEPLOYMENT.md` 示例（hdc 推送 + 自包含应用直跑）。
 
 ## 六、验证（qemu-aarch64 冒烟，可选）
 
 用 `~/dotnet/deps/qemu-rootfs`（musl + arc4 shim + libc++_shared）：
-`dotnet --info` → RID=`openharmony-arm64`、版本 `11.0.0-rc.1.26451.109`；托管应用 exit 0。
+`dotnet --info` → RID=`openharmony-arm64`、版本 `11.0.0-rc.2.26451.112`；托管应用 exit 0。
