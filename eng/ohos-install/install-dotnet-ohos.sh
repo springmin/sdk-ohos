@@ -508,6 +508,24 @@ verify_selfsign_asset() {
     return 0
 }
 
+# The deployed signer must itself carry .codesign before it can exec (unsigned
+# ELF -> EACCES). Preference: a pre-signed release asset; otherwise bootstrap it
+# with binary-sign-tool. If neither holds, remove it so sign_all() does not try
+# to sign the whole tree with an un-runnable selfsign (which would fail every
+# file and abort the install). Applies to pre-existing and just-deployed
+# signers alike (a pre-existing unsigned selfsign used to be used as-is).
+bootstrap_selfsign() {
+    has_codesign "${INSTALL_DIR}/selfsign" && return 0
+    if [ -n "$SIGN_TOOL" ]; then
+        "$SIGN_TOOL" sign -inFile "${INSTALL_DIR}/selfsign" -outFile "${INSTALL_DIR}/selfsign" -selfSign 1 >/dev/null 2>&1 \
+            && info "  bootstrapped .codesign on selfsign via binary-sign-tool" \
+            || warn_echo "  WARN: could not bootstrap selfsign signature with binary-sign-tool"
+    fi
+    if ! has_codesign "${INSTALL_DIR}/selfsign"; then
+        warn_echo "  WARN: deployed selfsign is unsigned and cannot be bootstrapped; removing it and falling back to binary-sign-tool"
+        rm -f "${INSTALL_DIR}/selfsign"
+    fi
+}
 deploy_selfsign() {
     if [ -x "${INSTALL_DIR}/selfsign" ]; then
         # Never execute a pre-existing signer without checking it against the pin.
@@ -515,6 +533,7 @@ deploy_selfsign() {
         case "$VSA_RC" in
             0)
                 info "selfsign already at ${INSTALL_DIR}/selfsign (sha256 verified)"
+                bootstrap_selfsign
                 return 0
                 ;;
             1)
@@ -523,6 +542,7 @@ deploy_selfsign() {
                 ;;
             *)
                 warn_echo "  WARN: no anchored sha256 for ${SELFSIGN_ASSET}; keeping the existing ${INSTALL_DIR}/selfsign"
+                bootstrap_selfsign
                 return 0
                 ;;
         esac
@@ -544,22 +564,7 @@ deploy_selfsign() {
     mv -f "$SELFSIGN_TMP" "${INSTALL_DIR}/selfsign" || { rm -f "$SELFSIGN_TMP"; return 1; }
     chmod +x "${INSTALL_DIR}/selfsign"
     info "deployed selfsign -> ${INSTALL_DIR}/selfsign (preferred signer, parallel to dotnet/dnx)"
-    # The just-deployed selfsign must itself carry .codesign before it can exec
-    # (unsigned ELF -> EACCES). Prefer a pre-signed release asset; otherwise
-    # bootstrap it with binary-sign-tool. If neither holds, remove it so
-    # sign_all() does not try to sign the whole tree with an un-runnable
-    # selfsign (that would fail every file and abort the install).
-    if ! has_codesign "${INSTALL_DIR}/selfsign"; then
-        if [ -n "$SIGN_TOOL" ]; then
-            "$SIGN_TOOL" sign -inFile "${INSTALL_DIR}/selfsign" -outFile "${INSTALL_DIR}/selfsign" -selfSign 1 >/dev/null 2>&1 \
-                && info "  bootstrapped .codesign on selfsign via binary-sign-tool" \
-                || warn_echo "  WARN: could not bootstrap selfsign signature with binary-sign-tool"
-        fi
-        if ! has_codesign "${INSTALL_DIR}/selfsign"; then
-            warn_echo "  WARN: deployed selfsign is unsigned and cannot be bootstrapped; removing it and falling back to binary-sign-tool"
-            rm -f "${INSTALL_DIR}/selfsign"
-        fi
-    fi
+    bootstrap_selfsign
 }
 
 # -------------------------------------------------------------- workload
