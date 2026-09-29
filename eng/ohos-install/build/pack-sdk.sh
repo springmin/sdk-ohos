@@ -245,6 +245,25 @@ stage_selfsign_release_assets() {
   if [ ! -f "$out/selfsign" ]; then
     die "selfsign-ohos-arm64 publish produced no binary"
   fi
+  # The SDK auto-codesigns build outputs (OpenHarmonyCodesign), so the publish
+  # output carries a .codesign block produced by the CI selfsign - which the
+  # device rejects (EPERM), and the installer only bootstraps *unsigned*
+  # signers (it skips files that already have .codesign). Ship the asset
+  # without the block: install-dotnet-ohos.sh bootstraps it with the device's
+  # binary-sign-tool on first use.
+  local llvm="${OHOS_NDK_HOME:-}/native/llvm/bin"
+  if [ -x "$llvm/llvm-objcopy" ]; then
+    if ! "$llvm/llvm-objcopy" --remove-section .codesign "$out/selfsign" >> "$LOG" 2>&1; then
+      warn_echo "WARN: llvm-objcopy could not strip .codesign from the selfsign"
+    fi
+  else
+    warn_echo "WARN: no llvm-objcopy under $llvm; the selfsign keeps its CI signature (device may reject it)"
+  fi
+  if "$llvm/llvm-readelf" -S "$out/selfsign" 2>/dev/null | grep -q "\.codesign"; then
+    warn_echo "WARN: selfsign-ohos-arm64 still carries a .codesign section"
+  else
+    info "  stripped the CI .codesign from selfsign-ohos-arm64 (installer bootstraps it)"
+  fi
   cp -f "$out/selfsign" "$ship/selfsign-ohos-arm64" || die "selfsign-ohos-arm64 staging failed"
   info "staged selfsign-ohos-arm64 ($(stat -c%s "$ship/selfsign-ohos-arm64") bytes, sha256 $(sha256sum "$ship/selfsign-ohos-arm64" | cut -d' ' -f1))"
 }
