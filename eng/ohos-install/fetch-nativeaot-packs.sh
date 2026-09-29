@@ -46,13 +46,8 @@ sha256_of() {
 }
 
 assets="
-Microsoft.NETCore.App.Runtime.NativeAOT.openharmony-arm64.11.0.0-rc.1.26451.109.nupkg
-runtime.openharmony-arm64.Microsoft.DotNet.ILCompiler.11.0.0-rc.1.26451.109.nupkg
-microsoft.netcore.app.runtime.nativeaot.linux-musl-arm64.11.0.0-rc.1.26425.128.nupkg
-runtime.linux-musl-arm64.microsoft.dotnet.ilcompiler.11.0.0-rc.1.26425.128.nupkg
-runtime.win-x64.microsoft.dotnet.ilcompiler.11.0.0-rc.1.26425.128.nupkg
-microsoft.netcore.app.runtime.nativeaot.linux-musl-arm64.11.0.0-rc.1.26451.109.nupkg
-runtime.linux-musl-arm64.microsoft.dotnet.ilcompiler.11.0.0-rc.1.26451.109.nupkg
+Microsoft.NETCore.App.Runtime.NativeAOT.openharmony-arm64.11.0.0-rc.2.26451.112.nupkg
+runtime.openharmony-arm64.Microsoft.DotNet.ILCompiler.11.0.0-rc.2.26451.112.nupkg
 "
 
 mkdir -p "$DEST"
