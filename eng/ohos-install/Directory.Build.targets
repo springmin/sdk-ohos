@@ -11,11 +11,11 @@
        future fork SDKs), nor on non-AOT or non-openharmony builds. -->
   <ItemGroup Condition="'$(PublishAot)' == 'true' and $(RuntimeIdentifier.StartsWith('openharmony-'))">
     <KnownILCompilerPack Update="Microsoft.DotNet.ILCompiler"
-                         ILCompilerRuntimeIdentifiers="$(ILCompilerRuntimeIdentifiers);$(RuntimeIdentifier)" />
+                         ILCompilerRuntimeIdentifiers="%(ILCompilerRuntimeIdentifiers);$(RuntimeIdentifier)" />
     <KnownILCompilerPack Update="Microsoft.DotNet.ILCompiler"
                          ILCompilerPackVersion="$(RuntimeFrameworkVersion)"
                          Condition="'$(RuntimeFrameworkVersion)' != ''" />
     <KnownRuntimePack Update="Microsoft.NETCore.App"
-                      RuntimePackRuntimeIdentifiers="$(RuntimePackRuntimeIdentifiers);$(RuntimeIdentifier)" />
+                      RuntimePackRuntimeIdentifiers="%(RuntimePackRuntimeIdentifiers);$(RuntimeIdentifier)" />
   </ItemGroup>
 </Project>
