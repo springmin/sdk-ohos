@@ -851,6 +851,15 @@ sign_all() {
     printf '0 0 0\n' > "$CNTFILE"
     find "$INSTALL_DIR" -type f 2>/dev/null | while IFS= read -r f; do
         file "$f" 2>/dev/null | grep -q "ELF" || continue
+        # Never re-sign the preferred signer itself: when selfsign is used it
+        # lives in $INSTALL_DIR, and this loop would invoke it on its own file -
+        # the in-place rewrite of a running executable fails (ETXTBSY), which
+        # makes sign_all die on the shipped selfsign asset.
+        if [ -n "$SELFSIGN" ] && [ "$f" = "$SELFSIGN" ]; then
+            read -r s k d < "$CNTFILE"
+            printf '%d %d %d\n' "$s" "$((k + 1))" "$d" > "$CNTFILE"
+            continue
+        fi
         read -r s k d < "$CNTFILE"
         # Re-sign unconditionally: shipped signatures may be from older
         # tooling and rejected by the device (EPERM). selfsign --force
