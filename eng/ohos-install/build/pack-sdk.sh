@@ -195,11 +195,21 @@ stage_selfsign_release_assets() {
   fi
   rm -rf "$out"
   info "publishing selfsign for openharmony-arm64 (NativeAOT cross, feed packs)"
+  # The SDK derives RuntimeIdentifierGraphPath as
+  # <dir of BundledRuntimeIdentifierGraphFile>/PortableRuntimeIdentifierGraph.json
+  # (Microsoft.NET.Sdk.targets), so point it at a directory holding the fork's
+  # portable graph under that standard name (the repo only carries the
+  # .openharmony.json variant).
+  local graphdir="$WORK/selfsign-ridgraph"
+  mkdir -p "$graphdir"
+  cp -f "$SDK_REPO/eng/PortableRuntimeIdentifierGraph.openharmony.json" \
+        "$graphdir/PortableRuntimeIdentifierGraph.json" || die "selfsign RID graph staging failed"
+  local graph="$graphdir/PortableRuntimeIdentifierGraph.json"
   local publog="$WORK/selfsign-ohos-publish.log"
   if ! (cd "$SDK_REPO/eng/ohos-install" && "$dotnet_bin" publish selfsign.csproj \
       -c "$CONFIG" -r openharmony-arm64 -p:PublishAot=true -p:CompressSymbols=false \
       -p:RuntimeFrameworkVersion="$RT_VERSION" \
-      "-p:BundledRuntimeIdentifierGraphFile=$SDK_REPO/eng/PortableRuntimeIdentifierGraph.openharmony.json" \
+      "-p:BundledRuntimeIdentifierGraphFile=$graph" \
       "/p:RestoreAdditionalProjectSources=$FEED" \
       -o "$out" ${extra[@]+"${extra[@]}"}) > "$publog" 2>&1; then
     echo "WARN: selfsign-ohos-arm64 publish failed; last 80 log lines:" | tee -a "$LOG"
