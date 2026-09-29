@@ -195,15 +195,19 @@ stage_selfsign_release_assets() {
   fi
   rm -rf "$out"
   info "publishing selfsign for openharmony-arm64 (NativeAOT cross, feed packs)"
+  local publog="$WORK/selfsign-ohos-publish.log"
   if ! (cd "$SDK_REPO/eng/ohos-install" && "$dotnet_bin" publish selfsign.csproj \
       -c "$CONFIG" -r openharmony-arm64 -p:PublishAot=true -p:CompressSymbols=false \
       -p:RuntimeFrameworkVersion="$RT_VERSION" \
       "-p:BundledRuntimeIdentifierGraphFile=$SDK_REPO/eng/PortableRuntimeIdentifierGraph.openharmony.json" \
       "/p:RestoreAdditionalProjectSources=$FEED" \
-      -o "$out" ${extra[@]+"${extra[@]}"}) >> "$LOG" 2>&1; then
-    echo "WARN: selfsign-ohos-arm64 publish failed (see the build log); the release will lack it" | tee -a "$LOG"
+      -o "$out" ${extra[@]+"${extra[@]}"}) > "$publog" 2>&1; then
+    echo "WARN: selfsign-ohos-arm64 publish failed; last 80 log lines:" | tee -a "$LOG"
+    tail -80 "$publog" | tee -a "$LOG"
+    cat "$publog" >> "$LOG"
     return 0
   fi
+  cat "$publog" >> "$LOG"
   if [ ! -f "$out/selfsign" ]; then
     echo "WARN: selfsign-ohos-arm64 publish produced no binary" | tee -a "$LOG"
     return 0
