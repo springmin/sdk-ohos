@@ -233,12 +233,10 @@ jobs:
           . sdk/eng/ohos-install/versions.env
           set +a
           BUILDID="${BUILDID_INPUT:-$DEFAULT_BUILDID}"
-          # The rc.2 line builds with the upstream rc.2 flight revision
-          # (20260901.112, matching the published dnceng packages); the legacy
-          # rc.1 line keeps DEFAULT_BUILDID. An explicit buildid input wins.
-          case "$RUNTIME_REF_INPUT" in
-            *rc2*) [ -n "$BUILDID_INPUT" ] || BUILDID=20260901.112 ;;
-          esac
+          # The current rc.2 line builds with the upstream rc.2 flight revision
+          # (20260901.112, matching the published dnceng packages); it is the
+          # versions.env default since the rc.2 mainline adoption. The legacy
+          # rc.1 line passes buildid=20260901.109 (the workflow input) explicitly.
           RID="${RID_INPUT:-$RID}"
           STOCK_CROSSGEN2_VERSION="${CROSSGEN2_VERSION_INPUT:-$CI_STOCK_CROSSGEN2_VERSION}"
           {

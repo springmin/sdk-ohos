@@ -23,7 +23,7 @@
 ### A. GitHub Actions（最省心，干净环境，产物自动上传）
 ```sh
 gh workflow run ohos-full-build.yml --repo springmin/sdk-ohos \
-  --ref feature/openharmony -f buildid=20260901.109
+  --ref feature/openharmony -f buildid=20260901.112
 ```
 - runner：ubuntu-24.04（4 核/16GB）；NDK/OpenSSL/ICU 由 cache `ohos-ci-env-openharmony-arm64-<hash>` 提供（首次 ~30 min 准备，之后命中）。
 - 产物：run 页 artifact `ohos-build-openharmony-arm64-<buildid>`（28–29 文件，保留 30 天）。
@@ -48,7 +48,7 @@ sh build-ohos-all.sh                    # 默认全链；BUILDID 默认取 versi
 ```sh
 sh build-ohos-all.sh \
   [--arch arm64] [--rid openharmony-arm64] [--config Release] \
-  [--buildid 20260901.109] \
+  [--buildid 20260901.112] \
   [--skip-runtime|--skip-aspnetcore|--skip-sdk] \   # 跳过某仓（需其产物已在 feed）
   [--stage-only 1|3|4]                              # 只跑单个 stage（1=runtime…）
 ```
