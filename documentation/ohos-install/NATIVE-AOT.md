@@ -161,8 +161,11 @@ hello aot openharmony
   路径在本机（`~/.dotnet.rc2-fix`，SDK `.112` + workload `preview.28`）已复验，真机
   可启动出画（RSTree `ohos_dotnet_surface` buffer=1）。
 - **设备复验包**：rc.2 工具链出的 AOT haps = `aot-haps-v3-rc2.tar.gz`（随
-  `device-test-kit` release 发布）—— asset id/sha **见 release**（以 release 页与
-  随附 `.sha256` 为准）。
+  `device-test-kit` release 发布，asset **599996905**，18,185,012 B / sha256
+  `3d24f716fe564bc39151b3fa53ab827884d6e6f71d5be5ca28f2da9c9e638423`；已签 hap
+  `332f2d8bb549c2739dbedb5796cab89d706cf543d16ad72bce168b14c1f90f5b`、未签
+  `4e3f0b1ad0f861d565d59eaee2002e517b7f419ea3c816b0db1b3b778bef83ac`；本机真机出画已验证，
+  RSTree `ohos_dotnet_surface` buffer=1）——以 release 页与随附 `.sha256` 为准。
 
 ## 7. Workload / CLI 开关评估
 
