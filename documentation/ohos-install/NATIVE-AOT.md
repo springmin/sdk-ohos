@@ -1,8 +1,12 @@
 # NativeAOT on OpenHarmony（实验）
 
-> 状态：**实验可用（2026-09-24 在 HarmonyOS 设备上端到端验证）**。
+> 状态：**实验可用（2026-09-24 在 HarmonyOS 设备上端到端验证；2026-09-29 起镜像
+> 与本文更新到 rc.2 线）**。
 > 本文覆盖：前置条件、命令、SDK 内部的 RID → pack 解析映射、离线 pack 获取、
 > 已复现的验证结果与已知限制。
+> rc.2 线环境：SDK `11.0.100-rc.2.26451.112` + workload `1.0.0-preview.28`；本机用
+> `~/.dotnet.rc2-fix` + feed（dnceng/离线，见 ohos-workload `docs/rc2-line-notes.md`），
+> 默认根 `~/.dotnet` 保留 rc.1 回滚线。
 
 NativeAOT 把托管程序编译成单个原生 ELF（`ilc` 编译 + 原生链接），发布产物
 在设备上直接 `execve`，不经过 CoreCLR/JIT —— 因此绕开了 HarmonyOS 对匿名
@@ -14,7 +18,7 @@ NativeAOT 把托管程序编译成单个原生 ELF（`ilc` 编译 + 原生链接
 
 | 项 | 要求 |
 |---|---|
-| SDK | `sdk-ohos` 构建的 SDK，`11.0.100-rc.1.26451.109` 及之后（RID 图 + ILCompiler/NativeAOT RID 列表已内嵌）。官方 stock SDK 需要叠加 §4 的离线 pack 和 RID 图覆盖 |
+| SDK | `sdk-ohos` 构建的 SDK，rc.2 线 `11.0.100-rc.2.26451.112` 及之后（RID 图 + ILCompiler/NativeAOT RID 列表已内嵌；rc.1 线 `11.0.100-rc.1.26451.109` 仍可用 rc.1 镜像）。官方 stock SDK 需要叠加 §4 的离线 pack 和 RID 图覆盖 |
 | RID | `openharmony-arm64`（对外命名不变；内部解析见 §3） |
 | 工具链 | OpenHarmony NDK 的 `clang` + `lld`（harmonybrew：`~/.harmonybrew/bin/clang` 或 DevEco `native/llvm/bin`），`clang` 目标为 `aarch64-unknown-linux-ohos` |
 | 运行库 | 设备端 `ilc`（本地 host 编译时使用）需要 `libstdc++.so.6` + `libgcc_s.so.1`，`install-dotnet-ohos.sh` 会自动从 ILCompiler pack 提取部署 |
@@ -64,6 +68,10 @@ Added PackageDownload for Microsoft.NETCore.App.Runtime.NativeAOT.linux-musl-arm
         for cross-targeting compilation for openharmony-arm64
 ```
 
+> 上例为 rc.1 线（26425.128 回落）实测留档。rc.2 线的 host ilc =
+> `Microsoft.DotNet.ILCompiler@11.0.0-rc.2.26451.112`，精确匹配镜像的
+> `runtime.openharmony-arm64…` 包（rc.2 镜像不含 `linux-musl` 回落件，见 §4）。
+
 | 角色 | 当前 SDK（优先精确匹配） | 回落（stock/旧 SDK） |
 |---|---|---|
 | host ILCompiler pack | `runtime.openharmony-arm64.Microsoft.DotNet.ILCompiler` | `runtime.<hostRID>.Microsoft.DotNet.ILCompiler`（如 `linux-musl-arm64` / `win-x64`） |
@@ -72,19 +80,17 @@ Added PackageDownload for Microsoft.NETCore.App.Runtime.NativeAOT.linux-musl-arm
 
 ## 4. 离线获取 pack
 
-`springmin/sdk-ohos` Release **`aot-packs-11.0.0-rc.1`** 镜像了以下资产
-（`SHA256SUMS` 随附；官方包来源为 nuget.org，本机构建包来源为
-`runtime-ohos` `feature/openharmony` @ `295014191c`）：
+`springmin/sdk-ohos` Release **`aot-packs-11.0.0-rc.2`** 镜像了 rc.2 线的两件原生包
+（`SHA256SUMS` 随附、asset id `597667550`；来源 = `runtime-ohos`
+`feature/openharmony` 的 rc.2 线构建）：
 
 | 资产 | 用途 | sha256 |
 |---|---|---|
-| `Microsoft.NETCore.App.Runtime.NativeAOT.openharmony-arm64.11.0.0-rc.1.26451.109.nupkg` | 设备端目标 runtime pack（原生，推荐） | `5baad9e83604528ffd207d60fe4a828a1f78da82a1695b5345e0d7ee3681d5e4` |
-| `runtime.openharmony-arm64.Microsoft.DotNet.ILCompiler.11.0.0-rc.1.26451.109.nupkg` | 设备端 host ilc（原生，推荐） | `999e73a7b41fdd5af42a613182a2577e9a276026b1a2f65295e29115b1b539e8` |
-| `microsoft.netcore.app.runtime.nativeaot.linux-musl-arm64.11.0.0-rc.1.26425.128.nupkg` | 回落目标 pack（官方） | `477b0c0ba48aae50beb973c5c205b98669eba6a4ba997abfae6f6f320c58bbf9` |
-| `runtime.linux-musl-arm64.microsoft.dotnet.ilcompiler.11.0.0-rc.1.26425.128.nupkg` | 回落 host ilc（官方；设备端运行受限，见 §5） | `74637dbb6a492bddd963e0a184c1f2faa07ac540154a90ef0618798990e29c63` |
-| `runtime.win-x64.microsoft.dotnet.ilcompiler.11.0.0-rc.1.26425.128.nupkg` | Windows host 交叉编译 ilc（官方） | `abd9009e44faa2f44633790625ed448b3a1ac4bf0c102fce7fe6d16410275421` |
-| `microsoft.netcore.app.runtime.nativeaot.linux-musl-arm64.11.0.0-rc.1.26451.109.nupkg` | 回落目标 pack（上面官方包的等同重打包，匹配 26451.109 band） | `8cdcb38808dd01a6a4b09c861f519d9619a73577ef38b2a3b487a54e7db4fd59` |
-| `runtime.linux-musl-arm64.microsoft.dotnet.ilcompiler.11.0.0-rc.1.26451.109.nupkg` | 回落 host ilc（等同重打包） | `0b0bbd18dea3ddfb1fbc41bfb683be55be2fa4b04e08553044ed583f2de51ce7` |
+| `Microsoft.NETCore.App.Runtime.NativeAOT.openharmony-arm64.11.0.0-rc.2.26451.112.nupkg` | 设备端目标 runtime pack（原生，推荐；asset id `597666870`） | `46d221f23ae90367b5234c7bd94e217416f0562957f6b8a9d3efb14daf52edd7` |
+| `runtime.openharmony-arm64.Microsoft.DotNet.ILCompiler.11.0.0-rc.2.26451.112.nupkg` | 设备端 host ilc（原生，推荐；asset id `597667138`） | `1c518a461cdb6d76640561b97170c2dc7d0e75fb55b475d00944a2e3cd7e67cd` |
+
+> rc.1 线镜像 **`aot-packs-11.0.0-rc.1`** 保留（含 `linux-musl` / `win-x64` 官方回落件；
+> 旧 SDK 或需要映射回落路径时用 `AOT_PACKS_TAG=aot-packs-11.0.0-rc.1`）。
 
 一键下载（校验 sha256 后放入本地 feed）：
 
@@ -103,8 +109,9 @@ sh eng/ohos-install/fetch-nativeaot-packs.sh [目录]
 > （本环境下直连 release-assets CDN 会 TLS 超时/截断，代理回退已验证）。
 
 > 网络受限时可用镜像 `https://api.nuget.org` → `https://nuget.azure.cn`
-> （flatcontainer 重定向）。官方包按 26425.128 发布；26451.109 band 的 SDK
-> 使用表中"等同重打包"资产（仅改 nuspec 版本串，内容不变）。
+> （flatcontainer 重定向）。rc.2 镜像只含两件 openharmony 原生包：需要
+> `linux-musl`/`win-x64` 回落件时用 rc.1 tag 的「等同重打包」资产（仅改 nuspec
+> 版本串，内容不变）或从 nuget.org 直接还原。
 
 ## 5. 已知限制
 
@@ -124,7 +131,9 @@ sh eng/ohos-install/fetch-nativeaot-packs.sh [目录]
 - **MAUI 平台切片**：`UseOpenHarmony`、`OpenHarmonyMauiAppHost` 等仍在
   `maui-ohos` 分支开发中；本文的验证基于普通 console 项目。
 
-## 6. 已复现的验证（2026-09-24）
+## 6. 已复现的验证
+
+### 6.1 rc.1 线（2026-09-24）
 
 环境：HUAWEI MateBook Pro（HarmonyOS 7.0.0.105），SDK
 `11.0.100-rc.1.26451.109`（`dotnet-ohp-test` 安装），harmonybrew clang 23.1.1。
@@ -145,6 +154,15 @@ hello aot openharmony
   签名全部成功，产物在 Publish 后可直接运行。
 - 离线路径：清空 NuGet 缓存，仅以 release `aot-packs-11.0.0-rc.1` 的
   `feed-real/` + workload `.feed` 为源，重新 publish 并运行成功。
+
+### 6.2 rc.2 线（2026-09-29 起）
+
+- 命令与判定同 §2/§3（rc.2 host ilc = `11.0.0-rc.2.26451.112`）；publish/链接/签名
+  路径在本机（`~/.dotnet.rc2-fix`，SDK `.112` + workload `preview.28`）已复验，真机
+  可启动出画（RSTree `ohos_dotnet_surface` buffer=1）。
+- **设备复验包**：rc.2 工具链出的 AOT haps = `aot-haps-v3-rc2.tar.gz`（随
+  `device-test-kit` release 发布）—— asset id/sha **见 release**（以 release 页与
+  随附 `.sha256` 为准）。
 
 ## 7. Workload / CLI 开关评估
 
@@ -168,8 +186,9 @@ hello aot openharmony
   # NuGet.config 加 <add key="aot-packs" value=".../aot-packs" />
   ```
 
-  该路径按 §3 回落到 linux-musl pack（host 为 win-x64 时用镜像的
-  `runtime.win-x64...ilc`）。若希望 stock SDK 直接认 openharmony pack，可在
+  该路径按 §3 回落到 linux-musl pack（host 为 win-x64 时用 rc.1 tag 镜像的
+  `runtime.win-x64...ilc`，或 nuget.org 官方包）。若希望 stock SDK 直接认
+  openharmony pack，可在
   workload manifest targets 中用 `KnownILCompilerPack Update` 追加 openharmony
   RID（跟随 ohos-workload 发版）——当前版本未包含，作为后续增强。
 
