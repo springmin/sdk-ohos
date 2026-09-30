@@ -86,8 +86,20 @@ Added PackageDownload for Microsoft.NETCore.App.Runtime.NativeAOT.linux-musl-arm
 
 | 资产 | 用途 | sha256 |
 |---|---|---|
-| `Microsoft.NETCore.App.Runtime.NativeAOT.openharmony-arm64.11.0.0-rc.2.26451.112.nupkg` | 设备端目标 runtime pack（原生，推荐；asset id `597666870`） | `46d221f23ae90367b5234c7bd94e217416f0562957f6b8a9d3efb14daf52edd7` |
+| `Microsoft.NETCore.App.Runtime.NativeAOT.openharmony-arm64.11.0.0-rc.2.26451.112-r2.nupkg` | 设备端目标 runtime pack（原生，推荐；asset id `601289590`） | `542058cf953a3e9c1a42cbf287c5df1177bc5c9f4de70957ca384d472570e4a2` |
 | `runtime.openharmony-arm64.Microsoft.DotNet.ILCompiler.11.0.0-rc.2.26451.112.nupkg` | 设备端 host ilc（原生，推荐；asset id `597667138`） | `1c518a461cdb6d76640561b97170c2dc7d0e75fb55b475d00944a2e3cd7e67cd` |
+
+> **`-r2` 是 rc.2 runtime pack 的修正版**：原 `...rc.2.26451.112.nupkg`
+> （`46d221f2…`）由 2026-09-27 的静态 OpenSSL 全量构建产出，其静态
+> `libSystem.Security.Cryptography.Native.OpenSsl.a` 缺 `opensslshim.c.o`
+> （`nm --defined-only … | grep -cE 'local_(EVP|SSL|X509)'` = 0），NativeAOT 把该
+> 归档链进 app 后凡用到 crypto 即链接/`dlopen` 失败（undefined `EVP_*`/`X509_*`）。
+> `-r2` 只替换该归档（用 `FEATURE_DISTRO_AGNOSTIC_SSL=1` 重编 shim 版，判据 5/5），
+> 包 id/版本不变（仍为 `11.0.0-rc.2.26451.112`）。fetch 脚本会做同一判据的
+> 内容校验（`OpenSSL shim OK (5/5 …)`），无 shim 的包会被拒绝。
+> 若本机 NuGet 缓存里已有旧的 `.112` 包，重新 publish 前先删
+> `~/.nuget/packages/microsoft.netcore.app.runtime.nativeaot.openharmony-arm64/11.0.0-rc.2.26451.112`
+> （NuGet 按 id+版本复用缓存，不会因为 feed 换件而重新解包）。
 
 > rc.1 线镜像 **`aot-packs-11.0.0-rc.1`** 保留（含 `linux-musl` / `win-x64` 官方回落件；
 > 旧 SDK 或需要映射回落路径时用 `AOT_PACKS_TAG=aot-packs-11.0.0-rc.1`）。
@@ -105,7 +117,8 @@ sh eng/ohos-install/fetch-nativeaot-packs.sh [目录]
 
 > 脚本先直连 github.com，失败自动回退 `https://gh-proxy.com/<url>`
 > （可用 `AOT_PACKS_PROXY=` 关闭或换成其它镜像）；每个资产都用
-> `versions.env` 里的 `aot_pack_sha256` 锚校验，截断/替换的下载会被拒绝
+> `versions.env` 里的 `aot_pack_sha256` 锚校验，截断/替换的下载会被拒绝，
+> 并额外校验 OpenHarmony runtime pack 的 OpenSSL shim（缺 shim 的包拒绝入 feed）
 > （本环境下直连 release-assets CDN 会 TLS 超时/截断，代理回退已验证）。
 
 > 网络受限时可用镜像 `https://api.nuget.org` → `https://nuget.azure.cn`

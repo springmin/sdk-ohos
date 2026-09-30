@@ -728,6 +728,16 @@ PYEOF
     # libssl.so.3/libcrypto.so.3 unless they ship next to it and are signed;
     # static linking removes that deployment dependency. Requires the CI
     # OpenSSL build to use -fPIC (see ohos-ci-env.sh).
+    #
+    # WARNING: this flag is not scoped to the shared crypto shim. It also builds
+    # the NativeAOT runtime pack's *static* archive
+    # (libSystem.Security.Cryptography.Native.OpenSsl.a) without the
+    # FEATURE_DISTRO_AGNOSTIC_SSL dlopen shim; NativeAOT links that archive into
+    # the app, so every crypto-using AOT app then fails to link/dlopen
+    # (undefined EVP_*/X509_*). The rc.2 packs needed the `-r2` re-pack (archive
+    # rebuilt with the shim); fetch-nativeaot-packs.sh now rejects a pack
+    # without the shim. Do not drop that check, and rebuild/repack the AOT
+    # runtime pack with the shim before publishing.
     if ./build.sh -os openharmony -arch "$ARCH" --cross -c "$CONFIG" -lc "$CONFIG" -rc "$CONFIG" \
         -subset clr+libs+packs \
         /p:LinkStaticOpenSsl=true \

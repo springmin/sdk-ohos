@@ -6,6 +6,11 @@
 # The packs are needed by `dotnet publish -r openharmony-arm64 -p:PublishAot=true`
 # when nuget.org is unreachable (air-gapped machines / restricted networks).
 #
+# Besides the digest, the OpenHarmony runtime pack is checked for the dlopen
+# OpenSSL shim (see verify_nativeaot_shim): the 2026-09-27 static-OpenSSL build
+# shipped a pack whose static crypto archive has no shim, and every NativeAOT
+# app that uses crypto then fails to link/dlopen (undefined EVP_*/X509_*).
+#
 # Usage:
 #   sh eng/ohos-install/fetch-nativeaot-packs.sh [dest-dir]
 #   sh eng/ohos-install/fetch-nativeaot-packs.sh --local <dir-with-nupkgs> [dest-dir]
@@ -45,8 +50,62 @@ sha256_of() {
     fi
 }
 
+# verify_nativeaot_shim <asset>: the OpenHarmony NativeAOT runtime pack must
+# carry the dlopen OpenSSL shim (opensslshim.c.o defines the `*_ptr` globals
+# and the local_* wrappers the rest of the archive calls). The 2026-09-27
+# static-OpenSSL full build (LinkStaticOpenSsl=true) dropped it, and NativeAOT
+# apps that use crypto then fail at link/dlopen time (undefined EVP_*/X509_*).
+# The sha256 pin covers integrity, not content, so check the content too. Skips
+# (with a warning) when unzip/nm are unavailable.
+verify_nativeaot_shim() {
+    case "$1" in
+        Microsoft.NETCore.App.Runtime.NativeAOT.openharmony-arm64.*) ;;
+        *) return 0 ;;
+    esac
+
+    if ! command -v unzip >/dev/null 2>&1; then
+        echo "  WARN: unzip not found; skipping the OpenSSL shim content check" >&2
+        return 0
+    fi
+    nm_tool=""
+    for candidate in llvm-nm nm; do
+        if command -v "$candidate" >/dev/null 2>&1; then
+            nm_tool="$candidate"
+            break
+        fi
+    done
+    if [ -z "$nm_tool" ]; then
+        echo "  WARN: neither llvm-nm nor nm found; skipping the OpenSSL shim content check" >&2
+        return 0
+    fi
+
+    tmpdir="$(mktemp -d 2>/dev/null || true)"
+    if [ -z "$tmpdir" ]; then
+        echo "  WARN: mktemp -d failed; skipping the OpenSSL shim content check" >&2
+        return 0
+    fi
+    lib="$tmpdir/libSystem.Security.Cryptography.Native.OpenSsl.a"
+    if ! unzip -p "$DEST/$1" \
+            'runtimes/openharmony-arm64/native/libSystem.Security.Cryptography.Native.OpenSsl.a' \
+            > "$lib" 2>/dev/null || [ ! -s "$lib" ]; then
+        rm -rf "$tmpdir"
+        echo "ERROR: cannot read libSystem.Security.Cryptography.Native.OpenSsl.a from $1" >&2
+        return 1
+    fi
+    count="$("$nm_tool" --defined-only "$lib" 2>/dev/null | grep -cE 'local_(EVP|SSL|X509)' || true)"
+    rm -rf "$tmpdir"
+    if [ "${count:-0}" -lt 5 ]; then
+        echo "ERROR: $1 has no OpenSSL dlopen shim ($count/5 local_*(EVP|SSL|X509) symbols)" >&2
+        echo "  this pack fails to link/dlopen for crypto-using NativeAOT apps;" >&2
+        echo "  see the rc.2 -r2 note in versions.env" >&2
+        return 1
+    fi
+    echo "  OpenSSL shim OK ($count/5 local_*(EVP|SSL|X509) symbols)"
+    return 0
+}
+
 assets="
-Microsoft.NETCore.App.Runtime.NativeAOT.openharmony-arm64.11.0.0-rc.2.26451.112.nupkg
+Microsoft.NETCore.App.Runtime.NativeAOT.openharmony-arm64.11.0.0-rc.2.26451.112-r2.nupkg
 runtime.openharmony-arm64.Microsoft.DotNet.ILCompiler.11.0.0-rc.2.26451.112.nupkg
 "
 
@@ -98,6 +157,10 @@ for asset in $assets; do
         failed=1
     else
         echo "  sha256 OK"
+        if ! verify_nativeaot_shim "$asset"; then
+            rm -f "$DEST/$asset"
+            failed=1
+        fi
     fi
 done
 
