@@ -100,6 +100,13 @@ Added PackageDownload for Microsoft.NETCore.App.Runtime.NativeAOT.linux-musl-arm
 > 若本机 NuGet 缓存里已有旧的 `.112` 包，重新 publish 前先删
 > `~/.nuget/packages/microsoft.netcore.app.runtime.nativeaot.openharmony-arm64/11.0.0-rc.2.26451.112`
 > （NuGet 按 id+版本复用缓存，不会因为 feed 换件而重新解包）。
+>
+> **结构性修复（2026-10-03）**：`LinkStaticOpenSsl=true` 已按目标拆分对象库——
+> 共享 `.so` 静态链 OpenSSL，AOT 静态归档改用 `FEATURE_DISTRO_AGNOSTIC_SSL_STATIC=1`
+> 的对象集（仍带 dlopen shim）。`build-ohos-all.sh` 在主构建后校验 libs 布局归档、
+> 在 NativeAOT sfxproj 后校验 nupkg 内归档（缺 shim 直接构建失败），fetch 内容校验
+> 保留为发布端防线；后续构建不再需要人工 `-r2` 重打。另见 runtime-ohos
+> `docs/plans/2026-10-03-ohos-aotpack-structural.md`。
 
 > rc.1 线镜像 **`aot-packs-11.0.0-rc.1`** 保留（含 `linux-musl` / `win-x64` 官方回落件；
 > 旧 SDK 或需要映射回落路径时用 `AOT_PACKS_TAG=aot-packs-11.0.0-rc.1`）。
