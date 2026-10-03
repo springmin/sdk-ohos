@@ -16,6 +16,8 @@ OpenHarmony 特有的代码签名。
 > 维护者：锚点更新时运行 `sh eng/ohos-install/refresh-release-anchors.sh`，脚本会拉取
 > Release 的 `SHA256SUMS` 并列出 `SDK_TARBALL_SHA256` / `RUNTIME_TARBALL_SHA256` /
 > `SELFSIGN_SHA256` 的候选值与当前 pin。
+> SDK release 必须包含 `dotnet-sdk-*.tar.gz`：stage 4 打包（`pack-sdk.sh`）未产出该
+> tarball 时构建显式失败（fail-closed），不会静默发布缺 SDK 的 release。
 
 | 仓库 | Release | 内容 | 下载 |
 |---|---|---|---|

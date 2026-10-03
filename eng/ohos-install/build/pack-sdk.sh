@@ -152,10 +152,16 @@ python3 "$SCRIPT_DIR/patch-msbuild-pipe.py" \
   --sdk-root "$SDK_REPO" --config "$CONFIG" --rid "$RID" \
   --dotnet "$MSBUILD_PIPE_PATCHER_DOTNET" --patcher "$MSBUILD_PIPE_PATCHER" \
   || die "MSBuild named-pipe patch failed"
-# pre-sign the SDK tarball (every ELF in the redist: dotnet host + all so)
+# pre-sign the SDK tarball (every ELF in the redist: dotnet host + all so).
+# The shipping tarball is the only SDK artifact stage 5 collects and CI
+# publishes, so a successful sdk build that produced none is a failed stage:
+# fail closed. (In the monolith the false `[ -n ]` guard was the tail of stage4,
+# so set -e aborted the run with exit 1; the selfsign stage appended later must
+# not turn that abort into a green run - test-packsplit-equivalence.sh pins it.)
 sdk_tb=$(find "$SDK_REPO/artifacts" -maxdepth 5 -name "dotnet-sdk-*-$RID.tar.gz" | head -1)
-[ -n "$sdk_tb" ] && verify_sdk_tarball_arch "$sdk_tb"
-[ -n "$sdk_tb" ] && sign_all "$sdk_tb"
+[ -n "$sdk_tb" ] || die "SDK build produced no dotnet-sdk-*-$RID.tar.gz shipping tarball under $SDK_REPO/artifacts"
+verify_sdk_tarball_arch "$sdk_tb"
+sign_all "$sdk_tb"
 
 # ---- 5. selfsign release assets (prebuilt signing tools) --------------------
 # The sdk release ships the prebuilt signing tools the installer consumes:

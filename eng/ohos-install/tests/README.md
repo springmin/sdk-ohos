@@ -10,8 +10,9 @@ needed) and prints a PASS/FAIL summary:
 - `test-installer-verification.sh` — installer download-verification hardening (D-4), mocked transport.
 - `test-sdk-arch-check.sh` — SDK architecture guard around `build/check-sdk-arch.py` (prune + tarball verify).
 - `test-packsplit-equivalence.sh` — stage-4 monolith vs split pipeline equivalence against stubbed
-  checkouts (5 cases; recreates its scratch dir at startup, see the header for `OHOS_PACKSPLIT_*`
-  env vars and the known `no-tarball` abort-path divergence).
+  checkouts (6 cases; recreates its scratch dir at startup, see the header for `OHOS_PACKSPLIT_*`
+  env vars; the `no-tarball` case pins the fail-closed abort when the sdk build produces no
+  shipping tarball).
 
 `check-elf-codesign.py` is a standalone, offline checker for the OpenHarmony `.codesign` ELF
 section (port of the runtime half of `ElfSigner.IsValidlySigned`):

@@ -17,11 +17,13 @@
 #
 # NOTE: the harness must not live inside $BASE - it recreates $BASE at startup.
 #
-# Known divergence (2026-10-03): the `no-tarball` case (stub SDK build succeeds
-# without a shipping tarball) is excluded: the monolith exited 1 while the
-# current split pipeline exits 0 with a trailing blank line. That abort-path
-# change post-dates the split; decide the intended behavior and re-add the case
-# (STUB_SDK_NO_TARBALL=1) once the expectation is re-baselined.
+# Re-baselined (2026-10-03): `no-tarball` (STUB_SDK_NO_TARBALL=1: the stub SDK
+# build succeeds without a shipping tarball) is fail-closed in both pipelines.
+# The monolith exited 1 only because the false `[ -n "$sdk_tb" ]` guard was the
+# tail of stage4 under set -e; when the selfsign stage was appended after that
+# guard the abort silently became exit 0. pack-sdk.sh now fails explicitly
+# ("no ... shipping tarball"), so the case is part of the suite and norm()
+# drops only that diagnostic line (exit code and stub trace still compared).
 # ============================================================================
 set -uo pipefail
 
@@ -120,12 +122,19 @@ run_case() { # <case-name> <variant> <with-rtver 0|1> [extra args...]
   printf '%s\n' "$root"
 }
 
-norm() { # <variant> <file> -> stdout
+norm() { # <case-name> <file> -> stdout
   # Normalize paths, then drop the selfsign-staging block added to the split
   # pipeline after the split (c022976d72 / 59984c29ba): it is outside stage-4
   # packaging and covered by the release-verification tests, not by this harness.
   # The trailing "==> done" line and repeated blank lines are collapsed so the
   # abort path (--no-tarball) stays comparable across the two pipelines.
+  # no-tarball also drops pack-sdk.sh's fail-closed diagnostic: the monolith
+  # surfaced the missing tarball as a bare set -e exit 1, the split names the
+  # cause (the exit code and the stub trace are still compared).
+  local -a abort_filter=(cat)
+  if [ "$1" = no-tarball ]; then
+    abort_filter=(grep -v -e '^ERROR: SDK build produced no dotnet-sdk-')
+  fi
   sed "s|$BASE/$1-old|@V@|g; s|$BASE/$1-new|@V@|g; \
        s|$BASE/scripts-old|@SCRIPTS@|g; s|$BASE/scripts-new|@SCRIPTS@|g; \
        s|$BASE/work-old|@WORK@|g; s|$BASE/work-new|@WORK@|g; \
@@ -133,6 +142,7 @@ norm() { # <variant> <file> -> stdout
     | sed -e '/^==> staged selfsign-linux-x64$/d' \
           -e '/^==> selfsign-ohos-arm64 publish disabled/d' \
           -e '/^==> done (log: /d' \
+    | "${abort_filter[@]}" \
     | awk 'BEGIN{b=0} /^$/{b++; if (b>1) next} !/^$/{b=0} {print}'
 }
 
@@ -144,6 +154,12 @@ compare_case() { # <case-name> <with-rtver> [extra args...]
 
   if ! diff -q "$old_root/rc" "$new_root/rc" >/dev/null; then
     echo "CASE $case: exit code differs: old=$(cat "$old_root/rc") new=$(cat "$new_root/rc")"; fail=1
+  fi
+  if [ "$case" = no-tarball ]; then
+    # The split must keep the monolith's fail-closed exit and name the cause;
+    # norm() drops exactly this line from the differential comparison.
+    grep -q '^ERROR: SDK build produced no dotnet-sdk-' "$new_root/stderr" \
+      || { echo "CASE $case: split did not report the missing shipping tarball"; fail=1; }
   fi
   for f in stdout stderr trace; do
     norm "$case" "$old_root/$f" > "$old_root/$f.norm"
@@ -174,6 +190,9 @@ compare_case unknown-arg 1 --help || rc=1
 export STUB_SDK_BUILD_RC=7
 compare_case build-fail 1 || rc=1
 unset STUB_SDK_BUILD_RC
+export STUB_SDK_NO_TARBALL=1
+compare_case no-tarball 1 || rc=1
+unset STUB_SDK_NO_TARBALL
 
 echo "=== old trace (with-rtver) ==="
 cat "$BASE/with-rtver-old/trace.norm"
