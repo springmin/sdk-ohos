@@ -9,7 +9,10 @@
 # Besides the digest, the OpenHarmony runtime pack is checked for the dlopen
 # OpenSSL shim (see verify_nativeaot_shim): the 2026-09-27 static-OpenSSL build
 # shipped a pack whose static crypto archive has no shim, and every NativeAOT
-# app that uses crypto then fails to link/dlopen (undefined EVP_*/X509_*).
+# app that uses crypto then fails to link/dlopen (undefined EVP_*/X509_*). The
+# rc.2 line is now re-cut from the structurally fixed source (`...-struct1`,
+# see versions.env); the build guards the archive too (build-ohos-all.sh
+# verify_aot_crypto_shim) and this release-side check stays as defense in depth.
 #
 # Usage:
 #   sh eng/ohos-install/fetch-nativeaot-packs.sh [dest-dir]
@@ -97,7 +100,7 @@ verify_nativeaot_shim() {
     if [ "${count:-0}" -lt 5 ]; then
         echo "ERROR: $1 has no OpenSSL dlopen shim ($count/5 local_*(EVP|SSL|X509) symbols)" >&2
         echo "  this pack fails to link/dlopen for crypto-using NativeAOT apps;" >&2
-        echo "  see the rc.2 -r2 note in versions.env" >&2
+        echo "  see the rc.2 -struct1 note in versions.env" >&2
         return 1
     fi
     echo "  OpenSSL shim OK ($count/5 local_*(EVP|SSL|X509) symbols)"
@@ -105,7 +108,7 @@ verify_nativeaot_shim() {
 }
 
 assets="
-Microsoft.NETCore.App.Runtime.NativeAOT.openharmony-arm64.11.0.0-rc.2.26451.112-r2.nupkg
+Microsoft.NETCore.App.Runtime.NativeAOT.openharmony-arm64.11.0.0-rc.2.26451.112-struct1.nupkg
 runtime.openharmony-arm64.Microsoft.DotNet.ILCompiler.11.0.0-rc.2.26451.112.nupkg
 "
 

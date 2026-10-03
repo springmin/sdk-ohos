@@ -729,15 +729,17 @@ PYEOF
     # static linking removes that deployment dependency. Requires the CI
     # OpenSSL build to use -fPIC (see ohos-ci-env.sh).
     #
-    # WARNING: this flag is not scoped to the shared crypto shim. It also builds
-    # the NativeAOT runtime pack's *static* archive
-    # (libSystem.Security.Cryptography.Native.OpenSsl.a) without the
-    # FEATURE_DISTRO_AGNOSTIC_SSL dlopen shim; NativeAOT links that archive into
-    # the app, so every crypto-using AOT app then fails to link/dlopen
-    # (undefined EVP_*/X509_*). The rc.2 packs needed the `-r2` re-pack (archive
-    # rebuilt with the shim); fetch-nativeaot-packs.sh now rejects a pack
-    # without the shim. Do not drop that check, and rebuild/repack the AOT
-    # runtime pack with the shim before publishing.
+    # NOTE (structural fix, 2026-10-03): this flag is scoped per target in the
+    # runtime libs build. The shared crypto shim links OpenSSL statically
+    # (/p:LinkStaticOpenSsl=true -> FEATURE_DISTRO_AGNOSTIC_SSL=0), while the
+    # NativeAOT runtime pack's *static* archive
+    # (libSystem.Security.Cryptography.Native.OpenSsl.a, which ilc links into
+    # every AOT app without libcrypto/libssl) is built from the objlib_static
+    # object set with FEATURE_DISTRO_AGNOSTIC_SSL_STATIC=1 and keeps the dlopen
+    # shim. The 2026-09-27 build dropped it and the rc.2 packs needed a manual
+    # `-r2` re-pack; that is fixed. verify_aot_crypto_shim below checks both the
+    # libs layout and the packed NativeAOT nupkg, and fetch-nativeaot-packs.sh
+    # re-checks the released pack. Do not drop those checks.
     if ./build.sh -os openharmony -arch "$ARCH" --cross -c "$CONFIG" -lc "$CONFIG" -rc "$CONFIG" \
         -subset clr+libs+packs \
         /p:LinkStaticOpenSsl=true \
@@ -849,6 +851,36 @@ for tfm, fr in proj.get('frameworks',{}).items():
     grep -iE "CMAKE_SYSTEM_NAME|The C compiler|CMAKE_CROSSCOMPILING|Targeting|System is|CMAKE_TOOLCHAIN_FILE|CMAKE_SYSTEM_PROCESSOR" "$alog" 2>/dev/null | head -12 | tee -a "$LOG"
     die "runtime build (clr+libs+packs) failed (see log tail above)"
   done
+}
+
+# L-AOTPACK: the NativeAOT runtime pack's static OpenSSL archive is linked into
+# every AOT app by ilc, which never links libcrypto/libssl. It must therefore
+# carry the FEATURE_DISTRO_AGNOSTIC_SSL dlopen shim (opensslshim.c.o defines
+# the local_* wrappers and *_ptr globals); a static-OpenSSL rebuild without it
+# leaves raw EVP_*/X509_* undefined and the device loader rejects the app
+# (rc.2 shipments needed a manual -r2 re-pack). The runtime build now keeps the
+# shim in the static archive while the shared .so links OpenSSL statically
+# (FEATURE_DISTRO_AGNOSTIC_SSL_STATIC); this guard verifies both the build
+# layout and the packed nupkg so a shim-less pack cannot leave the build.
+# fetch-nativeaot-packs.sh re-checks a released pack (defense in depth).
+verify_aot_crypto_shim() { # <archive> <label>
+  local lib="$1" label="$2" nm_tool="" count=""
+  [ -f "$lib" ] || die "$label: AOT crypto archive missing: $lib"
+  for candidate in llvm-nm nm; do
+    if command -v "$candidate" >/dev/null 2>&1; then nm_tool="$candidate"; break; fi
+  done
+  if [ -z "$nm_tool" ] && [ -n "${OHOS_NDK_HOME:-}" ] && [ -x "$OHOS_NDK_HOME/native/llvm/bin/llvm-nm" ]; then
+    nm_tool="$OHOS_NDK_HOME/native/llvm/bin/llvm-nm"
+  fi
+  [ -n "$nm_tool" ] || {
+    info "WARN: $label: no nm/llvm-nm available; skipped the OpenSSL shim check"
+    return 0
+  }
+  count="$("$nm_tool" --defined-only "$lib" 2>/dev/null | grep -cE 'local_(EVP|SSL|X509)' || true)"
+  if [ "${count:-0}" -lt 5 ]; then
+    die "$label: OpenSSL dlopen shim missing in $(basename "$lib") ($count/5 local_*(EVP|SSL|X509)); NativeAOT apps using crypto then fail to link/dlopen. The runtime libs subset must build the static archive with FEATURE_DISTRO_AGNOSTIC_SSL_STATIC=1 (see runtime docs/plans/2026-10-03-ohos-aotpack-structural.md)"
+  fi
+  info "AOT crypto shim OK ($label, $count/5 local_*(EVP|SSL|X509))"
 }
 
 # expected digest for a host runtime pack (dnceng pins or the GitHub release
@@ -1141,6 +1173,16 @@ stage1() {
   # ("no application host available for the specified RuntimeIdentifier").
   # The Host pack is still produced via the packs dependency chain (host.pkg).
   build_clr_libs_packs
+  # L-AOTPACK: the standalone libs native build produces the static crypto
+  # archive that the NativeAOT runtime pack ships and ilc links into every AOT
+  # app. Check it as soon as the layout exists, before the pack is assembled.
+  local aot_libs_crypto=""
+  aot_libs_crypto=$(ls "$RUNTIME_REPO"/artifacts/bin/native/*-openharmony-"$CONFIG"-"$ARCH"/libSystem.Security.Cryptography.Native.OpenSsl.a 2>/dev/null | head -1 || true)
+  if [ -n "$aot_libs_crypto" ]; then
+    verify_aot_crypto_shim "$aot_libs_crypto" "libs native layout"
+  else
+    info "WARN: libs native AOT crypto archive not found; the packed NativeAOT pack check still runs"
+  fi
   # Derive the product version from the packs clr+libs just produced, before
   # clr.aot: ILCompiler_inbuild restores the HOST (linux-x64) runtime pack at
   # this version, which must already be in ~/.nuget on clean hosts.
@@ -1304,6 +1346,34 @@ for x in glob.glob(dirp+'/*.nuspec'): shutil.copy(x, dirp+'/$HOSTPACK_ID.nuspec'
   done
   pkill -9 -f "MSBuild.*nodem" 2>/dev/null || true
   sleep 2
+
+  # L-AOTPACK: verify the packed NativeAOT runtime pack (what fetch consumers
+  # receive) carries the shim; a static-OpenSSL archive without it must not
+  # leave the build. Mirrors fetch-nativeaot-packs.sh verify_nativeaot_shim.
+  local naotpk=""
+  naotpk=$(ls "$RUNTIME_REPO"/artifacts/packages/"$CONFIG"/*Shipping/Microsoft.NETCore.App.Runtime.NativeAOT."$RID".*.nupkg 2>/dev/null | grep -v symbols | head -1 || true)
+  if [ -n "$naotpk" ]; then
+    local naot_tmp=""
+    naot_tmp=$(mktemp -d)
+    if python3 -c "
+import sys, zipfile
+z = zipfile.ZipFile('$naotpk')
+try:
+    data = z.read('runtimes/$RID/native/libSystem.Security.Cryptography.Native.OpenSsl.a')
+except KeyError:
+    sys.exit(1)
+open('$naot_tmp/libSystem.Security.Cryptography.Native.OpenSsl.a', 'wb').write(data)
+" 2>/dev/null; then
+      verify_aot_crypto_shim "$naot_tmp/libSystem.Security.Cryptography.Native.OpenSsl.a" "NativeAOT runtime pack"
+    else
+      rm -rf "$naot_tmp"
+      die "NativeAOT runtime pack has no runtimes/$RID/native/libSystem.Security.Cryptography.Native.OpenSsl.a: $naotpk"
+    fi
+    rm -rf "$naot_tmp"
+  else
+    info "WARN: NativeAOT runtime pack not found under artifacts/packages/$CONFIG/*Shipping; skipped the pack shim check"
+  fi
+
   # --- ReadyToRun CoreLib with the OFFICIAL crossgen2 (CI-aligned) ---
   # fork crossgen2_inbuild hangs at startup (round-13); the official NuGet
   # crossgen2 compiles the openharmony CoreLib R2R (PGO when the mibc exists).
