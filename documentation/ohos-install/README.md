@@ -15,9 +15,9 @@ OpenHarmony 特有的代码签名。
 
 | 仓库 | Release | 内容 | 下载 |
 |---|---|---|---|
-| [springmin/sdk-ohos](https://github.com/springmin/sdk-ohos/releases) | `v11.0.100-rc.1.26451.109-ohos` | **SDK**（含 ASP.NET Core runtime + 全部修复，175MB） | `dotnet-sdk-11.0.100-rc.1.26451.109-openharmony-arm64.tar.gz` |
-| [springmin/runtime-ohos](https://github.com/springmin/runtime-ohos/releases) | `v11.0.0-rc.1.26451.109-ohos` | **Runtime**（仅运行，15MB） | `dotnet-runtime-11.0.0-rc.1.26451.109-openharmony-arm64.tar.gz` |
-| [springmin/aspnetcore-ohos](https://github.com/springmin/aspnetcore-ohos/releases) | `v11.0.0-rc.1.26451.109-ohos` | **ASP.NET Core**（单独分发用，19MB） | `aspnetcore-runtime-11.0.0-rc.1.26451.109-openharmony-arm64.tar.gz` |
+| [springmin/sdk-ohos](https://github.com/springmin/sdk-ohos/releases) | `v11.0.100-rc.2.26451.112-ohos` | **SDK**（含 ASP.NET Core runtime + 全部修复，175MB） | `dotnet-sdk-11.0.100-rc.2.26451.112-openharmony-arm64.tar.gz` |
+| [springmin/runtime-ohos](https://github.com/springmin/runtime-ohos/releases) | `v11.0.0-rc.2.26451.112-ohos` | **Runtime**（仅运行，15MB） | `dotnet-runtime-11.0.0-rc.2.26451.112-openharmony-arm64.tar.gz` |
+| [springmin/aspnetcore-ohos](https://github.com/springmin/aspnetcore-ohos/releases) | `v11.0.0-rc.2.26451.112-ohos` | **ASP.NET Core**（单独分发用，19MB） | `aspnetcore-runtime-11.0.0-rc.2.26451.112-openharmony-arm64.tar.gz` |
 
 > **推荐**：直接安装 **SDK** 即可——它已内嵌 ASP.NET Core runtime，
 > 一个包同时满足编译与运行（含 web 应用）。Runtime 包仅用于只想运行 .NET
@@ -25,6 +25,12 @@ OpenHarmony 特有的代码签名。
 
 > ⚠️ **重要**：文件下载后请移动到当前用户可读的目录（如 `Download/`）。
 > 若文件位于其他应用沙箱内（如微信收到的文件），OpenHarmony 会拒绝读取。
+
+> **下载提速 / 核验约定**：直连 GitHub 慢或抖动时，可在原 URL 前加镜像前缀
+> `https://gh-proxy.com/`（快通道；安装器与 CI 已内置镜像回退）。核验请用
+> **API / `gh release download`**（同一 URL 的裸 `curl` 可能命中 CDN 旧缓存；
+> 且 proxy 按**原 URL** 缓存，加查询串无法击穿缓存）。资产大小/摘要以 release
+> 的 `SHA256SUMS` 与 `.sha256` sidecar 为准。
 
 ## 2. 安装
 
@@ -41,8 +47,8 @@ sh eng/ohos-install/install-dotnet-ohos.sh sdk
 sh eng/ohos-install/install-dotnet-ohos.sh runtime
 
 # 4. 或用本地文件 / 自定义 URL
-sh eng/ohos-install/install-dotnet-ohos.sh ~/Download/dotnet-sdk-11.0.100-rc.1.26451.109-openharmony-arm64.tar.gz
-sh eng/ohos-install/install-dotnet-ohos.sh https://github.com/springmin/sdk-ohos/releases/download/v11.0.100-rc.1.26451.109-ohos/dotnet-sdk-11.0.100-rc.1.26451.109-openharmony-arm64.tar.gz
+sh eng/ohos-install/install-dotnet-ohos.sh ~/Download/dotnet-sdk-11.0.100-rc.2.26451.112-openharmony-arm64.tar.gz
+sh eng/ohos-install/install-dotnet-ohos.sh https://github.com/springmin/sdk-ohos/releases/download/v11.0.100-rc.2.26451.112-ohos/dotnet-sdk-11.0.100-rc.2.26451.112-openharmony-arm64.tar.gz
 
 # 5. 自定义安装目录
 INSTALL_DIR=/data/xxx/dotnet sh eng/ohos-install/install-dotnet-ohos.sh sdk
@@ -79,7 +85,7 @@ INSTALL_DIR=/data/xxx/dotnet sh eng/ohos-install/install-dotnet-ohos.sh sdk
 ```sh
 export DOTNET_ROOT=$HOME/.dotnet
 mkdir -p "$DOTNET_ROOT"
-tar zxf dotnet-sdk-11.0.100-rc.1.26451.109-openharmony-arm64.tar.gz -C "$DOTNET_ROOT"
+tar zxf dotnet-sdk-11.0.100-rc.2.26451.112-openharmony-arm64.tar.gz -C "$DOTNET_ROOT"
 # 签名（见 §3）
 export PATH=$PATH:$DOTNET_ROOT:$DOTNET_ROOT/tools
 dotnet --list-runtimes
@@ -129,9 +135,9 @@ selfsign <input_elf> [output_elf] [--force] [--strip]
 
 ```sh
 # 宿主（x64 Linux，交叉编译机 / CI）—— 签名 OpenHarmony ELF：
-#   https://github.com/springmin/sdk-ohos/releases/download/v11.0.100-rc.1.26451.109-ohos/selfsign-linux-x64
+#   https://github.com/springmin/sdk-ohos/releases/download/v11.0.100-rc.2.26451.112-ohos/selfsign-linux-x64
 # 设备端（openharmony-arm64，NativeAOT 单文件）—— 在真机上签名：
-#   https://github.com/springmin/sdk-ohos/releases/download/v11.0.100-rc.1.26451.109-ohos/selfsign-ohos-arm64
+#   https://github.com/springmin/sdk-ohos/releases/download/v11.0.100-rc.2.26451.112-ohos/selfsign-ohos-arm64
 
 # 宿主批量预签名（配合 sign-ohos-release.sh）：
 sh eng/ohos-install/sign-ohos-release.sh <dir-or-tarball> ...   # SELFSIGN=<path> 指定 selfsign
@@ -145,8 +151,8 @@ sh eng/ohos-install/sign-ohos-release.sh <dir-or-tarball> ...   # SELFSIGN=<path
 ## 4. 验证
 
 ```sh
-dotnet --list-sdks        # 应显示 11.0.100-rc.1.26451.109
-dotnet --list-runtimes    # 应显示 11.0.0-rc.1.26451.109（含 Microsoft.AspNetCore.App）
+dotnet --list-sdks        # 应显示 11.0.100-rc.2.26451.112
+dotnet --list-runtimes    # 应显示 11.0.0-rc.2.26451.112（含 Microsoft.AspNetCore.App）
 dotnet --info             # RID: openharmony-arm64
 
 # 编译并运行一个 ASP.NET Core 应用（SDK 已内嵌 aspnetcore runtime）
@@ -207,7 +213,7 @@ Consequences:
   now NU1101 (explicit) instead of silently resolving a non-OpenHarmony
   (no `.note.ohos.ident`) artifact that fails at dlopen on device.
 - The compile-level linux remap (configureplatform.cmake) is unchanged.
-- All openharmony-arm64 asset packs are published for rc.1.26451.109 (runtime,
+- All openharmony-arm64 asset packs are published for rc.2.26451.112 (runtime,
   ILCompiler, NativeAOT, Host, Crossgen2), so independent resolution works.
 
 To rebuild with the independent graph, `build-ohos-all.sh` injects the portable graph into
