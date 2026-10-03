@@ -86,18 +86,21 @@ Added PackageDownload for Microsoft.NETCore.App.Runtime.NativeAOT.linux-musl-arm
 
 | 资产 | 用途 | sha256 |
 |---|---|---|
-| `Microsoft.NETCore.App.Runtime.NativeAOT.openharmony-arm64.11.0.0-rc.2.26451.112-r2.nupkg` | 设备端目标 runtime pack（原生，推荐；asset id `601289590`） | `542058cf953a3e9c1a42cbf287c5df1177bc5c9f4de70957ca384d472570e4a2` |
+| `Microsoft.NETCore.App.Runtime.NativeAOT.openharmony-arm64.11.0.0-rc.2.26451.112-struct1.nupkg` | 设备端目标 runtime pack（原生，推荐；asset id `607541145`） | `09345f9515612f2b090fd0e0f54c815156105127cc1686240a3cad8521dab11c` |
 | `runtime.openharmony-arm64.Microsoft.DotNet.ILCompiler.11.0.0-rc.2.26451.112.nupkg` | 设备端 host ilc（原生，推荐；asset id `597667138`） | `1c518a461cdb6d76640561b97170c2dc7d0e75fb55b475d00944a2e3cd7e67cd` |
 
-> **`-r2` 是 rc.2 runtime pack 的修正版**：原 `...rc.2.26451.112.nupkg`
-> （`46d221f2…`）由 2026-09-27 的静态 OpenSSL 全量构建产出，其静态
-> `libSystem.Security.Cryptography.Native.OpenSsl.a` 缺 `opensslshim.c.o`
+> **`-struct1` 是 rc.2 runtime pack 的「结构修复后重出」件**（28,905,116 B）：原
+> `...rc.2.26451.112.nupkg`（`46d221f2…`）由 2026-09-27 的静态 OpenSSL 全量构建产出，
+> 其静态 `libSystem.Security.Cryptography.Native.OpenSsl.a` 缺 `opensslshim.c.o`
 > （`nm --defined-only … | grep -cE 'local_(EVP|SSL|X509)'` = 0），NativeAOT 把该
-> 归档链进 app 后凡用到 crypto 即链接/`dlopen` 失败（undefined `EVP_*`/`X509_*`）。
-> `-r2` 只替换该归档（用 `FEATURE_DISTRO_AGNOSTIC_SSL=1` 重编 shim 版，判据 5/5），
-> 包 id/版本不变（仍为 `11.0.0-rc.2.26451.112`）。fetch 脚本会做同一判据的
+> 归档链进 app 后凡用到 crypto 即链接/`dlopen` 失败（undefined `EVP_*`/`X509_*`）；
+> 旧的 `-r2` 只是人工重打该归档。`-struct1` 由结构修复后的 mainline 以同一
+> `build-native.sh -linkstaticopenssl` 路径重编归档后重出（对象库拆分：共享 `.so`
+> 仍静态链 OpenSSL、静态 `.a` 带 shim；与 `-r2` 36 成员/1118 定义符号全同），
+> **不再需要 `-r2`**（原包与 `-r2` 保留为历史、不再钉锚）。fetch 脚本会做同一判据的
 > 内容校验（`OpenSSL shim OK (5/5 …)`），无 shim 的包会被拒绝。
-> 若本机 NuGet 缓存里已有旧的 `.112` 包，重新 publish 前先删
+> 包 id/版本不变（仍为 `11.0.0-rc.2.26451.112`）。若本机 NuGet 缓存里已有旧的 `.112`
+> 包，重新 publish 前先删
 > `~/.nuget/packages/microsoft.netcore.app.runtime.nativeaot.openharmony-arm64/11.0.0-rc.2.26451.112`
 > （NuGet 按 id+版本复用缓存，不会因为 feed 换件而重新解包）。
 >
@@ -105,8 +108,9 @@ Added PackageDownload for Microsoft.NETCore.App.Runtime.NativeAOT.linux-musl-arm
 > 共享 `.so` 静态链 OpenSSL，AOT 静态归档改用 `FEATURE_DISTRO_AGNOSTIC_SSL_STATIC=1`
 > 的对象集（仍带 dlopen shim）。`build-ohos-all.sh` 在主构建后校验 libs 布局归档、
 > 在 NativeAOT sfxproj 后校验 nupkg 内归档（缺 shim 直接构建失败），fetch 内容校验
-> 保留为发布端防线；后续构建不再需要人工 `-r2` 重打。另见 runtime-ohos
-> `docs/plans/2026-10-03-ohos-aotpack-structural.md`。
+> 保留为发布端防线；后续构建不再需要人工 `-r2` 重打（rc.2 线已按此重出为 `-struct1`，
+> 见上）。另见 runtime-ohos `docs/plans/2026-10-03-ohos-aotpack-structural.md` 与
+> `docs/plans/2026-10-03-ohos-aotpack-rebuild.md`。
 
 > rc.1 线镜像 **`aot-packs-11.0.0-rc.1`** 保留（含 `linux-musl` / `win-x64` 官方回落件；
 > 旧 SDK 或需要映射回落路径时用 `AOT_PACKS_TAG=aot-packs-11.0.0-rc.1`）。

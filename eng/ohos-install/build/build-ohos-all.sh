@@ -729,15 +729,17 @@ PYEOF
     # static linking removes that deployment dependency. Requires the CI
     # OpenSSL build to use -fPIC (see ohos-ci-env.sh).
     #
-    # WARNING: this flag is not scoped to the shared crypto shim. It also builds
-    # the NativeAOT runtime pack's *static* archive
-    # (libSystem.Security.Cryptography.Native.OpenSsl.a) without the
-    # FEATURE_DISTRO_AGNOSTIC_SSL dlopen shim; NativeAOT links that archive into
-    # the app, so every crypto-using AOT app then fails to link/dlopen
-    # (undefined EVP_*/X509_*). The rc.2 packs needed the `-r2` re-pack (archive
-    # rebuilt with the shim); fetch-nativeaot-packs.sh now rejects a pack
-    # without the shim. Do not drop that check, and rebuild/repack the AOT
-    # runtime pack with the shim before publishing.
+    # NOTE (structural fix, 2026-10-03): this flag is scoped per target in the
+    # runtime libs build. The shared crypto shim links OpenSSL statically
+    # (/p:LinkStaticOpenSsl=true -> FEATURE_DISTRO_AGNOSTIC_SSL=0), while the
+    # NativeAOT runtime pack's *static* archive
+    # (libSystem.Security.Cryptography.Native.OpenSsl.a, which ilc links into
+    # every AOT app without libcrypto/libssl) is built from the objlib_static
+    # object set with FEATURE_DISTRO_AGNOSTIC_SSL_STATIC=1 and keeps the dlopen
+    # shim. The 2026-09-27 build dropped it and the rc.2 packs needed a manual
+    # `-r2` re-pack; that is fixed. verify_aot_crypto_shim below checks both the
+    # libs layout and the packed NativeAOT nupkg, and fetch-nativeaot-packs.sh
+    # re-checks the released pack. Do not drop those checks.
     if ./build.sh -os openharmony -arch "$ARCH" --cross -c "$CONFIG" -lc "$CONFIG" -rc "$CONFIG" \
         -subset clr+libs+packs \
         /p:LinkStaticOpenSsl=true \
