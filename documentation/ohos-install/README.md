@@ -12,6 +12,10 @@ OpenHarmony 特有的代码签名。
 三个仓库的 Release 提供交叉编译好的 `openharmony-arm64` 产物：
 
 > 版本 pin 统一在 `eng/ohos-install/versions.env`（下表为当前默认值）。
+>
+> 维护者：锚点更新时运行 `sh eng/ohos-install/refresh-release-anchors.sh`，脚本会拉取
+> Release 的 `SHA256SUMS` 并列出 `SDK_TARBALL_SHA256` / `RUNTIME_TARBALL_SHA256` /
+> `SELFSIGN_SHA256` 的候选值与当前 pin。
 
 | 仓库 | Release | 内容 | 下载 |
 |---|---|---|---|
