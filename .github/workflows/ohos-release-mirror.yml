@@ -5,6 +5,19 @@ name: OHOS release mirror (post-rename)
 # `-openharmony` distribution releases, from a fast GitHub runner.
 # Version pins come from eng/ohos-install/versions.env; only the asset filter is
 # per-run. Idempotent: assets are re-uploaded with --clobber and verified by sha256.
+#
+# The sdk matrix job additionally mirrors the newest `workload-*` release asset
+# (openharmony-workload-<version>.tar.gz) into the same `-openharmony` release
+# and rewrites the two workload lines (the versioned bundle and the rolling
+# `latest`) of the merged SHA256SUMS, so a workload-only repackage - with no
+# `-ohos` refresh - still lands in the mirror. That path is independent of the
+# per-run asset_prefix.
+#
+# Triggers: workflow_dispatch (manual, optional asset prefix), release
+# [published, edited] for a `workload-*` tag in this repository, and a nightly
+# schedule that re-runs the full idempotent mirror. Other release events (the
+# `-openharmony` line itself, device-test-kit, aot-packs-*) skip the job so the
+# workflow cannot retrigger itself.
 
 on:
   workflow_dispatch:
@@ -13,10 +26,19 @@ on:
         description: 'Mirror only assets updated at this ISO prefix (e.g. 2026-09-14T03:17); empty mirrors all'
         required: false
         default: ''
+  release:
+    types: [published, edited]
+  schedule:
+    - cron: '23 3 * * *'
+
+concurrency:
+  group: ohos-release-mirror
+  cancel-in-progress: false
 
 jobs:
   mirror:
     name: mirror ${{ matrix.repo }}
+    if: github.event_name != 'release' || startsWith(github.event.release.tag_name, 'workload-')
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -41,7 +63,7 @@ jobs:
             -H "Accept: application/vnd.github.raw" > versions.env
           cat versions.env
 
-      - name: Mirror the latest Shipping assets to the post-rename release
+      - name: Resolve the source and destination tags
         run: |
           set -euo pipefail
           set -a
@@ -52,20 +74,15 @@ jobs:
             sdk) VERSION="$SDK_VERSION" ;;
             *) echo "unknown band: $BAND" >&2; exit 2 ;;
           esac
-          SRC="v$VERSION-ohos"
-          DST="v$VERSION-openharmony"
+          echo "SRC=v$VERSION-ohos" >> "$GITHUB_ENV"
+          echo "DST=v$VERSION-openharmony" >> "$GITHUB_ENV"
+          echo "mirroring v$VERSION-ohos -> v$VERSION-openharmony"
+
+      - name: Mirror the latest Shipping assets to the post-rename release
+        run: |
+          set -euo pipefail
           OWNER="${{ github.repository_owner }}"
           echo "mirroring $OWNER/$REPO $SRC -> $DST (asset_prefix='$ASSET_PREFIX')"
-          # The destination release is created once per version line; keep this
-          # idempotent so re-runs (and the first mirror of a new line) work.
-          case "$REPO" in
-            runtime-ohos)    TITLE="OpenHarmony arm64 Runtime $VERSION (post-rename)" ;;
-            aspnetcore-ohos) TITLE="OpenHarmony arm64 ASP.NET Core $VERSION (post-rename)" ;;
-            sdk-ohos)        TITLE="OpenHarmony SDK $VERSION (post-rename)" ;;
-            *)               TITLE="OpenHarmony $VERSION (post-rename)" ;;
-          esac
-          gh release create "$DST" --repo "$OWNER/$REPO" --title "$TITLE" \
-            --notes "Post-rename distribution line mirrored from $SRC (ohos-release-mirror.yml)." || true
 
           mkdir -p dl
           gh api "repos/$OWNER/$REPO/releases/tags/$SRC" \
@@ -94,3 +111,110 @@ jobs:
             echo "OK $name"
           done < assets.tsv
           echo "MIRROR DONE: $REPO -> $DST"
+
+      # The workload releases live in this repository (the sdk band), not in the
+      # frozen `-ohos` line: the newest workload-<version> bundle is the authority
+      # for the workload asset, and the merged SHA256SUMS of the `-ohos` release is
+      # its base (the workload release itself carries only a 2-line preview sums).
+      # Mirrors one asset + the sums, so it stays cheap on release/schedule runs.
+      - name: Mirror the latest workload bundle into the post-rename release
+        if: matrix.band == 'sdk'
+        run: |
+          set -euo pipefail
+          OWNER="${{ github.repository_owner }}"
+
+          # Newest versioned workload release; the rolling workload-latest tag is
+          # skipped on purpose (same bytes, no version in the name).
+          WL_TAG="$(gh release list --repo "$OWNER/$REPO" --limit 100 --json tagName,publishedAt \
+            --jq 'map(select(.tagName | test("^workload-[0-9]+\\.[0-9]+\\.[0-9]+-preview\\.[0-9]+$"))) | sort_by(.publishedAt) | last | .tagName')"
+          if [ -z "$WL_TAG" ] || [ "$WL_TAG" = "null" ]; then
+            echo "WORKLOAD: no workload-<version> release found; nothing to mirror"
+            exit 0
+          fi
+          WL_VERSION="${WL_TAG#workload-}"
+          asset="openharmony-workload-$WL_VERSION.tar.gz"
+          echo "WORKLOAD: latest release $WL_TAG, asset $asset"
+
+          meta="$(gh api "repos/$OWNER/$REPO/releases/tags/$WL_TAG" \
+            --jq ".assets[] | select(.name == \"$asset\") | (.size|tostring) + \" \" + (.digest // \"none\")")"
+          if [ -z "$meta" ]; then
+            echo "WORKLOAD: $asset is not attached to $WL_TAG"
+            exit 1
+          fi
+          size="${meta%% *}"
+          digest="${meta#* }"
+
+          mkdir -p dl
+          gh release download "$WL_TAG" --repo "$OWNER/$REPO" --pattern "$asset" --dir dl --clobber
+          actual=$(stat -c %s "dl/$asset")
+          if [ "$actual" != "$size" ]; then
+            echo "WORKLOAD SIZE-FAIL $asset: $actual != $size"
+            exit 1
+          fi
+          sha="$(sha256sum "dl/$asset" | cut -d' ' -f1)"
+          if [ "$digest" != "none" ] && [ "${digest#sha256:}" != "$sha" ]; then
+            echo "WORKLOAD HASH-FAIL $asset: $sha != $digest"
+            exit 1
+          fi
+          gh release upload "$DST" "dl/$asset" --repo "$OWNER/$REPO" --clobber
+          echo "WORKLOAD: uploaded $asset ($sha)"
+
+          # The release API digest can lag a few seconds behind the upload; the
+          # mirror is only recorded as done once the destination reports it.
+          verified=0
+          for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+            up="$(gh api "repos/$OWNER/$REPO/releases/tags/$DST" \
+              --jq ".assets[] | select(.name == \"$asset\") | (.size|tostring) + \" \" + (.digest // \"none\")")"
+            if [ "$up" = "$size sha256:$sha" ]; then
+              verified=1
+              break
+            fi
+            if [ "$up" != "$size none" ]; then
+              echo "WORKLOAD READBACK-FAIL $asset: '$up'"
+              exit 1
+            fi
+            sleep 5
+          done
+          if [ "$verified" != 1 ]; then
+            echo "WORKLOAD READBACK-FAIL $asset: digest not published after 12 tries (want sha256:$sha)"
+            exit 1
+          fi
+          echo "WORKLOAD: readback OK $asset sha256:$sha"
+
+          # Merged SHA256SUMS: the `-ohos` set stays authoritative for every
+          # non-workload asset; the versioned workload line (inserted when the
+          # source sums still names an older version) and the rolling `latest`
+          # line both move to the bundle just mirrored.
+          gh release download "$SRC" --repo "$OWNER/$REPO" --pattern SHA256SUMS --dir dl --clobber
+          python3 - dl/SHA256SUMS "$WL_VERSION" "$sha" <<'PY'
+          import sys
+
+          path, version, digest = sys.argv[1:4]
+          version_name = f"openharmony-workload-{version}.tar.gz"
+          latest_name = "openharmony-workload-latest.tar.gz"
+          out, have_version, have_latest, last_workload = [], False, False, -1
+          for line in open(path).read().splitlines():
+              parts = line.split(None, 1)
+              name = parts[1].lstrip("*") if len(parts) == 2 else ""
+              if name == version_name:
+                  out.append(f"{digest}  {name}")
+                  have_version = True
+                  continue
+              if name == latest_name:
+                  out.append(f"{digest}  {name}")
+                  have_latest = True
+                  continue
+              out.append(line)
+              if name.startswith("openharmony-workload-") and name.endswith(".tar.gz"):
+                  last_workload = len(out) - 1
+          insert_at = last_workload + 1 if last_workload >= 0 else len(out)
+          for entry, present in ((f"{digest}  {version_name}", have_version),
+                                 (f"{digest}  {latest_name}", have_latest)):
+              if not present:
+                  out.insert(insert_at, entry)
+                  insert_at += 1
+          open(path, "w").write("\n".join(out) + "\n")
+          print(f"WORKLOAD: SHA256SUMS carries {version_name} + {latest_name} -> {digest}")
+          PY
+          gh release upload "$DST" dl/SHA256SUMS --repo "$OWNER/$REPO" --clobber
+          echo "WORKLOAD: uploaded SHA256SUMS"
