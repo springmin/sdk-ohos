@@ -720,52 +720,6 @@ End Class
         }
 
         [TestMethod]
-    }
-}
-");
-
-            await VerifyVB.VerifyAnalyzerAsync(@"
-Imports System.IO
-Imports System.Threading
-Imports System.Threading.Tasks
-
-Public Class C
-    Private _field As StreamReader = Nothing
-
-    Private ReadOnly Property DisposableProperty As StreamReader
-        Get
-            Return Nothing
-        End Get
-    End Property
-
-    Private Function GetDisposable() As StreamReader
-        Return Nothing
-    End Function
-
-    Public Async Function M(ByVal ct As CancellationToken) As Task
-        Dim cts As CancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(ct)
-        Dim fieldTask As Task = ConsumeAsync(_field, cts.Token)
-        Dim propertyTask As Task = ConsumeAsync(DisposableProperty, cts.Token)
-        Dim methodTask As Task = ConsumeAsync(GetDisposable(), cts.Token)
-        Await Task.Yield()
-        Await fieldTask
-        Await propertyTask
-        Await methodTask
-        cts.Dispose()
-    End Function
-
-    ' Visual Basic does not support local functions.
-    Private Shared Async Function ConsumeAsync(
-        ByVal disposable As StreamReader,
-        ByVal token As CancellationToken) As Task
-
-        Await Task.Yield()
-    End Function
-End Class
-");
-        }
-
-        [TestMethod]
         public async Task AwaitedElsewhereBeforeDisposeMultipleArgs_NoDiagnosticAsync()
         {
             await VerifyCS.VerifyAnalyzerAsync("""
