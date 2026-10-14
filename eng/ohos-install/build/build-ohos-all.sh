@@ -1005,8 +1005,26 @@ seed_musl_runtime_pack_alias_from_release() {
     local url="https://github.com/${GH_USER}/runtime-ohos/releases/download/v${RT_VERSION}-ohos/Microsoft.NETCore.App.Runtime.$rid.$RT_VERSION.nupkg"
     info "fetching published OpenHarmony runtime pack for the linux-musl alias..."
     if ! fetch_verified "$url" "$src" "" "OpenHarmony runtime pack $RT_VERSION"; then
-      info "runtime pack alias: fetch failed for $rid; skipping"
-      return 0
+      # Bootstrap: the first build of a new line runs before its own release
+      # exists, so the same-version fetch cannot succeed yet and the alias
+      # seeding below would be skipped whole, failing the in-build tool
+      # publishes with NETSDK1112. Fall back to the newest published runtime
+      # pack pinned in versions.env: the alias rewrite only needs a valid
+      # OpenHarmony pack as its base, not the matching version (every alias
+      # version below is rewritten from it anyway).
+      local fb="${ALIAS_SOURCE_RUNTIME_VERSION:-}"
+      if [ -n "$fb" ] && [ "$fb" != "$RT_VERSION" ]; then
+        local fbsrc="$WORK/Microsoft.NETCore.App.Runtime.$rid.$fb.nupkg"
+        local fburl="https://github.com/${GH_USER}/runtime-ohos/releases/download/v${fb}-ohos/Microsoft.NETCore.App.Runtime.$rid.$fb.nupkg"
+        info "runtime pack alias: $RT_VERSION is not published yet; falling back to $fb"
+        if fetch_verified "$fburl" "$fbsrc" "" "OpenHarmony runtime pack $fb (alias bootstrap source)"; then
+          src="$fbsrc"
+        fi
+      fi
+      if [ ! -f "$src" ]; then
+        info "runtime pack alias: fetch failed for $rid; skipping"
+        return 0
+      fi
     fi
   fi
   local arch="${rid##*-}"
