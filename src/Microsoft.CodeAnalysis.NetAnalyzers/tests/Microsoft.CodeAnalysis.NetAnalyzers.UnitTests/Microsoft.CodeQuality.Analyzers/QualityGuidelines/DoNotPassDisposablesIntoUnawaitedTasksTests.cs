@@ -720,35 +720,6 @@ End Class
         }
 
         [TestMethod]
-        public async Task NonLocalArgumentsAwaitedElsewhereBeforeDispose_NoDiagnosticAsync()
-        {
-            await VerifyCS.VerifyAnalyzerAsync(@"
-using System.IO;
-using System.Threading;
-using System.Threading.Tasks;
-
-public class C
-{
-    private StreamReader _field = null;
-    private StreamReader DisposableProperty => null;
-    private StreamReader GetDisposable() => null;
-
-    public async Task M(CancellationToken ct)
-    {
-        CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        Task fieldTask = ConsumeAsync(_field, cts.Token);
-        Task propertyTask = ConsumeAsync(DisposableProperty, cts.Token);
-        Task methodTask = ConsumeAsync(GetDisposable(), cts.Token);
-        await Task.Yield();
-        await fieldTask;
-        await propertyTask;
-        await methodTask;
-        cts.Dispose();
-
-        async Task ConsumeAsync(StreamReader disposable, CancellationToken token)
-        {
-            await Task.Yield();
-        }
     }
 }
 ");

@@ -1,4 +1,4 @@
-﻿﻿// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System.Diagnostics;
@@ -64,7 +64,6 @@ public sealed class MSBuildLogger : INodeLogger
     internal const string TasksTelemetryAggregatedEventName = "build/tasks";
     internal const string MSBuildTaskSubclassedTelemetryAggregatedEventName = "build/tasks/msbuild-subclassed";
     internal const string TasksDetailsTelemetryEventName = "build/tasks/details";
-    internal const string MSBuildTaskSubclassedTelemetryAggregatedEventName = "build/tasks/msbuild-subclassed";
 
     internal const string SdkTaskBaseCatchExceptionTelemetryEventName = "taskBaseCatchException";
     internal const string PublishPropertiesTelemetryEventName = "PublishProperties";
