@@ -78,6 +78,29 @@ jobs:
           echo "DST=v$VERSION-openharmony" >> "$GITHUB_ENV"
           echo "mirroring v$VERSION-ohos -> v$VERSION-openharmony"
 
+      # The distribution releases are created here on first sight so a new
+      # version line does not need a manual `gh release create` before the
+      # mirror can populate it. Idempotent: existing releases are left alone.
+      - name: Ensure the destination release exists
+        run: |
+          set -euo pipefail
+          OWNER="${{ github.repository_owner }}"
+          if gh release view "$DST" --repo "$OWNER/$REPO" >/dev/null 2>&1; then
+            echo "destination release $DST already exists"
+            exit 0
+          fi
+          VERSION="${DST#v}"; VERSION="${VERSION%-openharmony}"
+          case "$REPO" in
+            runtime-ohos)    TITLE="OpenHarmony arm64 Runtime $VERSION" ;;
+            aspnetcore-ohos) TITLE="OpenHarmony arm64 ASP.NET Core $VERSION" ;;
+            sdk-ohos)        TITLE="OpenHarmony SDK $VERSION" ;;
+            *)               TITLE="OpenHarmony $REPO $VERSION" ;;
+          esac
+          echo "creating $DST (title: $TITLE)"
+          gh release create "$DST" --repo "$OWNER/$REPO" \
+            --title "$TITLE" \
+            --notes "Distribution line mirrored from v$VERSION-ohos (ohos-release-mirror.yml)."
+
       - name: Mirror the latest Shipping assets to the post-rename release
         run: |
           set -euo pipefail
