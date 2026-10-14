@@ -51,3 +51,7 @@ jobs:
       - name: SDK tarball architecture guard (libdotnet-aot, P1-2)
         if: ${{ !cancelled() }}
         run: sh eng/ohos-install/tests/test-sdk-arch-check.sh
+
+      - name: NativeAOT/Crossgen2 mirror resolution (kit #57 NU1100)
+        if: ${{ !cancelled() }}
+        run: sh eng/ohos-install/tests/test-fetch-aot-packs-resolution.sh

@@ -89,6 +89,20 @@ Added PackageDownload for Microsoft.NETCore.App.Runtime.NativeAOT.linux-musl-arm
 | `Microsoft.NETCore.App.Runtime.NativeAOT.openharmony-arm64.11.0.0-rc.2.26451.112-struct1.nupkg` | 设备端目标 runtime pack（原生，推荐；asset id `607541145`） | `09345f9515612f2b090fd0e0f54c815156105127cc1686240a3cad8521dab11c` |
 | `runtime.openharmony-arm64.Microsoft.DotNet.ILCompiler.11.0.0-rc.2.26451.112.nupkg` | 设备端 host ilc（原生，推荐；asset id `597667138`） | `1c518a461cdb6d76640561b97170c2dc7d0e75fb55b475d00944a2e3cd7e67cd` |
 
+> **`.105` 线（当前默认）**：`aot-packs-11.0.0-rc.2.26504.105` 镜像 `.105` 官方重切的
+> 两件（来源 = `runtime-ohos` `v11.0.0-rc.2.26504.105-openharmony` 同名资产，
+> 字节一致）：
+>
+> | 资产 | 用途 | sha256 |
+> |---|---|---|
+> | `Microsoft.NETCore.App.Runtime.NativeAOT.openharmony-arm64.11.0.0-rc.2.26504.105.nupkg` | 设备端目标 runtime pack（28,269,716 B） | `cfd2eab682d8200a2c6745a42eb6d0ed8ba2d84b189ae9a6652c57b24038ac46` |
+> | `runtime.openharmony-arm64.Microsoft.DotNet.ILCompiler.11.0.0-rc.2.26504.105.nupkg` | 设备端 host ilc（43,828,764 B） | `04c239af6c594c3cca93e1cf3f1a4fd94c7b69d6a5ff351c75ab27771a4af425` |
+>
+> 本线为结构修复后的全新构建（无 `-struct1` 后缀）。脚本按 `AOT_PACKS_VERSION`
+> （默认 = `RT_VERSION`）自动选线；未映射的线 **fail-closed**（列出已知线，不静默取
+> 旧线资产——kit #57 NU1100 即此坑）。`--crossgen2` 另取
+> `crossgen2-packs-11.0.0-rc.2.26504.105`（JIT R2R 用，`11f87f0c…`）。
+
 > **`-struct1` 是 rc.2 runtime pack 的「结构修复后重出」件**（28,905,116 B）：原
 > `...rc.2.26451.112.nupkg`（`46d221f2…`）由 2026-09-27 的静态 OpenSSL 全量构建产出，
 > 其静态 `libSystem.Security.Cryptography.Native.OpenSsl.a` 缺 `opensslshim.c.o`
@@ -118,8 +132,10 @@ Added PackageDownload for Microsoft.NETCore.App.Runtime.NativeAOT.linux-musl-arm
 一键下载（校验 sha256 后放入本地 feed）：
 
 ```sh
-# 默认下载到 ./aot-packs；也可传目标目录或本地文件所在目录
+# 默认按当前线（RT_VERSION）解析镜像并下载到 ./aot-packs；也可传目标目录或本地文件所在目录
 sh eng/ohos-install/fetch-nativeaot-packs.sh [目录]
+# JIT R2R（PublishReadyToRun）另需 Crossgen2 pack 时：
+sh eng/ohos-install/fetch-nativeaot-packs.sh --crossgen2 [目录]
 
 # 然后把该目录加为 NuGet 源（项目级 NuGet.config）：
 #   <add key="aot-packs" value="/绝对路径/aot-packs" />
@@ -131,6 +147,7 @@ sh eng/ohos-install/fetch-nativeaot-packs.sh [目录]
 > `versions.env` 里的 `aot_pack_sha256` 锚校验，截断/替换的下载会被拒绝，
 > 并额外校验 OpenHarmony runtime pack 的 OpenSSL shim（缺 shim 的包拒绝入 feed）
 > （本环境下直连 release-assets CDN 会 TLS 超时/截断，代理回退已验证）。
+> 镜像缺失/未映射时脚本 fail-closed，并给出 `--local <dir>` 或补镜像的明确指引。
 
 > 网络受限时可用镜像 `https://api.nuget.org` → `https://nuget.azure.cn`
 > （flatcontainer 重定向）。rc.2 镜像只含两件 openharmony 原生包：需要
