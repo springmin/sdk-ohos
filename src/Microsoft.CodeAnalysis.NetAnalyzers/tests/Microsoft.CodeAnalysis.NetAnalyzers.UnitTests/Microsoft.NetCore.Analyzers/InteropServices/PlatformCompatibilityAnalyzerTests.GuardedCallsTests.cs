@@ -4430,8 +4430,6 @@ namespace Microsoft.NetCore.Analyzers.InteropServices.UnitTests
             await VerifyAnalyzerCSAsync(source, s_msBuildPlatforms);
         }
 
-        [TestMethod, WorkItem(54066, "https://github.com/dotnet/sdk/issues/54066")]
-        [TestMethod, WorkItem(54066, "https://github.com/dotnet/sdk/issues/54066")]
         [TestMethod]
         public async Task GuardMembersWithSupportedGuardAttributesAsync()
         {
