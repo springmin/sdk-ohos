@@ -10,6 +10,7 @@ namespace Microsoft.DotNet.MsiInstallerTests
 {
     [OSCondition(OperatingSystems.Windows)]
     [TestClass]
+    [OSCondition(OperatingSystems.Windows)]
     public class WorkloadSetTests2 : WorkloadSetTestsBase
     {
         public WorkloadSetTests2()

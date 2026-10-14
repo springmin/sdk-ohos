@@ -9,6 +9,7 @@ namespace Microsoft.DotNet.MsiInstallerTests
 {
     [OSCondition(OperatingSystems.Windows)]
     [TestClass]
+    [OSCondition(OperatingSystems.Windows)]
     public class VSWorkloadTests : VMTestBase
     {
         [TestInitialize]

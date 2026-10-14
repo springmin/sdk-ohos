@@ -126,7 +126,7 @@ public class Program
         finally
         {
             TelemetryInstance.TrackEvent("command/finish", new Dictionary<string, string?> { { "exitCode", exitCode.ToString() } });
-            Shutdown(default!);
+            Shutdown(default!, exitCode);
             TelemetryClient.WriteLogIfNecessary();
         }
     }
@@ -210,6 +210,9 @@ public class Program
     }
 
     public static void Shutdown(PosixSignalContext context)
+        => Shutdown(context, 0);
+
+    private static void Shutdown(PosixSignalContext context, int exitCode)
     {
         s_sigIntRegistration.Dispose();
         s_sigQuitRegistration.Dispose();
@@ -219,7 +222,7 @@ public class Program
             telemetryClient.WaitForPendingEvents();
         }
         s_mainActivity?.Stop();
-        TelemetryClient.FlushProviders();
+        TelemetryClient.FlushProviders(exitCode);
         Activities.Source.Dispose();
     }
 }

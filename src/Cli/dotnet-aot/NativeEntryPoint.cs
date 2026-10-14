@@ -280,7 +280,7 @@ static unsafe partial class NativeEntryPoint
             mainActivity?.AddTag("process.exit.code", exitCode);
             mainActivity?.SetStatus(success ? ActivityStatusCode.Ok : ActivityStatusCode.Error);
             mainActivity?.Stop();
-            Telemetry.TelemetryClient.FlushProviders();
+            Telemetry.TelemetryClient.FlushProviders(exitCode);
 
             if (aotHandledInProcess)
             {
