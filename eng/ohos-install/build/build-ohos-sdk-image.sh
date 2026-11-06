@@ -63,6 +63,19 @@ while IFS=$'\t' read -r name url; do
     fi
 done < "$WORK/runtime-assets.tsv"
 
+# The SDK layout target downloads the runtime archive from builds.dotnet.microsoft.com
+# by default. OpenHarmony releases are published on the fork, so seed the
+# redist-downloads cache with the matching target runtime archive.
+TFM="${TFM:-net11.0}"
+REDIST_DOWNLOADS="$SDK_REPO/artifacts/obj/redist/$CONFIG/$TFM/redist-downloads"
+mkdir -p "$REDIST_DOWNLOADS"
+runtime_tar="dotnet-runtime-${RT_VERSION}-openharmony-arm64.tar.gz"
+if [ ! -f "$REDIST_DOWNLOADS/$runtime_tar" ]; then
+    info "Seeding redist runtime archive: $runtime_tar"
+    curl -fsSL --retry 5 --retry-all-errors --connect-timeout 30 \
+        "$RELEASE_BASE/$runtime_tar" -o "$REDIST_DOWNLOADS/$runtime_tar"
+fi
+
 # Verify the downloaded packages against the release's checksum manifest when
 # possible. Missing files are ignored because the manifest also covers tarballs.
 if [ "${VERIFY_RELEASE_ASSETS:-1}" = "1" ]; then
