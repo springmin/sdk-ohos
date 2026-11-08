@@ -54,6 +54,14 @@ on:
         description: 'A/B: R2R the runtime framework in-tree (OpenHarmonyInTreeR2R, in-build crossgen2) instead of the out-of-tree overlay'
         type: boolean
         default: false
+      skip_sdk:
+        description: Build runtime + aspnetcore only; skip the SDK packaging stage
+        type: boolean
+        default: false
+      aspnetcore_prerelease_iteration:
+        description: Override aspnetcore PreReleaseVersionIteration in the CI checkout (empty keeps the branch value)
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -95,6 +103,32 @@ jobs:
           ref: ${{ inputs.aspnetcore_ref }}
           path: aspnetcore
           submodules: recursive
+
+      - name: Align aspnetcore pre-release iteration
+        if: inputs.aspnetcore_prerelease_iteration != ''
+        run: |
+          set -euo pipefail
+          python3 - "$GITHUB_WORKSPACE/aspnetcore/eng/Versions.props" "${{ inputs.aspnetcore_prerelease_iteration }}" <<'PY'
+          import re
+          import sys
+
+          path, value = sys.argv[1], sys.argv[2]
+          with open(path, encoding="utf-8") as stream:
+              text = stream.read()
+
+          updated, count = re.subn(
+              r"<PreReleaseVersionIteration>[^<]*</PreReleaseVersionIteration>",
+              f"<PreReleaseVersionIteration>{value}</PreReleaseVersionIteration>",
+              text,
+              count=1,
+          )
+          if count != 1:
+              raise SystemExit("PreReleaseVersionIteration not found in eng/Versions.props")
+
+          with open(path, "w", encoding="utf-8") as stream:
+              stream.write(updated)
+          PY
+          git -C "$GITHUB_WORKSPACE/aspnetcore" diff -- eng/Versions.props
 
       - name: Resolve stage SHAs + cache keys
         id: stage-shas
@@ -530,7 +564,8 @@ jobs:
           EXTRA=""
           if [ "${{ steps.cache-rt.outputs.cache-hit }}" = "true" ]; then EXTRA="$EXTRA --skip-runtime"; fi
           if [ "${{ steps.cache-asp.outputs.cache-hit }}" = "true" ]; then EXTRA="$EXTRA --skip-aspnetcore"; fi
-          echo "stage caches: runtime=${{ steps.cache-rt.outputs.cache-hit || 'false' }} aspnetcore=${{ steps.cache-asp.outputs.cache-hit || 'false' }}; extra flags:${EXTRA:- (none)}"
+          if [ "${{ inputs.skip_sdk }}" = "true" ]; then EXTRA="$EXTRA --skip-sdk"; fi
+          echo "stage caches: runtime=${{ steps.cache-rt.outputs.cache-hit || 'false' }} aspnetcore=${{ steps.cache-asp.outputs.cache-hit || 'false' }} skip_sdk=${{ inputs.skip_sdk }}; extra flags:${EXTRA:- (none)}"
           bash sdk/eng/ohos-install/build/build-ohos-all.sh \
             --buildid="$BUILDID" --rid="$RID" $EXTRA > /tmp/build.log 2>&1
           rc=$?
@@ -581,6 +616,7 @@ jobs:
             runtime/artifacts/packages/Release/Shipping/*
             aspnetcore/artifacts/packages/Release/Shipping/*
             sdk/artifacts/packages/Release/Shipping/*
+          if-no-files-found: warn
           retention-days: 30
 
       - name: Publish to -ohos releases
