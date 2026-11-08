@@ -54,9 +54,9 @@ unset AOT_PACKS_VERSION AOT_PACKS_TAG
 [ "$AOT_PACKS_VERSION" = "$RT_VERSION" ] \
     && pass "AOT_PACKS_VERSION defaults to the current line ($RT_VERSION)" \
     || fail "AOT_PACKS_VERSION defaults to RT_VERSION (got '$AOT_PACKS_VERSION')"
-[ "$AOT_PACKS_TAG" = "aot-packs-11.0.0-rc.2.26504.105" ] \
-    && pass "the .105 line resolves its mirror tag" \
-    || fail "the .105 line resolves its mirror tag (got '$AOT_PACKS_TAG')"
+[ "$AOT_PACKS_TAG" = "aot-packs-$RT_VERSION" ] \
+    && pass "the default line ($RT_VERSION) resolves its mirror tag" \
+    || fail "the default line resolves its mirror tag (got '$AOT_PACKS_TAG')"
 
 # Every known line: tag + asset names + a 64-hex pin per asset; the tag maps
 # back to exactly the line (so AOT_PACKS_TAG=<tag> resolves the same assets).
