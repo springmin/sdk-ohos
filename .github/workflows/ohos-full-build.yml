@@ -62,6 +62,10 @@ on:
         description: Override aspnetcore PreReleaseVersionIteration in the CI checkout (empty keeps the branch value)
         required: false
         default: ''
+      sdk_prerelease_iteration:
+        description: Override sdk PreReleaseVersionIteration in the CI checkout (empty keeps the branch value)
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -88,6 +92,32 @@ jobs:
           repository: ${{ github.repository }}
           ref: ${{ inputs.sdk_ref }}
           path: sdk
+
+      - name: Align sdk pre-release iteration
+        if: inputs.sdk_prerelease_iteration != ''
+        run: |
+          set -euo pipefail
+          python3 - "$GITHUB_WORKSPACE/sdk/eng/Versions.props" "${{ inputs.sdk_prerelease_iteration }}" <<'PY'
+          import re
+          import sys
+
+          path, value = sys.argv[1], sys.argv[2]
+          with open(path, encoding="utf-8") as stream:
+              text = stream.read()
+
+          updated, count = re.subn(
+              r"<PreReleaseVersionIteration>[^<]*</PreReleaseVersionIteration>",
+              f"<PreReleaseVersionIteration>{value}</PreReleaseVersionIteration>",
+              text,
+              count=1,
+          )
+          if count != 1:
+              raise SystemExit("PreReleaseVersionIteration not found in sdk eng/Versions.props")
+
+          with open(path, "w", encoding="utf-8") as stream:
+              stream.write(updated)
+          PY
+          git -C "$GITHUB_WORKSPACE/sdk" diff -- eng/Versions.props
 
       - name: Checkout runtime-ohos
         uses: actions/checkout@v4
