@@ -35,7 +35,10 @@ SIGN_TOOL="${BINARY_SIGN_TOOL:-}"
 if [ -z "$SIGN_TOOL" ]; then
     for p in \
         "${HOME}/.harmonybrew/bin/binary-sign-tool" \
-        "${HOME}/.harmonybrew/Cellar/ohos-sdk/"*/toolchains/lib/binary-sign-tool
+        "${HOME}/.harmonybrew/opt/ohos-sdk/bin/binary-sign-tool" \
+        "${HOME}/.harmonybrew/opt/ohos-sdk/toolchains/lib/binary-sign-tool" \
+        "${HOME}/.harmonybrew/Cellar/ohos-sdk/"*/toolchains/lib/binary-sign-tool \
+        "${HOME}/.harmonybrew/Cellar/ohos-sdk/"*/bin/binary-sign-tool
     do
         if [ -x "$p" ]; then SIGN_TOOL="$p"; break; fi
     done

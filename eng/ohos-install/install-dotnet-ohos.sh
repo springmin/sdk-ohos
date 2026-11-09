@@ -158,6 +158,8 @@ find_binary_sign_tool() {
     fi
     for p in \
         "${HOME}/.harmonybrew/bin/binary-sign-tool" \
+        "${HOME}/.harmonybrew/opt/ohos-sdk/bin/binary-sign-tool" \
+        "${HOME}/.harmonybrew/opt/ohos-sdk/toolchains/lib/binary-sign-tool" \
         "${HOME}/.harmonybrew/Cellar/ohos-sdk/"*/toolchains/lib/binary-sign-tool \
         "${HOME}/.harmonybrew/Cellar/ohos-sdk/"*/bin/binary-sign-tool
     do
