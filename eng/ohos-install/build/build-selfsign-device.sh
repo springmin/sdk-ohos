@@ -17,14 +17,18 @@
 #
 # usage: build-selfsign-device.sh <dotnet-root> [output-dir]
 # env:   AOT_PACKS_DIR (default: $HOME/.aot-packs)
-#        OHOS_NDK_DIR  (default: first harmonybrew ohos-sdk native dir)
+#        OHOS_NDK_DIR  (default: $HOME/.harmonybrew/opt/ohos-sdk/native, Cellar fallback)
 #        OHOS_OPENSSL_DIR (default: $HOME/.harmonybrew/opt/openssl@3/lib)
 set -u
 DR="${1:?usage: build-selfsign-device.sh <dotnet-root> [output-dir]}"
 T="${2:-$(pwd)/selfsign-device-out}"
 HERE="$(cd "$(dirname "$0")/.." && pwd)"   # eng/ohos-install
 AOT_PACKS_DIR="${AOT_PACKS_DIR:-$HOME/.aot-packs}"
-OHOS_NDK_DIR="${OHOS_NDK_DIR:-$(ls -d "$HOME"/.harmonybrew/Cellar/ohos-sdk/*/native 2>/dev/null | head -1)}"
+OHOS_NDK_DIR="${OHOS_NDK_DIR:-}"
+if [ -z "$OHOS_NDK_DIR" ]; then
+  OHOS_NDK_DIR="$HOME/.harmonybrew/opt/ohos-sdk/native"
+  [ -d "$OHOS_NDK_DIR" ] || OHOS_NDK_DIR="$(ls -d "$HOME"/.harmonybrew/Cellar/ohos-sdk/*/native 2>/dev/null | head -1)"
+fi
 OSSL="${OHOS_OPENSSL_DIR:-$HOME/.harmonybrew/opt/openssl@3/lib}"
 [ -x "$DR/dotnet" ] || { echo "no dotnet at $DR" >&2; exit 2; }
 [ -n "$OHOS_NDK_DIR" ] || { echo "OHOS_NDK_DIR not set and no harmonybrew ohos-sdk found" >&2; exit 2; }
@@ -87,7 +91,16 @@ else
   echo "-- unsigned exec refused as expected"
 fi
 SIGN_TOOL="$(command -v binary-sign-tool 2>/dev/null || true)"
-[ -n "$SIGN_TOOL" ] || SIGN_TOOL="$(ls "$HOME"/.harmonybrew/Cellar/ohos-sdk/*/bin/binary-sign-tool "$HOME"/.harmonybrew/Cellar/ohos-sdk/*/toolchains/lib/binary-sign-tool 2>/dev/null | head -1)"
+if [ -z "$SIGN_TOOL" ]; then
+  for p in \
+    "$HOME/.harmonybrew/opt/ohos-sdk/bin/binary-sign-tool" \
+    "$HOME/.harmonybrew/opt/ohos-sdk/toolchains/lib/binary-sign-tool" \
+    "$HOME"/.harmonybrew/Cellar/ohos-sdk/*/bin/binary-sign-tool \
+    "$HOME"/.harmonybrew/Cellar/ohos-sdk/*/toolchains/lib/binary-sign-tool
+  do
+    [ -x "$p" ] && { SIGN_TOOL="$p"; break; }
+  done
+fi
 [ -n "$SIGN_TOOL" ] || { echo "binary-sign-tool not found (needed for the bootstrap self-test)" >&2; exit 1; }
 "$SIGN_TOOL" sign -inFile "$T/exec-test" -outFile "$T/exec-test" -selfSign 1 >/dev/null 2>&1 || \
   { echo "bootstrap sign failed: $SIGN_TOOL" >&2; exit 1; }

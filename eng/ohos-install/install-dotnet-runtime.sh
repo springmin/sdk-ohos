@@ -75,6 +75,8 @@ find_sign_tool() {
     # 2) common harmonybrew / OHOS SDK locations
     for p in \
         "${HOME}/.harmonybrew/bin/binary-sign-tool" \
+        "${HOME}/.harmonybrew/opt/ohos-sdk/bin/binary-sign-tool" \
+        "${HOME}/.harmonybrew/opt/ohos-sdk/toolchains/lib/binary-sign-tool" \
         "${HOME}/.harmonybrew/Cellar/ohos-sdk/"*/toolchains/lib/binary-sign-tool \
         "${HOME}/.harmonybrew/Cellar/ohos-sdk/"*/bin/binary-sign-tool
     do
