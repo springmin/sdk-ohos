@@ -7,10 +7,12 @@ so the SDK re-signs build/publish outputs in place (a changed signed binary fail
 Non-ELF files, symlinks and still-valid .codesign sections are skipped, the SingleFile trailer
 is preserved, and an output tree newer than its stamp is not walked. Mirrors _EnableMacOSCodeSign.
 
-This is the SDK-side pass for RID-based and portable builds, including `dotnet run file.cs`,
-where a platform TFM (and therefore the workload's HAP targets) is not active. The HAP payload
-is signed separately by the OpenHarmony workload's OpenHarmonyCodesign task; both passes share
-the ElfSigner algorithm but have different ownership. Keep the two target contracts in sync.
+This is the local-execution signature (the OpenHarmony analogue of macOS
+`_EnableMacOSCodeSign` / `codesign -s -`) for RID-based and portable builds, including
+`dotnet run file.cs`, where a platform TFM (and therefore the workload's HAP targets) is not
+active. The distribution signature (HAP payload and package) is owned by the OpenHarmony
+workload's `OpenHarmony.Hap.targets`; both passes share the ElfSigner algorithm but have
+different ownership. Keep the two target contracts in sync.
 ***********************************************************************************************
 -->
 <Project ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">

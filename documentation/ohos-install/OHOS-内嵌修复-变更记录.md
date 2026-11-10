@@ -48,7 +48,8 @@
 **D. `src/Tasks/Microsoft.NET.Build.Tasks/targets/Microsoft.NET.Sdk.OpenHarmony.targets` — 签名触发**
 
 （2026-11-10 从 `Microsoft.NET.Sdk.targets` 拆出；通用 targets 只保留一行 import。SDK 侧负责
-build/publish 产物签名，HAP 载荷签名仍由 OpenHarmony workload 负责。）
+build/publish 产物的本地执行签名；HAP 载荷和 HAP 包的分发签名由 OpenHarmony workload 负责。
+对应 macOS 的 `_EnableMacOSCodeSign` / `codesign --sign -` 与 `_CodesignAppBundle` 分层。）
 
 新增 `_OpenHarmonyCodesignBuildOutputs`（`AfterTargets="Build"`）与 `_OpenHarmonyCodesignPublishOutputs`（`AfterTargets="Publish"`），条件 `$(_OpenHarmonyCodesignEnabled)` = `RuntimeIdentifier` 或 `NETCoreSdkRuntimeIdentifier` 以 `ohos` 开头，对 `$(TargetDir)`/`$(PublishDir)` 全量递归签名。覆盖：自包含应用、file-based 应用（`dotnet run file.cs`，RID 取自 `RuntimeInformation.RuntimeIdentifier`）、portable 构建（RID 空但 SDK RID 为 ohos）。
 
