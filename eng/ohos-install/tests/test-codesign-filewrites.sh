@@ -1,10 +1,10 @@
 #!/bin/sh
 # ============================================================================
 # test-codesign-filewrites.sh — regression tests for the OpenHarmony codesign clean contract
-# (audit V2). The two codesign passes in Microsoft.NET.Sdk.targets rewrite build/publish outputs
-# in place and leave one stamp each in the object tree; a stamp that is not registered in
-# FileWrites survives `dotnet clean`, so the next build's incremental check (the stamp's
-# timestamp) can skip a needed re-sign.
+# (audit V2). The two codesign passes in Microsoft.NET.Sdk.OpenHarmony.targets rewrite
+# build/publish outputs in place and leave one stamp each in the object tree; a stamp that is not
+# registered in FileWrites survives `dotnet clean`, so the next build's incremental check (the
+# stamp's timestamp) can skip a needed re-sign.
 #
 # The check parses the target file and requires, for both passes:
 #   * the incremental pair Inputs=<collector items> Outputs=<stamp> stays intact,
@@ -23,7 +23,8 @@ set -u
 
 TESTS_DIR="$(cd "$(dirname "$0")" && pwd)"
 SDK_DIR="$(cd "$TESTS_DIR/../../.." && pwd)"
-TARGETS="$SDK_DIR/src/Tasks/Microsoft.NET.Build.Tasks/targets/Microsoft.NET.Sdk.targets"
+TARGETS="$SDK_DIR/src/Tasks/Microsoft.NET.Build.Tasks/targets/Microsoft.NET.Sdk.OpenHarmony.targets"
+GENERIC_TARGETS="$SDK_DIR/src/Tasks/Microsoft.NET.Build.Tasks/targets/Microsoft.NET.Sdk.targets"
 
 PASS=0
 FAIL=0
@@ -144,6 +145,13 @@ then
     pass "T5 the input collector targets still run before their codesign passes"
 else
     fail "T5 the codesign collector targets/order drifted"
+fi
+
+# ---- T6: the generic SDK targets import the OpenHarmony codesign file -----------------------
+if grep -q 'Microsoft.NET.Sdk.OpenHarmony.targets' "$GENERIC_TARGETS"; then
+    pass "T6 Microsoft.NET.Sdk.targets imports the OpenHarmony codesign targets"
+else
+    fail "T6 the generic SDK targets do not import the OpenHarmony codesign targets"
 fi
 
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"

@@ -873,61 +873,10 @@ Copyright (c) .NET Foundation. All rights reserved.
                    />
   </Target>
 
-  <!--
-    ============================================================
-                                        _OpenHarmonyCodeSignBuildOutputs
-    OpenHarmony only executes signed ELF binaries, so build/publish outputs for it must be
-    re-signed in place (a changed signed binary fails with EPERM). Non-ELF files, symlinks
-    and still-valid .codesign sections are skipped, the SingleFile trailer is preserved,
-    and an output tree newer than its stamp is not walked. Mirrors _EnableMacOSCodeSign.
-    ============================================================
-     -->
-  <UsingTask TaskName="OpenHarmonyCodesign" AssemblyFile="$(MicrosoftNETBuildTasksAssembly)" />
-  <PropertyGroup>
-    <_EnableOpenHarmonyCodeSign Condition="'$(_EnableOpenHarmonyCodeSign)' == '' and ($(RuntimeIdentifier.StartsWith('openharmony')) or $(AppHostRuntimeIdentifier.StartsWith('openharmony')))">true</_EnableOpenHarmonyCodeSign>
-  </PropertyGroup>
-  <Target Name="_OpenHarmonyCodeSignCollectBuildInputs"
-          BeforeTargets="_OpenHarmonyCodeSignBuildOutputs"
-          Condition="'$(_EnableOpenHarmonyCodeSign)' == 'true'">
-    <ItemGroup>
-      <_OpenHarmonyCodeSignBuildInputs Include="$(TargetDir)**/*" />
-    </ItemGroup>
-  </Target>
-  <Target Name="_OpenHarmonyCodeSignBuildOutputs"
-          AfterTargets="Build"
-          Condition="'$(_EnableOpenHarmonyCodeSign)' == 'true'"
-          Inputs="@(_OpenHarmonyCodeSignBuildInputs)"
-          Outputs="$(IntermediateOutputPath)OpenHarmonyCodeSign.stamp">
-    <OpenHarmonyCodesign Directories="$(TargetDir)" />
-    <Touch Files="$(IntermediateOutputPath)OpenHarmonyCodeSign.stamp" AlwaysCreate="true" />
-    <!-- Clean contract: the codesign pass rewrites the build outputs in place; the stamp is the
-         only residue it leaves in the object tree. Register it in the same target that creates it
-         so `dotnet clean` removes it. -->
-    <ItemGroup>
-      <FileWrites Include="$(IntermediateOutputPath)OpenHarmonyCodeSign.stamp" />
-    </ItemGroup>
-  </Target>
-
-  <Target Name="_OpenHarmonyCodeSignCollectPublishInputs"
-          BeforeTargets="_OpenHarmonyCodeSignPublishOutputs"
-          Condition="'$(_EnableOpenHarmonyCodeSign)' == 'true'">
-    <ItemGroup>
-      <_OpenHarmonyCodeSignPublishInputs Include="$(PublishDir)**/*" />
-    </ItemGroup>
-  </Target>
-  <Target Name="_OpenHarmonyCodeSignPublishOutputs"
-          AfterTargets="Publish"
-          Condition="'$(_EnableOpenHarmonyCodeSign)' == 'true'"
-          Inputs="@(_OpenHarmonyCodeSignPublishInputs)"
-          Outputs="$(IntermediateOutputPath)OpenHarmonyCodeSignPublish.stamp">
-    <OpenHarmonyCodesign Directories="$(PublishDir)" />
-    <Touch Files="$(IntermediateOutputPath)OpenHarmonyCodeSignPublish.stamp" AlwaysCreate="true" />
-    <!-- Clean contract: same as the build pass above; the publish stamp must be removed by
-         `dotnet clean` as well. -->
-    <ItemGroup>
-      <FileWrites Include="$(IntermediateOutputPath)OpenHarmonyCodeSignPublish.stamp" />
-    </ItemGroup>
-  </Target>
+  <!-- OpenHarmony build/publish output codesigning. The implementation lives in a separate
+       file so this generic targets file stays platform-neutral; HAP payload signing is owned
+       by the OpenHarmony workload. -->
+  <Import Project="$(MSBuildThisFileDirectory)Microsoft.NET.Sdk.OpenHarmony.targets" />
 
   <!--
     ============================================================

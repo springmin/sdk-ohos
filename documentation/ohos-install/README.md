@@ -176,7 +176,7 @@ SDK/Runtime 已内嵌全部 OpenHarmony 沙箱修复，**不再需要**外部 wr
 | JIT W^X 被沙箱拒绝 | SDK runtimeconfig 烘焙 `EnableWriteXorExecute=false` |
 | 无 ICU | SDK runtimeconfig 烘焙 `Invariant=true` |
 | `/tmp` 只读 | runtime 共享内存改走 `Path.GetTempPath()`（TMPDIR 由安装脚本/宿主提供） |
-| 构建产物签名 | `OpenHarmonyCodesign` MSBuild task（Build/Publish 后自动） |
+| 构建产物签名 | `OpenHarmonyCodesign` MSBuild task（Build/Publish 后自动；HAP 载荷由 workload 签名） |
 | 子进程环境 | `OpenHarmonyEnvironmentDefaults`（W^X/invariant/遥测/nologo） |
 
 详见同目录 [`OHOS-内嵌修复-变更记录.md`](OHOS-内嵌修复-变更记录.md)。

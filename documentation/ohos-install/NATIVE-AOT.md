@@ -10,7 +10,8 @@
 
 NativeAOT 把托管程序编译成单个原生 ELF（`ilc` 编译 + 原生链接），发布产物
 在设备上直接 `execve`，不经过 CoreCLR/JIT —— 因此绕开了 HarmonyOS 对匿名
-可执行内存（JIT）的限制。发布输出仍由 SDK 自动签名（`OpenHarmonyCodesign`）。
+可执行内存（JIT）的限制。发布输出仍由 SDK 自动签名（`OpenHarmonyCodesign`）；打进 HAP 的
+载荷由 OpenHarmony workload 的 HAP targets 另行签名。
 
 ---
 

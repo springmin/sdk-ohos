@@ -5,7 +5,8 @@ Each `.sh` test is self-contained (no network; transports and package sources ar
 needed) and prints a PASS/FAIL summary:
 
 - `test-codesign-filewrites.sh` — codesign clean contract (incremental Inputs/Outputs stamp and
-  `FileWrites` registration) in `Microsoft.NET.Sdk.targets`.
+  `FileWrites` registration) in `Microsoft.NET.Sdk.OpenHarmony.targets`, plus its import from
+  `Microsoft.NET.Sdk.targets`.
 - `test-hostfeed-verification.sh` — build-time hostfeed digest enforcement (H-C1), mocked transport.
 - `test-installer-verification.sh` — installer download-verification hardening (D-4), mocked transport.
 - `test-sdk-arch-check.sh` — SDK architecture guard around `build/check-sdk-arch.py` (prune + tarball verify).
