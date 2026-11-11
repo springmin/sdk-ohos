@@ -463,7 +463,7 @@ compile_shims_into_layout() {
     (cd "$RUNTIME_REPO" && ./.dotnet/dotnet build "$P" -c "$CONFIG" \
       -p:TargetOS=openharmony -p:TargetArchitecture="$ARCH" -p:PortableOS=openharmony -p:UseBootstrapLayout=true \
       "-p:RuntimeIdentifierGraphPath=$rsp" -p:IncludeSymbols=false \
-      -p:PreReleaseVersionLabel="$LABEL" -p:PreReleaseVersion="$PRE" -p:StabilizePackageVersion=true -p:OfficialBuildId="$BUILDID" \
+      -p:PreReleaseVersionLabel="$LABEL" -p:PreReleaseVersion="$PRE" -p:StabilizePackageVersion=true -p:DotNetFinalVersionKind=release -p:OfficialBuildId="$BUILDID" \
       -v:q -nologo) >>"$LOG" 2>&1 || { echo "shim build failed: $P" | tee -a "$LOG"; return 1; }
   done
   for D in "$RUNTIME_REPO"/artifacts/bin/*/Release/${TFM}-unix; do
@@ -565,7 +565,7 @@ prebuild_platform_ref() {
   (cd "$RUNTIME_REPO" && ./.dotnet/dotnet build "$proj" -c "$CONFIG" \
     -p:TargetOS=openharmony -p:TargetArchitecture="$ARCH" -p:PortableOS=openharmony -p:UseBootstrapLayout=true \
     "-p:RuntimeIdentifierGraphPath=$rsp" -p:IncludeSymbols=false \
-    -p:PreReleaseVersionLabel="$LABEL" -p:PreReleaseVersion="$PRE" -p:StabilizePackageVersion=true -p:OfficialBuildId="$BUILDID" \
+    -p:PreReleaseVersionLabel="$LABEL" -p:PreReleaseVersion="$PRE" -p:StabilizePackageVersion=true -p:DotNetFinalVersionKind=release -p:OfficialBuildId="$BUILDID" \
     "/p:RestoreConfigFile=$NUGET_CONFIG" "/p:RestoreAdditionalProjectSources=$FEED" \
     -p:ApiCompatValidateAssemblies=false -v:q -nologo) >>"$LOG" 2>&1 || {
       warn_echo "WARN: pre-building the S.C.Crypto ref failed; continuing with the refresh only"
@@ -751,7 +751,7 @@ PYEOF
         /p:RuntimeIdentifierGraphPath="$rsp" /p:IncludeSymbols=false \
         "/p:RestoreConfigFile=$NUGET_CONFIG" \
         $IN_TREE_R2R_PACK_ARGS \
-        /p:PreReleaseVersionLabel="$LABEL" /p:PreReleaseVersion="$PRE" /p:StabilizePackageVersion=true /p:OfficialBuildId="$BUILDID" \
+        /p:PreReleaseVersionLabel="$LABEL" /p:PreReleaseVersion="$PRE" /p:StabilizePackageVersion=true /p:DotNetFinalVersionKind=release /p:OfficialBuildId="$BUILDID" \
         "/p:RestoreAdditionalProjectSources=$FEED" \
         -cmakeargs "-DCMAKE_SYSTEM_NAME=OHOS -DHAVE_CLOCK_MONOTONIC_COARSE_EXITCODE=0 -DHAVE_CLOCK_REALTIME_EXITCODE=0 -DHAVE_CLOCK_THREAD_CPUTIME_EXITCODE=0 -DHAVE_MMAP_DEV_ZERO_EXITCODE=0 -DHAVE_PROCFS_CTL_EXITCODE=1 -DHAVE_PROCFS_STAT_EXITCODE=0 -DHAVE_PROCFS_STATM_EXITCODE=0 -DHAVE_SCHED_GETCPU_EXITCODE=0 -DHAVE_SCHED_GET_PRIORITY_EXITCODE=0 -DHAVE_WORKING_CLOCK_GETTIME_EXITCODE=0 -DHAVE_WORKING_GETTIMEOFDAY_EXITCODE=0 -DONE_SHARED_MAPPING_PER_FILEREGION_PER_PROCESS_EXITCODE=1 -DREALPATH_SUPPORTS_NONEXISTENT_FILES_EXITCODE=1 -DHAVE_SHM_OPEN_THAT_WORKS_WELL_ENOUGH_WITH_MMAP_EXITCODE=0 -DHAVE_BROKEN_FIFO_KEVENT_EXITCODE=1 -DHAVE_BROKEN_FIFO_SELECT_EXITCODE=1 -DOPENSSL_ROOT_DIR=$OPENSSL_DIR -DOPENSSL_INCLUDE_DIR=$OPENSSL_DIR/include \
           -DOPENSSL_CRYPTO_LIBRARY=$OPENSSL_DIR/lib/libcrypto.a -DOPENSSL_SSL_LIBRARY=$OPENSSL_DIR/lib/libssl.a \
@@ -1173,7 +1173,7 @@ stage1() {
       -subset host \
       /p:UseBootstrapLayout=true /p:IncludeSymbols=false \
       /p:RuntimeIdentifierGraphPath="$rsp" \
-      /p:PreReleaseVersionLabel="$LABEL" /p:PreReleaseVersion="$PRE" /p:StabilizePackageVersion=true /p:OfficialBuildId="$BUILDID" \
+      /p:PreReleaseVersionLabel="$LABEL" /p:PreReleaseVersion="$PRE" /p:StabilizePackageVersion=true /p:DotNetFinalVersionKind=release /p:OfficialBuildId="$BUILDID" \
       -cmakeargs "-DCMAKE_SYSTEM_NAME=OHOS -DHAVE_CLOCK_MONOTONIC_COARSE_EXITCODE=0 -DHAVE_CLOCK_REALTIME_EXITCODE=0 -DHAVE_CLOCK_THREAD_CPUTIME_EXITCODE=0 -DHAVE_MMAP_DEV_ZERO_EXITCODE=0 -DHAVE_PROCFS_CTL_EXITCODE=1 -DHAVE_PROCFS_STAT_EXITCODE=0 -DHAVE_PROCFS_STATM_EXITCODE=0 -DHAVE_SCHED_GETCPU_EXITCODE=0 -DHAVE_SCHED_GET_PRIORITY_EXITCODE=0 -DHAVE_WORKING_CLOCK_GETTIME_EXITCODE=0 -DHAVE_WORKING_GETTIMEOFDAY_EXITCODE=0 -DONE_SHARED_MAPPING_PER_FILEREGION_PER_PROCESS_EXITCODE=1 -DREALPATH_SUPPORTS_NONEXISTENT_FILES_EXITCODE=1 -DHAVE_SHM_OPEN_THAT_WORKS_WELL_ENOUGH_WITH_MMAP_EXITCODE=0 -DHAVE_BROKEN_FIFO_KEVENT_EXITCODE=1 -DHAVE_BROKEN_FIFO_SELECT_EXITCODE=1") \
       >> "$LOG" 2>&1 || true
     # The host subset may fail later at nupkg packaging (host pack is produced
@@ -1302,7 +1302,7 @@ for x in glob.glob(dirp+'/*.nuspec'): shutil.copy(x, dirp+'/$HOSTPACK_ID.nuspec'
     /p:UseBootstrapLayout=true /p:ApiCompatValidateAssemblies=false \
     -subset clr.aot+packs \
     /p:RuntimeIdentifierGraphPath="$rsp" /p:IncludeSymbols=false \
-    /p:PreReleaseVersionLabel="$LABEL" /p:PreReleaseVersion="$PRE" /p:StabilizePackageVersion=true /p:OfficialBuildId="$BUILDID" \
+    /p:PreReleaseVersionLabel="$LABEL" /p:PreReleaseVersion="$PRE" /p:StabilizePackageVersion=true /p:DotNetFinalVersionKind=release /p:OfficialBuildId="$BUILDID" \
     2>&1 | tee -a "$LOG" || die "runtime build (clr.aot+packs / ILCompiler) failed"
   info "runtime product version: $RT_VERSION"
 
@@ -1372,7 +1372,7 @@ for x in glob.glob(dirp+'/*.nuspec'): shutil.copy(x, dirp+'/$HOSTPACK_ID.nuspec'
     /p:UseBootstrapLayout=true \
     -projects "$RUNTIME_REPO/src/installer/pkg/sfx/Microsoft.NETCore.App/Microsoft.NETCore.App.Runtime.NativeAOT.sfxproj" \
     /p:RuntimeIdentifierGraphPath="$rsp" /p:IncludeSymbols=false \
-    /p:PreReleaseVersionLabel="$LABEL" /p:PreReleaseVersion="$PRE" /p:StabilizePackageVersion=true /p:OfficialBuildId="$BUILDID" \
+    /p:PreReleaseVersionLabel="$LABEL" /p:PreReleaseVersion="$PRE" /p:StabilizePackageVersion=true /p:DotNetFinalVersionKind=release /p:OfficialBuildId="$BUILDID" \
     2>&1 | tee -a "$LOG" || die "runtime build (NativeAOT pack) failed"
   pkill -9 -f "MSBuild.*nodem" 2>/dev/null || true
   sleep 2
@@ -1518,7 +1518,7 @@ open('$clrbin/StandardOptimizationData.mibc','wb').write(z.read('tools/StandardO
           -p:TargetOS=openharmony -p:TargetArchitecture="$ARCH" -p:PortableOS=openharmony \
           -p:UseBootstrap=true -p:CrossBuild=true \
           "/p:PublishDir=$cg2out/" \
-          /p:OfficialBuildId="$BUILDID" /p:PreReleaseVersionLabel="$LABEL" /p:PreReleaseVersion="$PRE" /p:StabilizePackageVersion=true \
+          /p:OfficialBuildId="$BUILDID" /p:PreReleaseVersionLabel="$LABEL" /p:PreReleaseVersion="$PRE" /p:StabilizePackageVersion=true /p:DotNetFinalVersionKind=release \
           $cg2_extra \
           "/p:RuntimeIdentifierGraphPath=$rsp" -p:IncludeSymbols=false -v:q -nologo \
           ) >> "$cg2pub_log" 2>&1
@@ -1725,7 +1725,7 @@ stage3() {
     -p:MicrosoftInternalRuntimeAspNetCoreTransportPackageVersion="$ASPCORE_TRANSPORT_VERSION" \
     -p:SkipValidatePackage=true \
     -p:NoWarn=CS9103%3BCS8714%3BNU1507%3BCA2007%3BIDE0005%3BRS0041%3BNU5128%3BNU1603%3BCS8618%3BCS8764%3BSYSLIB0057%3BCA1416%3BIDE0060%3BCS1574%3BCA2000%3BCA1305%3BCS0618%3BCS1998%3BIDE0073%3BIDE0055%3BRS0016%3BSYSLIB1025%3BASPNETCORE_DIRECTTLS_001%3BSYSLIB1006%3BSYSLIB1002%3BSYSLIB1005%3BCS8604%3BCS8603%3BCS8602%3BCS8625%3BCS8618 \
-    /p:PreReleaseVersionLabel="$LABEL" /p:PreReleaseVersion="$PRE" /p:StabilizePackageVersion=true /p:OfficialBuildId="$BUILDID" \
+    /p:PreReleaseVersionLabel="$LABEL" /p:PreReleaseVersion="$PRE" /p:StabilizePackageVersion=true /p:DotNetFinalVersionKind=release /p:OfficialBuildId="$BUILDID" \
     2>&1 | tee -a "$LOG" || die "aspnetcore build failed"
   local aship="$ASCORE_REPO/artifacts/packages/$CONFIG/Shipping"
   # --- aspnetcore ReadyToRun overlay (mac model, 2026-09-13) -----------------
