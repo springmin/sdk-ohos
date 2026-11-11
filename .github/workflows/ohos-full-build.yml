@@ -696,6 +696,20 @@ jobs:
           }
           write_sums runtime/artifacts/packages/Release/Shipping
           write_sums aspnetcore/artifacts/packages/Release/Shipping
+          # Device-side selfsign: checked-in signed Go binary (see
+          # eng/ohos-install/selfsign-go/README.md). Ship it with the SDK and
+          # fail closed when the checked-in asset and the installer pin drift.
+          if [ -d sdk/artifacts/packages/Release/Shipping ]; then
+            cp -f sdk/eng/ohos-install/selfsign-ohos-arm64 \
+              sdk/artifacts/packages/Release/Shipping/selfsign-ohos-arm64
+            chmod 0755 sdk/artifacts/packages/Release/Shipping/selfsign-ohos-arm64
+            want_selfsign="$(sed -n 's/.*SELFSIGN_SHA256:=\([0-9a-f]*\).*/\1/p' sdk/eng/ohos-install/versions.env | head -1)"
+            got_selfsign="$(sha256sum sdk/artifacts/packages/Release/Shipping/selfsign-ohos-arm64 | cut -d' ' -f1)"
+            [ -n "$want_selfsign" ] && [ "$want_selfsign" = "$got_selfsign" ] || {
+              echo "::error::selfsign-ohos-arm64 sha256 ($got_selfsign) != SELFSIGN_SHA256 ($want_selfsign); update versions.env when replacing the binary"
+              exit 1
+            }
+          fi
           write_sums sdk/artifacts/packages/Release/Shipping
           gh release create "v$RT_VERSION-ohos" --repo "${{ github.repository_owner }}/runtime-ohos" \
             --notes "CI build (workflow_dispatch $BUILDID)" || true
