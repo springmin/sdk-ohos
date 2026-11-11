@@ -1616,7 +1616,9 @@ stage2() {
   # transport version = the runtime version we override aspnetcore to use
   [ -f "$WORK/rt-version.txt" ] && RT_VERSION=$(cat "$WORK/rt-version.txt")
   RT_VERSION="${RT_VERSION:-$VERSION_BAND-$LABEL.$PRE.$BUILDID}"
-  ASPCORE_TRANSPORT="$RT_VERSION"
+  # The ASP.NET Core runtime.proj downloads the shared-framework tarball under
+  # the transport package version, not the runtime product version.
+  ASPCORE_TRANSPORT="$ASPCORE_TRANSPORT_VERSION"
   mkdir -p "$ASSETS/Runtime/$ASPCORE_TRANSPORT"
   # pick the tarball matching the current build version (assets dir also holds
   # stale dev/older tarballs from previous builds)
@@ -1624,6 +1626,10 @@ stage2() {
   [ -n "$rt_archive" ] || rt_archive=$(ls "$ASSETS"/dotnet-runtime-*"$RID".tar.gz 2>/dev/null | tail -1)
   [ -n "$rt_archive" ] || die "no runtime tarball for $RID in $ASSETS (runtime build missing it?)"
   cp -f "$rt_archive" "$ASSETS/Runtime/$ASPCORE_TRANSPORT/$(basename "$rt_archive")"
+  if [ "$RT_VERSION" != "$ASPCORE_TRANSPORT" ]; then
+    mkdir -p "$ASSETS/Runtime/$RT_VERSION"
+    cp -f "$rt_archive" "$ASSETS/Runtime/$RT_VERSION/$(basename "$rt_archive")"
+  fi
   # The SDK redist RestoreLayout downloads the shared-framework tarball from
   # Runtime/<Microsoft.NETCore.Platforms blob version>/dotnet-runtime-<RuntimePkgVer>-<rid>.tar.gz.
   # The Platforms version darc-flows independently of our buildid, so mirror the
