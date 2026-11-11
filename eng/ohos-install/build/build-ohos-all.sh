@@ -87,6 +87,10 @@ CONFIG="${CONFIG:-Release}"
 LABEL="${LABEL:-rtm}"
 PRE="${PRE-}"
 BUILDID="${BUILDID:-$DEFAULT_BUILDID}"
+# The GA transport package is not on the public transport feed; the newest
+# public 11.0.x servicing transport is API-compatible with the GA source and
+# is used as the build-time shared-framework transport.
+ASPCORE_TRANSPORT_VERSION="${ASPCORE_TRANSPORT_VERSION:-11.0.1-servicing.26559.106}"
 RIDGRAPH_SDKVER="${RIDGRAPH_SDKVER:-$RIDGRAPH_SDK_VERSION}"  # bootstrap SDK whose RID graph carries openharmony
 # Defaults: this sdk checkout (SDK_REPO) and its sibling checkouts.
 SDK_REPO="${SDK_REPO:-$(cd "$SCRIPT_DIR/../../.." && pwd)}"
@@ -1709,7 +1713,7 @@ stage3() {
     -p:RestoreAdditionalProjectSources="$FEED" \
     -p:RuntimeIdentifierGraphPath="$ridgraph" \
     -p:MicrosoftNETCoreAppRefPackageVersion="$rtver" \
-    -p:MicrosoftInternalRuntimeAspNetCoreTransportPackageVersion="$rtver" \
+    -p:MicrosoftInternalRuntimeAspNetCoreTransportPackageVersion="$ASPCORE_TRANSPORT_VERSION" \
     -p:SkipValidatePackage=true \
     -p:NoWarn=CS9103%3BCS8714%3BNU1507%3BCA2007%3BIDE0005%3BRS0041%3BNU5128%3BNU1603%3BCS8618%3BCS8764%3BSYSLIB0057%3BCA1416%3BIDE0060%3BCS1574%3BCA2000%3BCA1305%3BCS0618%3BCS1998%3BIDE0073%3BIDE0055%3BRS0016%3BSYSLIB1025%3BASPNETCORE_DIRECTTLS_001%3BSYSLIB1006%3BSYSLIB1002%3BSYSLIB1005%3BCS8604%3BCS8603%3BCS8602%3BCS8625%3BCS8618 \
     /p:PreReleaseVersionLabel="$LABEL" /p:PreReleaseVersion="$PRE" /p:StabilizePackageVersion=true /p:OfficialBuildId="$BUILDID" \
