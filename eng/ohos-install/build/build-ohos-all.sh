@@ -84,8 +84,8 @@ fi
 ARCH="${ARCH:-arm64}"
 RID="openharmony-${ARCH}"
 CONFIG="${CONFIG:-Release}"
-LABEL="${LABEL:-rc}"
-PRE="${PRE:-1}"
+LABEL="${LABEL:-rtm}"
+PRE="${PRE-}"
 BUILDID="${BUILDID:-$DEFAULT_BUILDID}"
 RIDGRAPH_SDKVER="${RIDGRAPH_SDKVER:-$RIDGRAPH_SDK_VERSION}"  # bootstrap SDK whose RID graph carries openharmony
 # Defaults: this sdk checkout (SDK_REPO) and its sibling checkouts.
@@ -1205,11 +1205,26 @@ stage1() {
   # clr.aot: ILCompiler_inbuild restores the HOST (linux-x64) runtime pack at
   # this version, which must already be in ~/.nuget on clean hosts.
   local ship="$RUNTIME_REPO/artifacts/packages/$CONFIG/Shipping"
-  RT_VERSION=$(ls "$ship"/Microsoft.NETCore.App.Ref.$VERSION_BAND-rc.*.nupkg 2>/dev/null | grep -v symbols | sed "s/.*Ref\.//; s/\.nupkg//" | sort -V | tail -1 || true)
+  RT_VERSION=$(ls "$ship"/Microsoft.NETCore.App.Ref.$VERSION_BAND.nupkg 2>/dev/null | grep -v symbols | sed "s/.*Ref\.//; s/\.nupkg//" | sort -V | tail -1 || true)
+  if [ -z "$RT_VERSION" ]; then
+    RT_VERSION=$(ls "$ship"/Microsoft.NETCore.App.Ref.$VERSION_BAND-rtm.*.nupkg 2>/dev/null | grep -v symbols | sed "s/.*Ref\.//; s/\.nupkg//" | sort -V | tail -1 || true)
+  fi
+  if [ -z "$RT_VERSION" ]; then
+    RT_VERSION=$(ls "$ship"/Microsoft.NETCore.App.Ref.$VERSION_BAND-rc.*.nupkg 2>/dev/null | grep -v symbols | sed "s/.*Ref\.//; s/\.nupkg//" | sort -V | tail -1 || true)
+  fi
+  if [ -z "$RT_VERSION" ]; then
+    RT_VERSION=$(ls "$ship"/Microsoft.NETCore.App.Runtime.$RID.$VERSION_BAND.nupkg 2>/dev/null | sed "s/.*Runtime\.$RID\.//; s/\.nupkg//" | sort -V | tail -1 || true)
+  fi
   if [ -z "$RT_VERSION" ]; then
     RT_VERSION=$(ls "$ship"/Microsoft.NETCore.App.Runtime.$RID.$VERSION_BAND-rc.*.nupkg 2>/dev/null | sed "s/.*Runtime\.$RID\.//; s/\.nupkg//" | sort -V | tail -1 || true)
   fi
-  [ -n "$RT_VERSION" ] || RT_VERSION="$VERSION_BAND-$LABEL.$PRE.$BUILDID"
+  if [ -z "$RT_VERSION" ]; then
+    if [ "$LABEL" = rtm ] && [ -z "$PRE" ]; then
+      RT_VERSION="$VERSION_BAND"
+    else
+      RT_VERSION="$VERSION_BAND-$LABEL.$PRE.$BUILDID"
+    fi
+  fi
   echo "$RT_VERSION" > "$WORK/rt-version.txt"
   info "runtime product version: $RT_VERSION"
   # Hardening (2026-09-13): a non-default buildid derives a fresh RT_VERSION for
