@@ -665,6 +665,11 @@ jobs:
           cp "$ship"/runtime.openharmony-arm64.Microsoft.DotNet.ILCompiler.11.0.0*.nupkg aot-release/
           (cd aot-release && sha256sum *.nupkg > SHA256SUMS)
           cat aot-release/SHA256SUMS
+          if gh release view aot-packs-11.0.0 --repo "${{ github.repository_owner }}/sdk-ohos" >/dev/null 2>&1; then
+            for a in $(gh release view aot-packs-11.0.0 --repo "${{ github.repository_owner }}/sdk-ohos" --json assets --jq '.assets[].name'); do
+              gh release delete-asset aot-packs-11.0.0 "$a" --repo "${{ github.repository_owner }}/sdk-ohos" -y || true
+            done
+          fi
           gh release view aot-packs-11.0.0 --repo "${{ github.repository_owner }}/sdk-ohos" >/dev/null 2>&1 || \
             gh release create aot-packs-11.0.0 --repo "${{ github.repository_owner }}/sdk-ohos" \
               --title "OpenHarmony NativeAOT packs 11.0.0" \
