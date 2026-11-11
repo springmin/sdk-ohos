@@ -58,6 +58,10 @@ on:
         description: Build runtime + aspnetcore only; skip the SDK packaging stage
         type: boolean
         default: false
+      publish_aot_mirror:
+        description: Publish the GA NativeAOT/ILCompiler nupkgs to aot-packs-11.0.0
+        type: boolean
+        default: false
       aspnetcore_prerelease_iteration:
         description: Override aspnetcore PreReleaseVersionIteration in the CI checkout (empty keeps the branch value)
         required: false
@@ -648,6 +652,24 @@ jobs:
             sdk/artifacts/packages/Release/Shipping/*
           if-no-files-found: warn
           retention-days: 30
+
+      - name: Publish AOT mirror
+        if: inputs.publish_aot_mirror
+        env:
+          GH_TOKEN: ${{ secrets.OHOS_RELEASE_TOKEN }}
+        run: |
+          set -euo pipefail
+          ship=runtime/artifacts/packages/Release/Shipping
+          mkdir -p aot-release
+          cp "$ship/Microsoft.NETCore.App.Runtime.NativeAOT.openharmony-arm64.11.0.0.nupkg" aot-release/
+          cp "$ship/runtime.openharmony-arm64.Microsoft.DotNet.ILCompiler.11.0.0.nupkg" aot-release/
+          (cd aot-release && sha256sum *.nupkg > SHA256SUMS)
+          cat aot-release/SHA256SUMS
+          gh release view aot-packs-11.0.0 --repo "${{ github.repository_owner }}/sdk-ohos" >/dev/null 2>&1 || \
+            gh release create aot-packs-11.0.0 --repo "${{ github.repository_owner }}/sdk-ohos" \
+              --title "OpenHarmony NativeAOT packs 11.0.0" \
+              --notes "NativeAOT runtime pack and ILCompiler for .NET 11.0.0 GA (openharmony-arm64), built by ohos-full-build run ${{ github.run_id }}."
+          gh release upload aot-packs-11.0.0 --repo "${{ github.repository_owner }}/sdk-ohos" aot-release/*.nupkg aot-release/SHA256SUMS --clobber
 
       - name: Publish to -ohos releases
         if: inputs.upload_release
