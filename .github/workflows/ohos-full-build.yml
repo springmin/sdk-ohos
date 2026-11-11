@@ -661,8 +661,8 @@ jobs:
           set -euo pipefail
           ship=runtime/artifacts/packages/Release/Shipping
           mkdir -p aot-release
-          cp "$ship/Microsoft.NETCore.App.Runtime.NativeAOT.openharmony-arm64.11.0.0.nupkg" aot-release/
-          cp "$ship/runtime.openharmony-arm64.Microsoft.DotNet.ILCompiler.11.0.0.nupkg" aot-release/
+          cp "$ship"/Microsoft.NETCore.App.Runtime.NativeAOT.openharmony-arm64.11.0.0*.nupkg aot-release/
+          cp "$ship"/runtime.openharmony-arm64.Microsoft.DotNet.ILCompiler.11.0.0*.nupkg aot-release/
           (cd aot-release && sha256sum *.nupkg > SHA256SUMS)
           cat aot-release/SHA256SUMS
           gh release view aot-packs-11.0.0 --repo "${{ github.repository_owner }}/sdk-ohos" >/dev/null 2>&1 || \
