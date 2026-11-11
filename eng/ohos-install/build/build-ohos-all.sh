@@ -1209,6 +1209,9 @@ stage1() {
   # clr.aot: ILCompiler_inbuild restores the HOST (linux-x64) runtime pack at
   # this version, which must already be in ~/.nuget on clean hosts.
   local ship="$RUNTIME_REPO/artifacts/packages/$CONFIG/Shipping"
+  if [ "$LABEL" = rtm ] && [ -z "$PRE" ]; then
+    RT_VERSION="$VERSION_BAND"
+  fi
   RT_VERSION=$(ls "$ship"/Microsoft.NETCore.App.Ref.$VERSION_BAND.nupkg 2>/dev/null | grep -v symbols | sed "s/.*Ref\.//; s/\.nupkg//" | sort -V | tail -1 || true)
   if [ -z "$RT_VERSION" ]; then
     RT_VERSION=$(ls "$ship"/Microsoft.NETCore.App.Ref.$VERSION_BAND-rtm.*.nupkg 2>/dev/null | grep -v symbols | sed "s/.*Ref\.//; s/\.nupkg//" | sort -V | tail -1 || true)
