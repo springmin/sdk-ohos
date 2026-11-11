@@ -169,7 +169,7 @@
       <Uri>https://github.com/microsoft/vstest</Uri>
       <Sha>8c7dd0d46d5f056f231e6cfa59910e03aa3f2aaf</Sha>
     </Dependency>
-    <Dependency Name="Microsoft.NET.ILLink.Tasks" Version="11.0.0">
+    <Dependency Name="Microsoft.NET.ILLink.Tasks" Version="11.0.0-rtm.26472.124">
       <Uri>https://github.com/dotnet/dotnet</Uri>
       <Sha>3e57c9d3b266cf82d6f85bd9f46c649557389341</Sha>
     </Dependency>
