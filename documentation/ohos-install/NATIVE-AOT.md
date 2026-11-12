@@ -81,6 +81,28 @@ Added PackageDownload for Microsoft.NETCore.App.Runtime.NativeAOT.linux-musl-arm
 
 ## 4. 离线获取 pack
 
+`springmin/sdk-ohos` Release **`aot-packs-11.0.0`** 镜像 GA 线的三件包（`SHA256SUMS`
+随附；来源 = `runtime-ohos` GA 构建 + `BuildIntegration` 的 OpenHarmony 补丁）：
+
+| 资产 | 用途 | sha256 |
+|---|---|---|
+| `Microsoft.DotNet.ILCompiler.11.0.0.nupkg` | host build integration（**GA 必带**；把 `openharmony` 映射到 ilc 接受的 `linux`、默认 `LinkerFlavor=lld`、并跳过 OpenHarmony 不提供的 `System.Net.Security.Native`） | `d21cca99892c1566d4c30df3a93bffea770137571d844e32222b570acd9d64e8` |
+| `Microsoft.NETCore.App.Runtime.NativeAOT.openharmony-arm64.11.0.0.nupkg` | 目标 NativeAOT runtime pack（28,243,231 B） | `8356aa9a622416e4e1a021ac209ed9aef15d6e64a8392e8d10f9a3fe8680c27b` |
+| `runtime.openharmony-arm64.Microsoft.DotNet.ILCompiler.11.0.0.nupkg` | 目标 ilc（43,808,331 B） | `ab39912cc496fb205d22a4a1e1ae66bc25c3bd3f61060adcea9f40d72754a2fc` |
+
+> **GA host ILCompiler 补丁（2026-11-12）**：stock SDK 自带 nuget.org 的
+> `Microsoft.DotNet.ILCompiler/11.0.0` build-integration，不含 OpenHarmony 补丁——
+> `ilc` 会收到 `--targetos:openharmony`（直接拒绝）、链接器默认 `bfd`，并索要
+> OpenHarmony 未构建的 `libSystem.Net.Security.Native.a`。镜像里的同版本 host 包用
+> runtime-ohos `src/coreclr/nativeaot/BuildIntegration` 的两个 targets 替换：
+> `SingleEntry.targets` 把 `openharmony` 映射到 `linux`（libc flavor 仍为 `musl`），
+> `Microsoft.NETCore.Native.Unix.targets` 增加 `LinkerFlavor=lld`、`CrossCompileAbi=ohos`，
+> 并在 `openharmony` 下移除 `System.Net.Security.Native`。因此 GA AOT publish 不再需要
+> `-p:IlcTargetOS=linux` / `-p:LinkerFlavor=lld` / 手工补 `.a`。
+> NuGet 会优先复用 `~/.nuget/packages/microsoft.dotnet.ilcompiler/11.0.0` 的缓存；
+> `fetch-nativeaot-packs.sh` 在发现该缓存仍是 stock（build targets 无 `openharmony`）时
+> 会删除它，下一次 restore 从本 feed 解包镜像件。
+
 `springmin/sdk-ohos` Release **`aot-packs-11.0.0-rc.2`** 镜像了 rc.2 线的两件原生包
 （`SHA256SUMS` 随附、asset id `597667550`；来源 = `runtime-ohos`
 `feature/openharmony` 的 rc.2 线构建）：
@@ -151,7 +173,8 @@ sh eng/ohos-install/fetch-nativeaot-packs.sh --crossgen2 [目录]
 > 镜像缺失/未映射时脚本 fail-closed，并给出 `--local <dir>` 或补镜像的明确指引。
 
 > 网络受限时可用镜像 `https://api.nuget.org` → `https://nuget.azure.cn`
-> （flatcontainer 重定向）。rc.2 镜像只含两件 openharmony 原生包：需要
+> （flatcontainer 重定向）。GA `aot-packs-11.0.0` 含三件（host build integration +
+> 目标 runtime pack + 目标 ilc）；rc.2 镜像只含两件 openharmony 原生包：需要
 > `linux-musl`/`win-x64` 回落件时用 rc.1 tag 的「等同重打包」资产（仅改 nuspec
 > 版本串，内容不变）或从 nuget.org 直接还原。
 

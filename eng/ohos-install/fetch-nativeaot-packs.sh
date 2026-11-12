@@ -257,6 +257,21 @@ if [ "$failed" != "0" ]; then
     exit 1
 fi
 
+# The stock SDK caches Microsoft.DotNet.ILCompiler/<version> (build integration) from
+# nuget.org. NuGet resolves that cache entry before a package source, so a stale stock copy
+# would silently bypass the mirror's OpenHarmony build integration (openharmony -> linux
+# target OS, lld linker flavor, and the System.Net.Security.Native skip). Drop only that host
+# package cache entry when it is the stock one; the next restore extracts the verified mirror
+# asset from $DEST. A package that already carries the OpenHarmony patch is left untouched.
+_host_asset="Microsoft.DotNet.ILCompiler.${AOT_PACKS_VERSION}.nupkg"
+if [ -f "$DEST/$_host_asset" ]; then
+    _host_cache="${NUGET_PACKAGES:-$HOME/.nuget/packages}/microsoft.dotnet.ilcompiler/${AOT_PACKS_VERSION}"
+    if [ -d "$_host_cache" ] && ! grep -q openharmony "$_host_cache/build/Microsoft.NETCore.Native.Unix.targets" 2>/dev/null; then
+        echo "removing stale stock host ILCompiler cache: $_host_cache"
+        rm -rf "$_host_cache"
+    fi
+fi
+
 cat <<EOF
 
 NativeAOT packs for ${AOT_PACKS_VERSION} are in: $DEST
