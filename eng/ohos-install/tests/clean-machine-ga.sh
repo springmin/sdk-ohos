@@ -195,8 +195,10 @@ SDK_PACK_DIR="$(ls -d "$CLEAN_DOTNET/packs/Microsoft.OpenHarmony.Sdk"/*/ 2>/dev/
 [ -n "$SDK_PACK_DIR" ] || die "OpenHarmony Sdk pack not installed"
 UI_SHELL="$SDK_PACK_DIR/templates/ets/modules.ui.abc"
 HEADLESS_SHELL="$SDK_PACK_DIR/templates/ets/modules.abc"
-[ "$(sha256sum "$UI_SHELL" | awk '{print $1}')" = "9aa02cf80d74f53662330e25bead00c0e4b1b059c824d24fabfab17ff43089b3" ] || die "UI shell hash mismatch"
-[ "$(sha256sum "$HEADLESS_SHELL" | awk '{print $1}')" = "e2c931e78944f00af7a0e5fddf97439a698ddd4b47c747463612fb4fa229d321" ] || die "headless shell hash mismatch"
+[ -n "${OPENHARMONY_UI_SHELL_SHA256:-}" ] || die "no OPENHARMONY_UI_SHELL_SHA256 pin in versions.env"
+[ -n "${OPENHARMONY_HEADLESS_SHELL_SHA256:-}" ] || die "no OPENHARMONY_HEADLESS_SHELL_SHA256 pin in versions.env"
+[ "$(sha256sum "$UI_SHELL" | awk '{print $1}')" = "$OPENHARMONY_UI_SHELL_SHA256" ] || die "UI shell hash mismatch"
+[ "$(sha256sum "$HEADLESS_SHELL" | awk '{print $1}')" = "$OPENHARMONY_HEADLESS_SHELL_SHA256" ] || die "headless shell hash mismatch"
 grep -q 'unset OPENSSL_CONF OPENSSL_MODULES OPENSSL_ENGINES' \
     "$SDK_PACK_DIR/templates/scripts/sign-hap.sh" \
     || die "sign-hap.sh is missing the OpenSSL isolation"
