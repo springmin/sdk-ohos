@@ -73,6 +73,10 @@ jobs:
           export DOTNET_CLI_TELEMETRY_OPTOUT=1
           export DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
           export DOTNET_SYSTEM_CRYPTOGRAPHY_OPENSSL_NO_LOCKING=1
+          # The dockerharmony mini rootfs runs on a generic Linux kernel; the
+          # OpenHarmony runtime's W^X/alternate-stack paths can SIGSEGV there.
+          export DOTNET_EnableWriteXorExecute=0
+          export DOTNET_EnableAlternateStackCheck=0
           mkdir -p "$HOME"
           dotnet new console -o /tmp/hello --force
           cd /tmp/hello
