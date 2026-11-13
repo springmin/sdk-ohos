@@ -1,0 +1,86 @@
+name: ohos-runtime-smoke
+
+# Optional OpenHarmony CLI smoke test on a Linux arm64 runner using the
+# dockerharmony mini rootfs. This is deliberately narrower than the
+# clean-machine gate: it runs a prebuilt device selfsign binary and a published
+# SDK console app inside the OpenHarmony userland. It does not install the
+# workload, package a HAP, or touch a device.
+on:
+  workflow_dispatch:
+    inputs:
+      sdk_version:
+        description: Published SDK version (sdk-ohos release v<version>-ohos)
+        required: true
+        default: '11.0.101'
+      sdk_ref:
+        description: sdk-ohos ref to check out for the selfsign binary
+        required: true
+        default: 'feature/openharmony'
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-24.04-arm
+    container:
+      image: hqzing/dockerharmony:latest
+      volumes:
+        - /opt/node24:/__e/node24:rw,rshared
+    timeout-minutes: 60
+    steps:
+      - name: Set up Node.js for actions
+        run: |
+          set -eu
+          curl -fL -o /tmp/node.tar.gz https://github.com/hqzing/ohos-node/releases/download/v24.2.0/node-v24.2.0-openharmony-arm64.tar.gz
+          mkdir -p /__e/node24/bin /opt
+          tar -zxf /tmp/node.tar.gz -C /opt
+          ln -sf /opt/node-v24.2.0-openharmony-arm64/bin/node /__e/node24/bin/node
+
+      - name: Check out sdk-ohos
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sdk_ref }}
+          persist-credentials: false
+
+      - name: Download and verify the SDK
+        env:
+          SDK_VERSION: ${{ inputs.sdk_version }}
+        run: |
+          set -eu
+          base="https://github.com/springmin/sdk-ohos/releases/download/v${SDK_VERSION}-ohos"
+          curl -fL -o /tmp/sdk.tar.gz "$base/dotnet-sdk-${SDK_VERSION}-openharmony-arm64.tar.gz"
+          curl -fL -o /tmp/SHA256SUMS "$base/SHA256SUMS"
+          want="$(grep "dotnet-sdk-${SDK_VERSION}-openharmony-arm64.tar.gz" /tmp/SHA256SUMS | cut -d' ' -f1)"
+          if command -v sha256sum >/dev/null 2>&1; then
+            got="$(sha256sum /tmp/sdk.tar.gz | cut -d' ' -f1)"
+          else
+            got="$(openssl dgst -sha256 /tmp/sdk.tar.gz | sed 's/.*= //')"
+          fi
+          [ -n "$want" ] && [ "$want" = "$got" ] || { echo "SDK sha256 mismatch (want=$want got=$got)"; exit 1; }
+          mkdir -p /tmp/dotnet
+          tar -xzf /tmp/sdk.tar.gz -C /tmp/dotnet
+          /tmp/dotnet/dotnet --info
+
+      - name: Run a published-SDK console app
+        run: |
+          set -eu
+          export HOME=/tmp/home
+          export DOTNET_ROOT=/tmp/dotnet
+          export DOTNET_CLI_HOME=/tmp/home
+          export PATH=/tmp/dotnet:$PATH
+          export DOTNET_NOLOGO=1
+          export DOTNET_CLI_TELEMETRY_OPTOUT=1
+          export DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
+          export DOTNET_SYSTEM_CRYPTOGRAPHY_OPENSSL_NO_LOCKING=1
+          mkdir -p "$HOME"
+          dotnet new console -o /tmp/hello --force
+          cd /tmp/hello
+          dotnet run
+
+      - name: Run the device selfsign binary
+        run: |
+          set -eu
+          chmod +x eng/ohos-install/selfsign-ohos-arm64
+          ./eng/ohos-install/selfsign-ohos-arm64 --help | sed -n '1,10p' || true
+          echo "selfsign executed"
