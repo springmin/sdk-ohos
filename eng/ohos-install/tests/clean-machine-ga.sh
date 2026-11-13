@@ -181,7 +181,7 @@ fi
 export DOTNET_SYSTEM_CRYPTOGRAPHY_OPENSSL_NO_LOCKING=1
 
 "$CLEAN_DOTNET/dotnet" --info > "$LOG_DIR/dotnet-info.log" 2>&1 || die "clean dotnet --info failed"
-grep -qE 'Version:[[:space:]]*11\.0\.100' "$LOG_DIR/dotnet-info.log" || die "unexpected SDK version"
+grep -qE "Version:[[:space:]]*${SDK_VERSION}" "$LOG_DIR/dotnet-info.log" || die "unexpected SDK version (want $SDK_VERSION)"
 "$CLEAN_DOTNET/dotnet" workload list > "$LOG_DIR/workload-list.log" 2>&1 || die "workload list failed"
 grep -qE "openharmony[[:space:]]+${WORKLOAD_BUNDLE_VERSION}/${SDK_BAND}" "$LOG_DIR/workload-list.log" || die "workload ${WORKLOAD_BUNDLE_VERSION}/${SDK_BAND} not installed"
 
