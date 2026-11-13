@@ -11,6 +11,10 @@
     <VersionPrefix>$(VersionMajor).$(VersionMinor).$(VersionSDKMinor)$(VersionFeature)</VersionPrefix>
     <PreReleaseVersionLabel>rtm</PreReleaseVersionLabel>
     <PreReleaseVersionIteration></PreReleaseVersionIteration>
+    <!-- OpenHarmony servicing: the official Windows runtime packs at the
+         OpenHarmony runtime patch version (11.0.1) are not on the feed. The
+         resolvers only need a compatible hostfxr, so use the GA 11.0.0 packs. -->
+    <MicrosoftNETCoreAppRuntimePackageVersionForResolvers Condition="'$(MicrosoftNETCoreAppRuntimePackageVersionForResolvers)' == ''">11.0.0</MicrosoftNETCoreAppRuntimePackageVersionForResolvers>
     <!-- Allowed values: '', 'prerelease', 'release'. Set to 'release' when stabilizing. -->
     <DotNetFinalVersionKind></DotNetFinalVersionKind>
 
