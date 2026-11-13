@@ -87,17 +87,17 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageDownload Include="Microsoft.NETCore.App.Runtime.win-x86" Version="[$(MicrosoftNETCoreAppRuntimePackageVersion)]" />
-    <PackageDownload Include="Microsoft.NETCore.App.Runtime.win-x64" Version="[$(MicrosoftNETCoreAppRuntimePackageVersion)]" />
-    <PackageDownload Include="Microsoft.NETCore.App.Runtime.win-arm64" Version="[$(MicrosoftNETCoreAppRuntimePackageVersion)]" />
+    <PackageDownload Include="Microsoft.NETCore.App.Runtime.win-x86" Version="[$(MicrosoftNETCoreAppRuntimePackageVersionForResolvers)]" />
+    <PackageDownload Include="Microsoft.NETCore.App.Runtime.win-x64" Version="[$(MicrosoftNETCoreAppRuntimePackageVersionForResolvers)]" />
+    <PackageDownload Include="Microsoft.NETCore.App.Runtime.win-arm64" Version="[$(MicrosoftNETCoreAppRuntimePackageVersionForResolvers)]" />
 
-    <Content Include="$(NuGetPackageRoot)/microsoft.netcore.app.runtime.win-x86/$(MicrosoftNETCoreAppRuntimePackageVersion)/runtimes/win-x86/native/hostfxr.dll"
+    <Content Include="$(NuGetPackageRoot)/microsoft.netcore.app.runtime.win-x86/$(MicrosoftNETCoreAppRuntimePackageVersionForResolvers)/runtimes/win-x86/native/hostfxr.dll"
              Link="x86/hostfxr.dll"
              CopyToOutputDirectory="PreserveNewest" />
-    <Content Include="$(NuGetPackageRoot)/microsoft.netcore.app.runtime.win-x64/$(MicrosoftNETCoreAppRuntimePackageVersion)/runtimes/win-x64/native/hostfxr.dll"
+    <Content Include="$(NuGetPackageRoot)/microsoft.netcore.app.runtime.win-x64/$(MicrosoftNETCoreAppRuntimePackageVersionForResolvers)/runtimes/win-x64/native/hostfxr.dll"
              Link="x64/hostfxr.dll"
              CopyToOutputDirectory="PreserveNewest" />
-    <Content Include="$(NuGetPackageRoot)/microsoft.netcore.app.runtime.win-arm64/$(MicrosoftNETCoreAppRuntimePackageVersion)/runtimes/win-arm64/native/hostfxr.dll"
+    <Content Include="$(NuGetPackageRoot)/microsoft.netcore.app.runtime.win-arm64/$(MicrosoftNETCoreAppRuntimePackageVersionForResolvers)/runtimes/win-arm64/native/hostfxr.dll"
              Link="arm64/hostfxr.dll"
              CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
