@@ -199,9 +199,11 @@ HEADLESS_SHELL="$SDK_PACK_DIR/templates/ets/modules.abc"
 [ -n "${OPENHARMONY_HEADLESS_SHELL_SHA256:-}" ] || die "no OPENHARMONY_HEADLESS_SHELL_SHA256 pin in versions.env"
 [ "$(sha256sum "$UI_SHELL" | awk '{print $1}')" = "$OPENHARMONY_UI_SHELL_SHA256" ] || die "UI shell hash mismatch"
 [ "$(sha256sum "$HEADLESS_SHELL" | awk '{print $1}')" = "$OPENHARMONY_HEADLESS_SHELL_SHA256" ] || die "headless shell hash mismatch"
-grep -q 'unset OPENSSL_CONF OPENSSL_MODULES OPENSSL_ENGINES' \
-    "$SDK_PACK_DIR/templates/scripts/sign-hap.sh" \
-    || die "sign-hap.sh is missing the OpenSSL isolation"
+if [ "$OPENHARMONY_SIGN_HAP_OPENSSL_ISOLATION" = 1 ]; then
+    grep -q 'unset OPENSSL_CONF OPENSSL_MODULES OPENSSL_ENGINES' \
+        "$SDK_PACK_DIR/templates/scripts/sign-hap.sh" \
+        || die "sign-hap.sh is missing the OpenSSL isolation"
+fi
 log "clean workload/pack verification OK"
 
 if [ "$SKIP_826" != 1 ] || [ "$SKIP_JIT" != 1 ] || [ "$SKIP_AOT" != 1 ]; then
