@@ -1,10 +1,11 @@
 #!/bin/sh
 # Verify the provenance of the GA OpenHarmony host ILCompiler package.
 #
-# The GA host package is a repack of the stock Microsoft.DotNet.ILCompiler
+# The current GA host package is a repack of the stock Microsoft.DotNet.ILCompiler
 # 11.0.0 package with the OpenHarmony build-integration targets from
-# runtime-ohos (src/coreclr/nativeaot/BuildIntegration). The repack intentionally
-# drops the stock .signature.p7s; the release SHA pin is the trust anchor.
+# runtime-ohos (src/coreclr/nativeaot/BuildIntegration). Fresh runtime builds
+# produce the host pack directly (BuildHostTools=true), but either way the
+# package may be unsigned: the release SHA pin is the trust anchor.
 #
 # This check is network-backed when the caller downloads the release asset; it
 # is kept out of the offline ohos-install-tests suite and run by
