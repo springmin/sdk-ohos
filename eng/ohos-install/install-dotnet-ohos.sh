@@ -851,8 +851,11 @@ sign_all() {
     info "signing ELF binaries (.codesign) ..."
     CNTFILE="${TMPDIR:-/tmp}/dotnet-sign-cnt.$$"
     printf '0 0 0\n' > "$CNTFILE"
+    # Read the 4-byte ELF magic directly. The host `file` utility can hang on
+    # OpenHarmony filesystems (and is not guaranteed to exist on device).
+    ELF_MAGIC="$(printf '\177ELF')"
     find "$INSTALL_DIR" -type f 2>/dev/null | while IFS= read -r f; do
-        file "$f" 2>/dev/null | grep -q "ELF" || continue
+        [ "$(head -c 4 "$f" 2>/dev/null)" = "$ELF_MAGIC" ] || continue
         # Never re-sign the preferred signer itself: when selfsign is used it
         # lives in $INSTALL_DIR, and this loop would invoke it on its own file -
         # the in-place rewrite of a running executable fails (ETXTBSY), which
