@@ -11,6 +11,11 @@ W="$(cd "$(dirname "$0")/../../.." && pwd)"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/clean-machine-plan.XXXXXX")"
 trap 'rm -rf "$TMP"' 0
 
+# shellcheck source=../versions.env
+. "$W/eng/ohos-install/versions.env"
+SDK_SHA="$SDK_TARBALL_SHA256"
+BUNDLE_SHA="$WORKLOAD_BUNDLE_SHA256"
+
 OUT="$TMP/plan.txt"
 CLEAN_ROOT="$TMP/root" \
 OHOS_WORKLOAD_DIR="$TMP/ohos-workload" \
@@ -23,12 +28,14 @@ check() {
 
 check 'DRY-RUN clean-machine GA plan'
 check 'install-dotnet-ohos.sh'
-check 'a8fa784e950521895c2986252566ac78ca0f95934f6a4e51fad3ea0ccf000c56'
-check '86ef38e3146dd8294b8c5d027dcdcd0f07306012c8dddc0a2919592a9ac63700'
+check "$SDK_SHA"
+check "$BUNDLE_SHA"
+check "v${SDK_VERSION}-ohos/dotnet-sdk-${SDK_VERSION}-${RID}.tar.gz"
+check "workload-${WORKLOAD_BUNDLE_VERSION}/openharmony-workload-${WORKLOAD_BUNDLE_VERSION}.tar.gz"
 check '826:'
 check 'JIT:'
 check 'AOT:'
 check 'fetch-nativeaot-packs.sh'
 check 'publish-aot.sh'
 
-echo "clean-machine GA plan OK"
+echo "clean-machine GA plan OK ($SDK_VERSION / workload $WORKLOAD_BUNDLE_VERSION)"
