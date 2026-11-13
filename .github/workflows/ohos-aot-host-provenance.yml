@@ -1,0 +1,46 @@
+name: ohos-aot-host-provenance
+
+# Network-backed provenance check for the GA OpenHarmony host ILCompiler
+# package. It downloads the 78 KB release asset, verifies its SHA against
+# eng/ohos-install/versions.env and confirms that the OpenHarmony
+# BuildIntegration targets are present. Kept separate from the offline
+# ohos-install-tests suite on purpose.
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - eng/ohos-install/tests/test-aot-host-provenance.sh
+      - .github/workflows/ohos-aot-host-provenance.yml
+  pull_request:
+    paths:
+      - eng/ohos-install/tests/test-aot-host-provenance.sh
+      - .github/workflows/ohos-aot-host-provenance.yml
+
+permissions:
+  contents: read
+
+jobs:
+  provenance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out sdk-ohos
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Download the GA host ILCompiler package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/aot-host"
+          gh release download aot-packs-11.0.0 \
+            --repo "${GITHUB_REPOSITORY}" \
+            --pattern 'Microsoft.DotNet.ILCompiler.11.0.0.nupkg' \
+            --dir "$RUNNER_TEMP/aot-host" \
+            --clobber
+
+      - name: Verify SHA and OpenHarmony BuildIntegration targets
+        run: |
+          sh eng/ohos-install/tests/test-aot-host-provenance.sh \
+            "$RUNNER_TEMP/aot-host/Microsoft.DotNet.ILCompiler.11.0.0.nupkg"

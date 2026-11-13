@@ -55,3 +55,7 @@ jobs:
       - name: NativeAOT/Crossgen2 mirror resolution (kit #57 NU1100)
         if: ${{ !cancelled() }}
         run: sh eng/ohos-install/tests/test-fetch-aot-packs-resolution.sh
+
+      - name: Clean-machine GA plan (dry-run)
+        if: ${{ !cancelled() }}
+        run: sh eng/ohos-install/tests/test-clean-machine-plan.sh
