@@ -14,6 +14,13 @@ needed) and prints a PASS/FAIL summary:
   checkouts (6 cases; recreates its scratch dir at startup, see the header for `OHOS_PACKSPLIT_*`
   env vars; the `no-tarball` case pins the fail-closed abort when the sdk build produces no
   shipping tarball).
+- `test-aot-host-provenance.sh` — **network-backed** provenance check for the GA host
+  `Microsoft.DotNet.ILCompiler.11.0.0.nupkg` (SHA pin + the two OpenHarmony BuildIntegration
+  targets). It is run by `.github/workflows/ohos-aot-host-provenance.yml`, not by the offline
+  `ohos-install-tests` suite.
+- `test-clean-machine-plan.sh` — offline dry-run contract for `clean-machine-ga.sh` (published
+  SHAs, isolated install, 826/JIT/AOT phases). The full clean-machine gate is the self-hosted
+  `.github/workflows/ohos-clean-machine.yml` job; see `clean-machine-ga.sh` for its env surface.
 
 `check-elf-codesign.py` is a standalone, offline checker for the OpenHarmony `.codesign` ELF
 section (port of the runtime half of `ElfSigner.IsValidlySigned`):
