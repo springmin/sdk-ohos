@@ -1,0 +1,79 @@
+name: ohos-clean-machine-ga
+
+# Full clean-machine GA gate. This job needs an OpenHarmony host with the
+# OpenHarmony SDK/toolchain (and optionally a connected device); it cannot run
+# on a GitHub-hosted Linux runner. The offline test-clean-machine-plan.sh in
+# ohos-install-tests validates the script's plan on ubuntu-latest.
+#
+# Register a self-hosted runner with the labels [self-hosted, openharmony],
+# then run this workflow manually for a release candidate. It installs the
+# published SDK tarball + workload 1.0.0 into an isolated HOME/INSTALL_DIR and
+# runs 826, JIT publish and the AOT fetch/publish flow. Device checks are
+# enabled by setting skip_device=false and providing OHOS_HDC / OHOS_UDID.
+on:
+  workflow_dispatch:
+    inputs:
+      skip_device:
+        description: "Skip HDC install/start checks"
+        type: choice
+        options: ["true", "false"]
+        default: "true"
+      cold_nuget:
+        description: "Use a cold NuGet package cache (needs reliable network)"
+        type: choice
+        options: ["false", "true"]
+        default: "false"
+      sdk_tarball:
+        description: "Optional local SDK tarball path (default: published release URL)"
+        required: false
+        default: ""
+      workload_bundle:
+        description: "Optional local workload bundle path (default: published release URL)"
+        required: false
+        default: ""
+      sdk_ref:
+        description: "sdk-ohos ref to validate"
+        required: false
+        default: "release/ohos-11.0.100"
+
+permissions:
+  contents: read
+
+jobs:
+  clean-machine:
+    runs-on: [self-hosted, openharmony]
+    timeout-minutes: 120
+    steps:
+      - name: Check out sdk-ohos
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sdk_ref }}
+          persist-credentials: false
+
+      - name: Check out ohos-workload
+        uses: actions/checkout@v4
+        with:
+          repository: springmin/ohos-workload
+          path: ohos-workload
+          persist-credentials: false
+
+      - name: Run the clean-machine GA gate
+        env:
+          CLEAN_ROOT: ${{ runner.temp }}/ohos-clean-ga
+          OHOS_WORKLOAD_DIR: ${{ github.workspace }}/ohos-workload
+          SDK_TARBALL: ${{ inputs.sdk_tarball }}
+          WORKLOAD_BUNDLE: ${{ inputs.workload_bundle }}
+          SKIP_DEVICE: ${{ inputs.skip_device }}
+          COLD_NUGET: ${{ inputs.cold_nuget }}
+          HDC: ${{ secrets.OHOS_HDC }}
+          UDID: ${{ secrets.OHOS_UDID }}
+        run: |
+          sh eng/ohos-install/tests/clean-machine-ga.sh
+
+      - name: Upload clean-machine logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ohos-clean-machine-logs
+          path: ${{ runner.temp }}/ohos-clean-ga/logs
+          if-no-files-found: warn
