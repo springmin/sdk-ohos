@@ -35,8 +35,6 @@ W="$(cd "$(dirname "$0")/../../.." && pwd)"
 HOST_HOME="${HOST_HOME:-$HOME}"
 HOST_PATH="${HOST_PATH:-$PATH}"
 CLEAN_ROOT="${CLEAN_ROOT:-$HOME/.ohos-clean-machine-ga}"
-SDK_TARBALL="${SDK_TARBALL:-https://github.com/springmin/sdk-ohos/releases/download/v11.0.100-ohos/dotnet-sdk-11.0.100-openharmony-arm64.tar.gz}"
-WORKLOAD_BUNDLE="${WORKLOAD_BUNDLE:-https://github.com/springmin/sdk-ohos/releases/download/workload-1.0.0/openharmony-workload-1.0.0.tar.gz}"
 OHOS_WORKLOAD_DIR="${OHOS_WORKLOAD_DIR:-$W/../ohos-workload}"
 AOT_ASSETS="${AOT_ASSETS:-}"
 SKIP_826="${SKIP_826:-0}"
@@ -57,6 +55,10 @@ DRY_RUN=0
 
 # shellcheck source=../versions.env
 . "$W/eng/ohos-install/versions.env"
+# Default to the release line pinned in versions.env, so the gate follows the
+# branch it runs on (GA on the release branch, the current dev line on dev).
+SDK_TARBALL="${SDK_TARBALL:-https://github.com/${GH_USER}/sdk-ohos/releases/download/v${SDK_VERSION}-ohos/dotnet-sdk-${SDK_VERSION}-${RID}.tar.gz}"
+WORKLOAD_BUNDLE="${WORKLOAD_BUNDLE:-https://github.com/${GH_USER}/sdk-ohos/releases/download/workload-${WORKLOAD_BUNDLE_VERSION}/openharmony-workload-${WORKLOAD_BUNDLE_VERSION}.tar.gz}"
 SDK_SHA="${SDK_TARBALL_SHA256:-}"
 BUNDLE_SHA="${WORKLOAD_BUNDLE_SHA256:-}"
 [ -n "$SDK_SHA" ] || die "no SDK_TARBALL_SHA256 in versions.env"
