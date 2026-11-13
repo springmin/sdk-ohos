@@ -183,7 +183,7 @@ export DOTNET_SYSTEM_CRYPTOGRAPHY_OPENSSL_NO_LOCKING=1
 "$CLEAN_DOTNET/dotnet" --info > "$LOG_DIR/dotnet-info.log" 2>&1 || die "clean dotnet --info failed"
 grep -qE 'Version:[[:space:]]*11\.0\.100' "$LOG_DIR/dotnet-info.log" || die "unexpected SDK version"
 "$CLEAN_DOTNET/dotnet" workload list > "$LOG_DIR/workload-list.log" 2>&1 || die "workload list failed"
-grep -qE 'openharmony[[:space:]]+1\.0\.0/11\.0\.100' "$LOG_DIR/workload-list.log" || die "workload 1.0.0 not installed"
+grep -qE "openharmony[[:space:]]+${WORKLOAD_BUNDLE_VERSION}/${SDK_BAND}" "$LOG_DIR/workload-list.log" || die "workload ${WORKLOAD_BUNDLE_VERSION}/${SDK_BAND} not installed"
 
 UI_SHELL="$CLEAN_DOTNET/packs/Microsoft.OpenHarmony.Sdk/1.0.0/templates/ets/modules.ui.abc"
 HEADLESS_SHELL="$CLEAN_DOTNET/packs/Microsoft.OpenHarmony.Sdk/1.0.0/templates/ets/modules.abc"
