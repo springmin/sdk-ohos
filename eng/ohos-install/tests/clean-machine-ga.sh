@@ -183,7 +183,11 @@ export DOTNET_SYSTEM_CRYPTOGRAPHY_OPENSSL_NO_LOCKING=1
 "$CLEAN_DOTNET/dotnet" --info > "$LOG_DIR/dotnet-info.log" 2>&1 || die "clean dotnet --info failed"
 grep -qE "Version:[[:space:]]*${SDK_VERSION}" "$LOG_DIR/dotnet-info.log" || die "unexpected SDK version (want $SDK_VERSION)"
 "$CLEAN_DOTNET/dotnet" workload list > "$LOG_DIR/workload-list.log" 2>&1 || die "workload list failed"
-grep -qE 'openharmony[[:space:]]+1\.0\.0/11\.0\.100' "$LOG_DIR/workload-list.log" || die "workload 1.0.0 not installed"
+# The workload manifest band tracks the SDK feature band, including the
+# prerelease label (the dev rc.3 SDK installs sdk-manifests/11.0.100-rc.3).
+SDK_PRERELEASE="$(printf '%s' "$SDK_VERSION" | sed -n 's/^[0-9][0-9.]*\(-[A-Za-z][A-Za-z0-9]*\.[0-9][0-9]*\).*/\1/p')"
+WORKLOAD_BAND="${SDK_BAND}${SDK_PRERELEASE}"
+grep -qE "openharmony[[:space:]]+${WORKLOAD_BUNDLE_VERSION}/${WORKLOAD_BAND}([^0-9]|$)" "$LOG_DIR/workload-list.log" || die "workload ${WORKLOAD_BUNDLE_VERSION}/${WORKLOAD_BAND} not installed"
 
 # The Sdk pack version follows the workload line; do not hardcode the GA 1.0.0
 # path (the 1.0.1 servicing workload installs packs/Microsoft.OpenHarmony.Sdk/1.0.1).
