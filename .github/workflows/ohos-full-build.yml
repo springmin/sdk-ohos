@@ -683,6 +683,13 @@ jobs:
           mkdir -p aot-release
           cp "$ship"/Microsoft.NETCore.App.Runtime.NativeAOT.openharmony-arm64."$RT_VERSION"*.nupkg aot-release/
           cp "$ship"/runtime.openharmony-arm64.Microsoft.DotNet.ILCompiler."$RT_VERSION"*.nupkg aot-release/
+          # The host ILCompiler pack is built by nativeaot-packages.proj when
+          # BuildHostTools=true; it carries the fork's BuildIntegration targets
+          # (openharmony RID mapping, lld, Net.Security skip), so publish it
+          # instead of repacking the stock nuget.org package.
+          host_pack="$ship/Microsoft.DotNet.ILCompiler.$RT_VERSION.nupkg"
+          [ -f "$host_pack" ] || { echo "::error::host ILCompiler pack missing: $host_pack"; exit 1; }
+          cp "$host_pack" aot-release/
           n=$(ls -1 aot-release/*.nupkg 2>/dev/null | wc -l)
           [ "$n" -gt 0 ] || { echo "::error::no AOT nupkgs matched version $RT_VERSION"; exit 1; }
           (cd aot-release && sha256sum *.nupkg > SHA256SUMS)
