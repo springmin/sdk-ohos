@@ -7,6 +7,11 @@ name: ohos-aot-host-provenance
 # ohos-install-tests suite on purpose.
 on:
   workflow_dispatch:
+    inputs:
+      aot_version:
+        description: AOT mirror line / host ILCompiler version
+        required: true
+        default: '11.0.0'
   push:
     paths:
       - eng/ohos-install/tests/test-aot-host-provenance.sh
@@ -29,18 +34,21 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Download the GA host ILCompiler package
+      - name: Download the host ILCompiler package
         env:
           GH_TOKEN: ${{ github.token }}
+          AOT_VERSION: ${{ inputs.aot_version || '11.0.0' }}
         run: |
           mkdir -p "$RUNNER_TEMP/aot-host"
-          gh release download aot-packs-11.0.0 \
+          gh release download "aot-packs-$AOT_VERSION" \
             --repo "${GITHUB_REPOSITORY}" \
-            --pattern 'Microsoft.DotNet.ILCompiler.11.0.0.nupkg' \
+            --pattern "Microsoft.DotNet.ILCompiler.$AOT_VERSION.nupkg" \
             --dir "$RUNNER_TEMP/aot-host" \
             --clobber
 
       - name: Verify SHA and OpenHarmony BuildIntegration targets
+        env:
+          AOT_VERSION: ${{ inputs.aot_version || '11.0.0' }}
         run: |
           sh eng/ohos-install/tests/test-aot-host-provenance.sh \
-            "$RUNNER_TEMP/aot-host/Microsoft.DotNet.ILCompiler.11.0.0.nupkg"
+            "$RUNNER_TEMP/aot-host/Microsoft.DotNet.ILCompiler.$AOT_VERSION.nupkg"

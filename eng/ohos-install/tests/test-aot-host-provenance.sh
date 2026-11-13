@@ -25,7 +25,8 @@ PKG="${1:-${AOT_HOST_NUPKG:-}}"
 # Single source of truth for the asset SHA.
 . "$W/eng/ohos-install/versions.env"
 
-ASSET="Microsoft.DotNet.ILCompiler.11.0.0.nupkg"
+AOT_VERSION="${AOT_VERSION:-11.0.0}"
+ASSET="Microsoft.DotNet.ILCompiler.$AOT_VERSION.nupkg"
 WANT="$(aot_pack_sha256 "$ASSET")"
 [ -n "$WANT" ] || die "no SHA pin for $ASSET in eng/ohos-install/versions.env"
 GOT="$(sha256sum "$PKG" | awk '{print $1}')"
