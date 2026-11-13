@@ -1,4 +1,4 @@
-<Project>
+﻿<Project>
 
   <!-- Apply the MSBuild thread-safe task analyzer to projects that set IsMSBuildTaskProject=true. -->
   <Import Project="eng\MSBuildTaskAuthoringAnalyzer.props" />
@@ -59,8 +59,11 @@
       <ILCompilerPackVersion>$(MicrosoftNETCoreAppRuntimePackageVersion)</ILCompilerPackVersion>
       <ILCompilerRuntimeIdentifiers Condition="'$(DotNetBuildSourceOnly)' == 'true' and '$(TargetRid)' != ''">%(ILCompilerRuntimeIdentifiers);$(TargetRid)</ILCompilerRuntimeIdentifiers>
     </KnownILCompilerPack>
+    <!-- The servicing runtime version (11.0.1) has no stable ILLink.Tasks
+         package on the feed; use the GA-pinned ILLink version that is bundled
+         in library-packs. -->
     <KnownILLinkPack Update="Microsoft.NET.ILLink.Tasks"
-        ILLinkPackVersion="$(MicrosoftNETCoreAppRuntimePackageVersion)" />
+        ILLinkPackVersion="$(MicrosoftNETILLinkTasksVersion)" />
     <KnownWebAssemblySdkPack Update="Microsoft.NET.Sdk.WebAssembly.Pack"
         WebAssemblySdkPackVersion="$(MicrosoftNETCoreAppRuntimePackageVersion)" />
     <KnownCrossgen2Pack Update="Microsoft.NETCore.App.Crossgen2"
