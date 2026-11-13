@@ -58,8 +58,8 @@ This file should be imported by eng/Versions.props
     <MicrosoftDotNetHelixJobMonitorPackageVersion>11.0.0-beta.26527.113</MicrosoftDotNetHelixJobMonitorPackageVersion>
     <MicrosoftDotNetHelixSdkPackageVersion>11.0.0-beta.26527.113</MicrosoftDotNetHelixSdkPackageVersion>
     <MicrosoftDotNetSignToolPackageVersion>11.0.0-beta.26527.113</MicrosoftDotNetSignToolPackageVersion>
-    <MicrosoftDotNetWebItemTemplates110PackageVersion>11.0.0</MicrosoftDotNetWebItemTemplates110PackageVersion>
-    <MicrosoftDotNetWebProjectTemplates110PackageVersion>11.0.0</MicrosoftDotNetWebProjectTemplates110PackageVersion>
+    <MicrosoftDotNetWebItemTemplates110PackageVersion>11.0.0-rtm.26480.113</MicrosoftDotNetWebItemTemplates110PackageVersion>
+    <MicrosoftDotNetWebProjectTemplates110PackageVersion>11.0.0-rtm.26480.113</MicrosoftDotNetWebProjectTemplates110PackageVersion>
     <MicrosoftDotnetWinFormsProjectTemplatesPackageVersion>11.0.0-rtm.26527.113</MicrosoftDotnetWinFormsProjectTemplatesPackageVersion>
     <MicrosoftDotNetWpfProjectTemplatesPackageVersion>11.0.0-rtm.26527.113</MicrosoftDotNetWpfProjectTemplatesPackageVersion>
     <MicrosoftDotNetXliffTasksPackageVersion>11.0.0-beta.26527.113</MicrosoftDotNetXliffTasksPackageVersion>
