@@ -681,8 +681,8 @@ jobs:
           esac
           rm -rf aot-release
           mkdir -p aot-release
-          cp "$ship"/Microsoft.NETCore.App.Runtime.NativeAOT.openharmony-arm64."$RT_VERSION"*.nupkg aot-release/
-          cp "$ship"/runtime.openharmony-arm64.Microsoft.DotNet.ILCompiler."$RT_VERSION"*.nupkg aot-release/
+          find "$ship" -maxdepth 1 -name "Microsoft.NETCore.App.Runtime.NativeAOT.openharmony-arm64.$RT_VERSION*.nupkg" ! -name '*symbols*' -exec cp {} aot-release/ \;
+          find "$ship" -maxdepth 1 -name "runtime.openharmony-arm64.Microsoft.DotNet.ILCompiler.$RT_VERSION*.nupkg" ! -name '*symbols*' -exec cp {} aot-release/ \;
           # The host ILCompiler pack is built by nativeaot-packages.proj when
           # BuildHostTools=true; it carries the fork's BuildIntegration targets
           # (openharmony RID mapping, lld, Net.Security skip), so publish it
@@ -698,6 +698,11 @@ jobs:
           if [ "$AOT_MIRROR_DRY_RUN" = true ]; then
             echo "dry run: not publishing"
             exit 0
+          fi
+          if gh release view "$tag" --repo "${{ github.repository_owner }}/sdk-ohos" >/dev/null 2>&1; then
+            for a in $(gh release view "$tag" --repo "${{ github.repository_owner }}/sdk-ohos" --json assets --jq '.assets[].name'); do
+              gh release delete-asset "$tag" "$a" --repo "${{ github.repository_owner }}/sdk-ohos" -y || true
+            done
           fi
           gh release view "$tag" --repo "${{ github.repository_owner }}/sdk-ohos" >/dev/null 2>&1 || \
             gh release create "$tag" --repo "${{ github.repository_owner }}/sdk-ohos" \
