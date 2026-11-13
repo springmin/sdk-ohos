@@ -103,13 +103,17 @@ Added PackageDownload for Microsoft.NETCore.App.Runtime.NativeAOT.linux-musl-arm
 > `fetch-nativeaot-packs.sh` 在发现该缓存仍是 stock（build targets 无 `openharmony`）时
 > 会删除它，下一次 restore 从本 feed 解包镜像件。
 >
-> **Provenance / CI gate（2026-11-12）**：该 host 包是对 stock
+> **Provenance / CI gate（2026-11-12；2026-11-13 更新）**：当前 GA 资产
+> `Microsoft.DotNet.ILCompiler.11.0.0.nupkg`（sha256 `d21cca99...`）是对 stock
 > `Microsoft.DotNet.ILCompiler/11.0.0` nupkg 的 repack：保留 nuspec 和其余 build 文件，
 > 替换上述两个 targets，并移除 stock 的 `.signature.p7s`（所以包本身未签名；release
-> SHA 锚与 AOT release asset 是信任根）。`eng/ohos-install/tests/test-aot-host-provenance.sh`
-> 校验 SHA + 两个 targets 的 openharmony 映射；
-> `.github/workflows/ohos-aot-host-provenance.yml` 下载 release asset 并执行该检查。
-> 长期应由 runtime-ohos 的 ILCompiler pack 构建直接产出 host 包，而不是 repack。
+> SHA 锚与 AOT release asset 是信任根）。从下一次 runtime 构建开始，
+> `ohos-full-build.yml` 会收集 `nativeaot-packages.proj` 在 `BuildHostTools=true` 下
+> 产出的 host pack 并发布到 `aot-packs-<RT_VERSION>`；该包直接携带 fork 的
+> BuildIntegration targets，不再需要 repack，届时重 pin `versions.env` 与 provenance SHA。
+> `eng/ohos-install/tests/test-aot-host-provenance.sh` 校验 SHA + 两个 targets 的
+> openharmony 映射；`.github/workflows/ohos-aot-host-provenance.yml` 下载 release asset
+> 并执行该检查。
 
 `springmin/sdk-ohos` Release **`aot-packs-11.0.0-rc.2`** 镜像了 rc.2 线的两件原生包
 （`SHA256SUMS` 随附、asset id `597667550`；来源 = `runtime-ohos`
