@@ -59,7 +59,15 @@ on:
         type: boolean
         default: false
       publish_aot_mirror:
-        description: Publish the GA NativeAOT/ILCompiler nupkgs to aot-packs-11.0.0
+        description: Publish the built NativeAOT/ILCompiler nupkgs to aot-packs-<RT_VERSION>
+        type: boolean
+        default: false
+      aot_mirror_tag:
+        description: AOT mirror release tag (empty derives aot-packs-<RT_VERSION> from the built Ref package)
+        required: false
+        default: ''
+      aot_mirror_dry_run:
+        description: Print the derived AOT mirror tag/assets without publishing
         type: boolean
         default: false
       aspnetcore_prerelease_iteration:
@@ -657,19 +665,38 @@ jobs:
         if: inputs.publish_aot_mirror
         env:
           GH_TOKEN: ${{ secrets.OHOS_RELEASE_TOKEN }}
+          AOT_MIRROR_TAG: ${{ inputs.aot_mirror_tag }}
+          AOT_MIRROR_DRY_RUN: ${{ inputs.aot_mirror_dry_run }}
         run: |
           set -euo pipefail
           ship=runtime/artifacts/packages/Release/Shipping
+          # Derive the mirror line from the build instead of hardcoding the GA
+          # tag: a dev dispatch must not overwrite aot-packs-11.0.0.
+          RT_VERSION=$(ls "$ship"/Microsoft.NETCore.App.Ref.*.nupkg | grep -vE 'symbols|\.dev\.' | sed 's/.*Ref\.//; s/\.nupkg//' | sort -u | tail -1)
+          [ -n "$RT_VERSION" ] || { echo "::error::could not derive RT_VERSION from $ship"; exit 1; }
+          tag="${AOT_MIRROR_TAG:-aot-packs-$RT_VERSION}"
+          case "$tag" in
+            aot-packs-*) ;;
+            *) echo "::error::AOT mirror tag '$tag' must start with aot-packs-"; exit 1 ;;
+          esac
+          rm -rf aot-release
           mkdir -p aot-release
-          cp "$ship"/Microsoft.NETCore.App.Runtime.NativeAOT.openharmony-arm64.11.0.0*.nupkg aot-release/
-          cp "$ship"/runtime.openharmony-arm64.Microsoft.DotNet.ILCompiler.11.0.0*.nupkg aot-release/
+          cp "$ship"/Microsoft.NETCore.App.Runtime.NativeAOT.openharmony-arm64."$RT_VERSION"*.nupkg aot-release/
+          cp "$ship"/runtime.openharmony-arm64.Microsoft.DotNet.ILCompiler."$RT_VERSION"*.nupkg aot-release/
+          n=$(ls -1 aot-release/*.nupkg 2>/dev/null | wc -l)
+          [ "$n" -gt 0 ] || { echo "::error::no AOT nupkgs matched version $RT_VERSION"; exit 1; }
           (cd aot-release && sha256sum *.nupkg > SHA256SUMS)
           cat aot-release/SHA256SUMS
-          gh release view aot-packs-11.0.0 --repo "${{ github.repository_owner }}/sdk-ohos" >/dev/null 2>&1 || \
-            gh release create aot-packs-11.0.0 --repo "${{ github.repository_owner }}/sdk-ohos" \
-              --title "OpenHarmony NativeAOT packs 11.0.0" \
-              --notes "NativeAOT runtime pack and ILCompiler for .NET 11.0.0 GA (openharmony-arm64), built by ohos-full-build run ${{ github.run_id }}."
-          gh release upload aot-packs-11.0.0 --repo "${{ github.repository_owner }}/sdk-ohos" aot-release/*.nupkg aot-release/SHA256SUMS --clobber
+          echo "AOT mirror: tag=$tag version=$RT_VERSION assets=$n"
+          if [ "$AOT_MIRROR_DRY_RUN" = true ]; then
+            echo "dry run: not publishing"
+            exit 0
+          fi
+          gh release view "$tag" --repo "${{ github.repository_owner }}/sdk-ohos" >/dev/null 2>&1 || \
+            gh release create "$tag" --repo "${{ github.repository_owner }}/sdk-ohos" \
+              --title "OpenHarmony NativeAOT packs $RT_VERSION" \
+              --notes "NativeAOT runtime pack and ILCompiler for .NET $RT_VERSION (openharmony-arm64), built by ohos-full-build run ${{ github.run_id }}."
+          gh release upload "$tag" --repo "${{ github.repository_owner }}/sdk-ohos" aot-release/*.nupkg aot-release/SHA256SUMS --clobber
 
       - name: Publish to -ohos releases
         if: inputs.upload_release
