@@ -1,4 +1,4 @@
-<Project>
+﻿<Project>
 
   <Target Name="GenerateBundledVersions"
           DependsOnTargets="GenerateBundledVersionsProps;GenerateBundledCliToolsProps;GenerateBundledMSBuildProps" >
@@ -908,7 +908,7 @@ Copyright (c) .NET Foundation. All rights reserved.
 
     <KnownILLinkPack Include="Microsoft.NET.ILLink.Tasks"
                      TargetFramework="net11.0"
-                     ILLinkPackVersion="$(_NET110RuntimePackVersion)" />
+                     ILLinkPackVersion="$(MicrosoftNETILLinkTasksVersion)" />
 
     <KnownWebAssemblySdkPack Include="Microsoft.NET.Sdk.WebAssembly.Pack"
                              TargetFramework="net11.0"
