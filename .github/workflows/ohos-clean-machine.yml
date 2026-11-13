@@ -31,6 +31,10 @@ on:
         description: "Optional local workload bundle path (default: published release URL)"
         required: false
         default: ""
+      sdk_ref:
+        description: "sdk-ohos ref to validate"
+        required: false
+        default: "release/ohos-11.0.100"
 
 permissions:
   contents: read
@@ -43,6 +47,7 @@ jobs:
       - name: Check out sdk-ohos
         uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.sdk_ref }}
           persist-credentials: false
 
       - name: Check out ohos-workload
