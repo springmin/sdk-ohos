@@ -79,7 +79,7 @@ jobs:
           fi
           [ -n "$HDC" ] && [ -x "$HDC" ] || { echo "::error::hdc not found"; exit 1; }
 
-          DEVICE="${OHOS_UDID:-${INPUT_DEVICE:-}}"
+          DEVICE="${INPUT_DEVICE:-${OHOS_UDID:-}}"
           if [ -z "$DEVICE" ]; then
             DEVICE="$("$HDC" list targets 2>/dev/null | tr -d '\r' | head -1)"
           fi
