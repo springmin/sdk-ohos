@@ -8,7 +8,7 @@ on:
         required: false
         default: ''
       runtime_ref:
-        # The .NET 11 OpenHarmony stack builds against the rc.3 runtime line.
+        # The .NET 11 OpenHarmony stack builds against the GA 11.0.0 runtime line.
         # runtime/feature/openharmony tracks .NET 12 and cannot feed the .NET 11
         # aspnetcore/sdk checkouts.
         description: 'runtime-ohos branch/tag to build (11.0 stack: release/ohos-rc3)'

@@ -32,8 +32,8 @@ fi
 ARCH="${ARCH:-arm64}"
 RID="${RID:-openharmony-${ARCH}}"
 CONFIG="${CONFIG:-Release}"
-LABEL="${LABEL:-rc}"
-PRE="${PRE:-1}"
+LABEL="${LABEL:-rtm}"
+PRE="${PRE-}"
 BUILDID="${BUILDID:-$DEFAULT_BUILDID}"
 SDK_REPO="${SDK_REPO:-$(cd "$SCRIPT_DIR/../../.." && pwd)}"
 RUNTIME_REPO="${RUNTIME_REPO:-}"
@@ -138,7 +138,7 @@ prune_stale_sdk_aot_libs
   /p:PublicBaseURL=http://localhost:$ASSET_PORT/ \
   /p:RidGraphOverridePortableJson="$PWD/eng/PortableRuntimeIdentifierGraph.openharmony.json" \
   /p:IncludeAspNetCoreRuntime=false \
-  /p:PreReleaseVersionLabel="$LABEL" /p:PreReleaseVersion="$PRE" /p:OfficialBuildId="$BUILDID" \
+  /p:PreReleaseVersionLabel="$LABEL" /p:PreReleaseVersion="$PRE" /p:StabilizePackageVersion=true /p:DotNetFinalVersionKind=release /p:OfficialBuildId="$BUILDID" \
   2>&1 | tee -a "$LOG" || die "sdk build failed"
 info "sdk redist produced under $SDK_REPO/artifacts/bin/redist/$CONFIG/dotnet"
 # Patch the shipped MSBuild + Roslyn compiler-server named pipes before
