@@ -20,8 +20,8 @@ path, assets = sys.argv[1], sys.argv[2:]
 with open(path, "w", encoding="utf-8") as stream:
     for index, asset in enumerate(assets, 1):
         if "ILLink" in asset:
-            # Shared with the GA 11.0.0 line; keep the existing digest.
-            sha = "91b8bc2d7759de6a6e63ec2e8eb89aa5014fdd4197bb6058c1355430ecb9ada1"
+            # Keep the current -rtm ILLink digest.
+            sha = "9df0c53dbda5feb4f8df06fe0a8fe66fa5c3db7d021e6b3fa5c079d601630e0e"
         else:
             sha = f"{index:064x}"
         stream.write(f"{sha}  {asset}\n")
@@ -47,11 +47,14 @@ for asset in assets:
 print("all pins updated")
 PY
 
-# A changed shared ILLink digest must fail instead of breaking the GA line.
+# A changed shared asset digest must fail instead of breaking the base line.
+# The current -rtm line uses a distinct ILLink name, so force the base line to
+# the same version to exercise the shared-pin guard.
 cp "$W/eng/ohos-install/versions.env" "$TMP/versions2.env"
-sed 's/91b8bc2d7759de6a6e63ec2e8eb89aa5014fdd4197bb6058c1355430ecb9ada1/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/' \
+sed 's/9df0c53dbda5feb4f8df06fe0a8fe66fa5c3db7d021e6b3fa5c079d601630e0e/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/' \
     "$TMP/SHA256SUMS" > "$TMP/SHA256SUMS.bad"
-if VERSIONS_ENV="$TMP/versions2.env" AOT_SHA256SUMS="$TMP/SHA256SUMS.bad" \
+if VERSIONS_ENV="$TMP/versions2.env" WORKLOAD_RUNTIME_VERSION=11.0.0-rtm \
+    AOT_SHA256SUMS="$TMP/SHA256SUMS.bad" \
     sh "$W/eng/ohos-install/update-aot-pins.sh" aot-packs-11.0.0-rtm > "$TMP/bad.log" 2>&1; then
     echo "FAIL: shared ILLink pin change was accepted" >&2
     cat "$TMP/bad.log" >&2
