@@ -5,8 +5,9 @@ name: ohos-clean-machine-ga
 # on a GitHub-hosted Linux runner. The offline test-clean-machine-plan.sh in
 # ohos-install-tests validates the script's plan on ubuntu-latest.
 #
-# Register a self-hosted runner with the labels [self-hosted, openharmony],
-# then run this workflow manually for a release candidate. It installs the
+# Register a self-hosted runner with the labels
+# [self-hosted, openharmony, ohos-arm64], then run this workflow manually for a
+# release candidate. It installs the
 # published SDK tarball + workload 1.0.0 into an isolated HOME/INSTALL_DIR and
 # runs 826, JIT publish and the AOT fetch/publish flow. Device checks are
 # enabled by setting skip_device=false and providing OHOS_HDC / OHOS_UDID.
@@ -32,22 +33,30 @@ on:
         required: false
         default: ""
       sdk_ref:
-        description: "sdk-ohos ref to validate"
+        description: "sdk-ohos ref to validate (default: the dispatched branch)"
         required: false
-        default: "release/ohos-11.0.100"
+        default: ""
 
 permissions:
   contents: read
 
+concurrency:
+  group: ohos-clean-machine-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   clean-machine:
-    runs-on: [self-hosted, openharmony]
-    timeout-minutes: 120
+    runs-on: [self-hosted, openharmony, ohos-arm64]
+    timeout-minutes: 180
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
+      MSBUILDDISABLENODEREUSE: "1"
     steps:
       - name: Check out sdk-ohos
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.sdk_ref }}
+          ref: ${{ inputs.sdk_ref || github.ref_name }}
           persist-credentials: false
 
       - name: Check out ohos-workload
@@ -77,3 +86,4 @@ jobs:
           name: ohos-clean-machine-logs
           path: ${{ runner.temp }}/ohos-clean-ga/logs
           if-no-files-found: warn
+          retention-days: 14
