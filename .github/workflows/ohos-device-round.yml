@@ -1,0 +1,128 @@
+name: ohos-device-round
+
+# Full device round for the OpenHarmony MAUI/Blazor device-test kit.
+# Runs on the self-hosted OpenHarmony host with a connected device. The kit
+# defaults to the local ga100 kit; pass kit_url to download a published tar.gz.
+on:
+  workflow_dispatch:
+    inputs:
+      kit_path:
+        description: "Local device-test-kit dir/tar on the runner"
+        required: false
+        default: "/data/storage/el2/base/tmp/opencode/device-test-kit-ga100-blazor"
+      kit_url:
+        description: "Optional kit tar.gz URL (overrides kit_path)"
+        required: false
+        default: ""
+      mode:
+        description: "AOT or JIT hap"
+        type: choice
+        options: ["aot", "jit"]
+        default: "aot"
+      suite:
+        description: "Run the full suite (Blazor, slots, a11y, deeplink)"
+        type: choice
+        options: ["true", "false"]
+        default: "true"
+      soak_min:
+        description: "Soak minutes (0 disables)"
+        required: false
+        default: "5"
+      device:
+        description: "Device id (default: first hdc target)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ohos-device-round-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  device-round:
+    runs-on: [self-hosted, openharmony, ohos-arm64]
+    timeout-minutes: 90
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
+      MSBUILDDISABLENODEREUSE: "1"
+    steps:
+      - name: Check out sdk-ohos
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Check out ohos-workload
+        uses: actions/checkout@v4
+        with:
+          repository: springmin/ohos-workload
+          path: ohos-workload
+          persist-credentials: false
+
+      - name: Resolve kit and device
+        env:
+          OHOS_HDC: ${{ secrets.OHOS_HDC }}
+          OHOS_UDID: ${{ secrets.OHOS_UDID }}
+          INPUT_KIT: ${{ inputs.kit_path }}
+          INPUT_KIT_URL: ${{ inputs.kit_url }}
+          INPUT_DEVICE: ${{ inputs.device }}
+        run: |
+          set -eu
+          HDC="${OHOS_HDC:-}"
+          if [ -z "$HDC" ] || [ ! -x "$HDC" ]; then
+            HDC="$(command -v hdc 2>/dev/null || true)"
+          fi
+          if [ -z "$HDC" ] || [ ! -x "$HDC" ]; then
+            HDC="$(find /storage/Users/currentUser/.harmonybrew/Cellar/ohos-sdk-toolchains -type f -name hdc 2>/dev/null | head -1)"
+          fi
+          [ -n "$HDC" ] && [ -x "$HDC" ] || { echo "::error::hdc not found"; exit 1; }
+
+          DEVICE="${OHOS_UDID:-${INPUT_DEVICE:-}}"
+          if [ -z "$DEVICE" ]; then
+            DEVICE="$("$HDC" list targets 2>/dev/null | tr -d '\r' | head -1)"
+          fi
+          [ -n "$DEVICE" ] || { echo "::error::no OpenHarmony device found"; exit 1; }
+
+          KIT="${INPUT_KIT}"
+          if [ -n "${INPUT_KIT_URL:-}" ]; then
+            mkdir -p "$RUNNER_TEMP/kit"
+            KIT="$RUNNER_TEMP/kit/device-test-kit.tar.gz"
+            curl -fL --retry 3 --connect-timeout 20 -o "$KIT" "$INPUT_KIT_URL"
+          fi
+          [ -e "$KIT" ] || { echo "::error::device-test-kit not found: $KIT"; exit 1; }
+
+          {
+            echo "HDC=$HDC"
+            echo "DEVICE=$DEVICE"
+            echo "KIT=$KIT"
+          } >> "$GITHUB_ENV"
+          echo "hdc: $HDC"
+          echo "device: $DEVICE"
+          echo "kit: $KIT"
+
+      - name: Run device round
+        env:
+          HDC: ${{ env.HDC }}
+          DEVICE: ${{ env.DEVICE }}
+          KIT: ${{ env.KIT }}
+          MODE: ${{ inputs.mode }}
+          SUITE: ${{ inputs.suite }}
+          SOAK: ${{ inputs.soak_min }}
+        run: |
+          set -eu
+          args=(--kit "$KIT" --mode "$MODE" --soak-min "$SOAK" --device "$DEVICE" --out "$RUNNER_TEMP/device-round")
+          if [ "$SUITE" = "true" ]; then
+            args+=(--suite)
+          fi
+          sh ohos-workload/scripts/device-round.sh "${args[@]}"
+
+      - name: Upload device round archive
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ohos-device-round
+          path: ${{ runner.temp }}/device-round*
+          if-no-files-found: warn
+          retention-days: 14
