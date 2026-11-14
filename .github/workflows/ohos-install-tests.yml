@@ -59,3 +59,7 @@ jobs:
       - name: Clean-machine GA plan (dry-run)
         if: ${{ !cancelled() }}
         run: sh eng/ohos-install/tests/test-clean-machine-plan.sh
+
+      - name: Dev snapshot pin update (local tarball)
+        if: ${{ !cancelled() }}
+        run: sh eng/ohos-install/tests/test-update-dev-snapshot.sh

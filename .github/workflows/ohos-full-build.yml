@@ -668,6 +668,27 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
+      - name: Emit the dev snapshot pin
+        if: ${{ !cancelled() && !inputs.skip_sdk }}
+        run: |
+          set -euo pipefail
+          sdk_tar=$(ls sdk/artifacts/packages/Release/Shipping/dotnet-sdk-*-openharmony-arm64.tar.gz | head -1)
+          [ -n "$sdk_tar" ] || { echo "::error::SDK tarball missing"; exit 1; }
+          sdk_version=$(basename "$sdk_tar" | sed 's/dotnet-sdk-//; s/-openharmony-arm64\.tar\.gz//')
+          tag="v${sdk_version}-ohos-dev.$(date +%Y%m%d)"
+          sha=$(sha256sum "$sdk_tar" | cut -d' ' -f1)
+          {
+            echo "### Dev snapshot pin"
+            echo ""
+            echo "Tag: \`$tag\`"
+            echo "SDK tarball: \`$(basename "$sdk_tar")\`"
+            echo "SHA256: \`$sha\`"
+            echo ""
+            echo "After publishing the dev snapshot, run:"
+            echo ""
+            echo "\`sh eng/ohos-install/update-dev-snapshot.sh $tag $(basename "$sdk_tar")\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Publish AOT mirror
         if: inputs.publish_aot_mirror
         env:
