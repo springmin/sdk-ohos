@@ -445,6 +445,8 @@ jobs:
       - name: Install host linux-x64 runtime packs into SDK packs dir
         run: |
           set -euo pipefail
+          # shellcheck source=../../eng/ohos-install/versions.env
+          . sdk/eng/ohos-install/versions.env
           # SDK's FrameworkReference resolution finds host runtime packs under
           # the SDK packs root (.dotnet/packs), not ~/.nuget. Install the
           # linux-x64 runtime pack there so in-build tools (crossgen2/ILCompiler
@@ -471,7 +473,8 @@ jobs:
                 src="https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet11/nuget/v3/flat2/$id/$v/$id.$v.nupkg"
                 sha="$HOST_PACK_DNCENG_DOTNET11_SHA256" ;;
               *)
-                src="https://github.com/${GH_USER}/runtime-ohos/releases/download/v${REFERENCE_RUNTIME_PACK_VERSION}-ohos/$id.$v.nupkg" ;;
+                src="https://github.com/${GH_USER}/runtime-ohos/releases/download/v${REFERENCE_RUNTIME_PACK_VERSION}-ohos/$id.$v.nupkg"
+                sha="$(host_pack_sha256 "$id" "$v")" ;;
             esac
             mkdir -p "$d" "$HOSTFEED/$id/$v"
             bash sdk/eng/ohos-install/build/build-ohos-all.sh --fetch-verified "$src" "$RUNNER_TEMP/hostpack.nupkg" "$sha" \
