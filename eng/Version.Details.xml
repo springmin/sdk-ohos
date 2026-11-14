@@ -157,15 +157,15 @@
       <Uri>https://github.com/dotnet/dotnet</Uri>
       <Sha>3e57c9d3b266cf82d6f85bd9f46c649557389341</Sha>
     </Dependency>
-    <Dependency Name="Microsoft.NET.Test.Sdk" Version="18.11.0-release-26527-113">
+    <Dependency Name="Microsoft.NET.Test.Sdk" Version="18.11.1">
       <Uri>https://github.com/dotnet/dotnet</Uri>
       <Sha>3e57c9d3b266cf82d6f85bd9f46c649557389341</Sha>
     </Dependency>
-    <Dependency Name="Microsoft.TestPlatform.CLI" Version="18.11.0-release-26527-113">
+    <Dependency Name="Microsoft.TestPlatform.CLI" Version="18.11.1">
       <Uri>https://github.com/dotnet/dotnet</Uri>
       <Sha>3e57c9d3b266cf82d6f85bd9f46c649557389341</Sha>
     </Dependency>
-    <Dependency Name="Microsoft.TestPlatform.Build" Version="18.11.0-release-26527-113">
+    <Dependency Name="Microsoft.TestPlatform.Build" Version="18.11.1">
       <Uri>https://github.com/dotnet/dotnet</Uri>
       <Sha>3e57c9d3b266cf82d6f85bd9f46c649557389341</Sha>
     </Dependency>
