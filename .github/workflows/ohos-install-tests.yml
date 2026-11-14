@@ -63,3 +63,7 @@ jobs:
       - name: Dev snapshot pin update (local tarball)
         if: ${{ !cancelled() }}
         run: sh eng/ohos-install/tests/test-update-dev-snapshot.sh
+
+      - name: AOT mirror pin update (local SHA256SUMS)
+        if: ${{ !cancelled() }}
+        run: sh eng/ohos-install/tests/test-update-aot-pins.sh

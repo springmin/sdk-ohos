@@ -728,6 +728,15 @@ jobs:
           host_pack="$ship/Microsoft.DotNet.ILCompiler.$RT_VERSION.nupkg"
           [ -f "$host_pack" ] || { echo "::error::host ILCompiler pack missing: $host_pack"; exit 1; }
           cp "$host_pack" "aot-release/Microsoft.DotNet.ILCompiler.${RT_VERSION}${suffix}.nupkg"
+          # The AOT line's pin set includes ILLink.Tasks (shared with the base
+          # line); keep it in the mirror instead of deleting it on republish.
+          # The SDK restore leaves the package in the NuGet cache.
+          illink_version=$(sed -n 's/.*<MicrosoftNETILLinkTasksPackageVersion>\([^<]*\)<.*/\1/p' sdk/eng/Version.Details.props | head -1)
+          [ -n "$illink_version" ] || { echo "::error::ILLink.Tasks version missing from sdk/eng/Version.Details.props"; exit 1; }
+          nuget_root="${NUGET_PACKAGES:-$HOME/.nuget/packages}"
+          illink_src="$nuget_root/microsoft.net.illink.tasks/$illink_version/microsoft.net.illink.tasks.$illink_version.nupkg"
+          [ -f "$illink_src" ] || { echo "::error::ILLink.Tasks package missing: $illink_src"; exit 1; }
+          cp "$illink_src" "aot-release/Microsoft.NET.ILLink.Tasks.$illink_version.nupkg"
           n=$(ls -1 aot-release/*.nupkg 2>/dev/null | wc -l)
           [ "$n" -gt 0 ] || { echo "::error::no AOT nupkgs matched version $RT_VERSION"; exit 1; }
           (cd aot-release && sha256sum *.nupkg > SHA256SUMS)
