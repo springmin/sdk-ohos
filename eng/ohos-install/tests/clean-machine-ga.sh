@@ -285,9 +285,9 @@ if [ "$SKIP_AOT" != 1 ]; then
     (
         cd "$W"
         if [ -n "$AOT_ASSETS" ]; then
-            AOT_PACKS_VERSION=11.0.0 sh eng/ohos-install/fetch-nativeaot-packs.sh --local "$AOT_ASSETS" "$CLEAN_ROOT/aot-feed"
+            sh eng/ohos-install/fetch-nativeaot-packs.sh --local "$AOT_ASSETS" "$CLEAN_ROOT/aot-feed"
         else
-            AOT_PACKS_VERSION=11.0.0 sh eng/ohos-install/fetch-nativeaot-packs.sh "$CLEAN_ROOT/aot-feed"
+            sh eng/ohos-install/fetch-nativeaot-packs.sh "$CLEAN_ROOT/aot-feed"
         fi
     ) > "$LOG_DIR/aot-fetch.log" 2>&1 || { tail -40 "$LOG_DIR/aot-fetch.log"; die "AOT fetch failed"; }
     AOT_WORKDIR="$CLEAN_ROOT/aot-work"

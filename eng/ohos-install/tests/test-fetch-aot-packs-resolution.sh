@@ -51,11 +51,11 @@ unset AOT_PACKS_VERSION AOT_PACKS_TAG
 # shellcheck disable=SC1091
 . "$OHOS_DIR/versions.env"
 
-[ "$AOT_PACKS_VERSION" = "$WORKLOAD_RUNTIME_VERSION" ] \
-    && pass "AOT_PACKS_VERSION defaults to the workload runtime ($WORKLOAD_RUNTIME_VERSION)" \
-    || fail "AOT_PACKS_VERSION defaults to WORKLOAD_RUNTIME_VERSION (got '$AOT_PACKS_VERSION')"
-[ "$AOT_PACKS_TAG" = "aot-packs-$WORKLOAD_RUNTIME_VERSION" ] \
-    && pass "the default line ($WORKLOAD_RUNTIME_VERSION) resolves its mirror tag" \
+[ -n "$(aot_packs_tag "$AOT_PACKS_VERSION")" ] \
+    && pass "AOT_PACKS_VERSION defaults to a mirrored line ($AOT_PACKS_VERSION)" \
+    || fail "AOT_PACKS_VERSION defaults to a mirrored line (got '$AOT_PACKS_VERSION')"
+[ "$(aot_packs_tag_version "$AOT_PACKS_TAG")" = "$AOT_PACKS_VERSION" ] \
+    && pass "the default line ($AOT_PACKS_VERSION) resolves its mirror tag ($AOT_PACKS_TAG)" \
     || fail "the default line resolves its mirror tag (got '$AOT_PACKS_TAG')"
 
 # Every known line: tag + asset names + a 64-hex pin per asset; the tag maps

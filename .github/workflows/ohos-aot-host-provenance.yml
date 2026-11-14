@@ -11,7 +11,7 @@ on:
       aot_version:
         description: AOT mirror line / host ILCompiler version
         required: true
-        default: '11.0.0'
+        default: '11.0.0-rtm'
   push:
     paths:
       - eng/ohos-install/tests/test-aot-host-provenance.sh
@@ -37,7 +37,7 @@ jobs:
       - name: Download the host ILCompiler package
         env:
           GH_TOKEN: ${{ github.token }}
-          AOT_VERSION: ${{ inputs.aot_version || '11.0.0' }}
+          AOT_VERSION: ${{ inputs.aot_version || '11.0.0-rtm' }}
         run: |
           mkdir -p "$RUNNER_TEMP/aot-host"
           gh release download "aot-packs-$AOT_VERSION" \
@@ -48,7 +48,7 @@ jobs:
 
       - name: Verify SHA and OpenHarmony BuildIntegration targets
         env:
-          AOT_VERSION: ${{ inputs.aot_version || '11.0.0' }}
+          AOT_VERSION: ${{ inputs.aot_version || '11.0.0-rtm' }}
         run: |
           sh eng/ohos-install/tests/test-aot-host-provenance.sh \
             "$RUNNER_TEMP/aot-host/Microsoft.DotNet.ILCompiler.$AOT_VERSION.nupkg"
