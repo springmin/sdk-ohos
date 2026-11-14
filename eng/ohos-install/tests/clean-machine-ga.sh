@@ -57,7 +57,7 @@ DRY_RUN=0
 . "$W/eng/ohos-install/versions.env"
 # Default to the release line pinned in versions.env, so the gate follows the
 # branch it runs on (GA on the release branch, the current dev line on dev).
-SDK_TARBALL="${SDK_TARBALL:-https://github.com/${GH_USER}/sdk-ohos/releases/download/v${SDK_VERSION}-ohos/dotnet-sdk-${SDK_VERSION}-${RID}.tar.gz}"
+SDK_TARBALL="${SDK_TARBALL:-https://github.com/${GH_USER}/sdk-ohos/releases/download/${SDK_RELEASE_TAG}/dotnet-sdk-${SDK_VERSION}-${RID}.tar.gz}"
 WORKLOAD_BUNDLE="${WORKLOAD_BUNDLE:-https://github.com/${GH_USER}/sdk-ohos/releases/download/workload-${WORKLOAD_BUNDLE_VERSION}/openharmony-workload-${WORKLOAD_BUNDLE_VERSION}.tar.gz}"
 SDK_SHA="${SDK_TARBALL_SHA256:-}"
 BUNDLE_SHA="${WORKLOAD_BUNDLE_SHA256:-}"

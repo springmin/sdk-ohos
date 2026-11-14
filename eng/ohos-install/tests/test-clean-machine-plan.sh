@@ -30,7 +30,7 @@ check 'DRY-RUN clean-machine GA plan'
 check 'install-dotnet-ohos.sh'
 check "$SDK_SHA"
 check "$BUNDLE_SHA"
-check "v${SDK_VERSION}-ohos/dotnet-sdk-${SDK_VERSION}-${RID}.tar.gz"
+check "${SDK_RELEASE_TAG}/dotnet-sdk-${SDK_VERSION}-${RID}.tar.gz"
 check "workload-${WORKLOAD_BUNDLE_VERSION}/openharmony-workload-${WORKLOAD_BUNDLE_VERSION}.tar.gz"
 check '826:'
 check 'JIT:'
