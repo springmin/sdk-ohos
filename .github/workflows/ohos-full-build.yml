@@ -70,6 +70,10 @@ on:
         description: Print the derived AOT mirror tag/assets without publishing
         type: boolean
         default: false
+      aot_asset_suffix:
+        description: 'Suffix for mirrored AOT asset names (e.g. -rtm; empty keeps the standard names)'
+        required: false
+        default: ''
       aspnetcore_prerelease_iteration:
         description: Override aspnetcore PreReleaseVersionIteration in the CI checkout (empty keeps the branch value)
         required: false
@@ -670,6 +674,7 @@ jobs:
           GH_TOKEN: ${{ secrets.OHOS_RELEASE_TOKEN }}
           AOT_MIRROR_TAG: ${{ inputs.aot_mirror_tag }}
           AOT_MIRROR_DRY_RUN: ${{ inputs.aot_mirror_dry_run }}
+          AOT_ASSET_SUFFIX: ${{ inputs.aot_asset_suffix }}
         run: |
           set -euo pipefail
           ship=runtime/artifacts/packages/Release/Shipping
@@ -684,15 +689,24 @@ jobs:
           esac
           rm -rf aot-release
           mkdir -p aot-release
-          find "$ship" -maxdepth 1 -name "Microsoft.NETCore.App.Runtime.NativeAOT.openharmony-arm64.$RT_VERSION*.nupkg" ! -name '*symbols*' -exec cp {} aot-release/ \;
-          find "$ship" -maxdepth 1 -name "runtime.openharmony-arm64.Microsoft.DotNet.ILCompiler.$RT_VERSION*.nupkg" ! -name '*symbols*' -exec cp {} aot-release/ \;
+          suffix="${AOT_ASSET_SUFFIX:-}"
+          copy_nupkg() { # <src>... -> aot-release/<name><suffix>.nupkg (symbols skipped)
+            for src in "$@"; do
+              [ -f "$src" ] || continue
+              base="$(basename "$src")"
+              case "$base" in *symbols*) continue ;; esac
+              cp "$src" "aot-release/${base%.nupkg}${suffix}.nupkg"
+            done
+          }
+          copy_nupkg "$ship"/Microsoft.NETCore.App.Runtime.NativeAOT.openharmony-arm64."$RT_VERSION"*.nupkg
+          copy_nupkg "$ship"/runtime.openharmony-arm64.Microsoft.DotNet.ILCompiler."$RT_VERSION"*.nupkg
           # The host ILCompiler pack is built by nativeaot-packages.proj when
           # BuildHostTools=true; it carries the fork's BuildIntegration targets
           # (openharmony RID mapping, lld, Net.Security skip), so publish it
           # instead of repacking the stock nuget.org package.
           host_pack="$ship/Microsoft.DotNet.ILCompiler.$RT_VERSION.nupkg"
           [ -f "$host_pack" ] || { echo "::error::host ILCompiler pack missing: $host_pack"; exit 1; }
-          cp "$host_pack" aot-release/
+          cp "$host_pack" "aot-release/Microsoft.DotNet.ILCompiler.${RT_VERSION}${suffix}.nupkg"
           n=$(ls -1 aot-release/*.nupkg 2>/dev/null | wc -l)
           [ "$n" -gt 0 ] || { echo "::error::no AOT nupkgs matched version $RT_VERSION"; exit 1; }
           (cd aot-release && sha256sum *.nupkg > SHA256SUMS)
