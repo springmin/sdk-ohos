@@ -733,10 +733,25 @@ jobs:
           # The SDK restore leaves the package in the NuGet cache.
           illink_version=$(sed -n 's/.*<MicrosoftNETILLinkTasksPackageVersion>\([^<]*\)<.*/\1/p' sdk/eng/Version.Details.props | head -1)
           [ -n "$illink_version" ] || { echo "::error::ILLink.Tasks version missing from sdk/eng/Version.Details.props"; exit 1; }
-          nuget_root="${NUGET_PACKAGES:-$HOME/.nuget/packages}"
-          illink_src="$nuget_root/microsoft.net.illink.tasks/$illink_version/microsoft.net.illink.tasks.$illink_version.nupkg"
-          [ -f "$illink_src" ] || { echo "::error::ILLink.Tasks package missing: $illink_src"; exit 1; }
-          cp "$illink_src" "aot-release/Microsoft.NET.ILLink.Tasks.$illink_version.nupkg"
+          illink_asset="Microsoft.NET.ILLink.Tasks.$illink_version.nupkg"
+          illink_src=""
+          for root in "${NUGET_PACKAGES:-}" "$HOME/.nuget/packages" \
+                      "$GITHUB_WORKSPACE/sdk/artifacts" "$GITHUB_WORKSPACE/runtime/artifacts"; do
+            [ -n "$root" ] && [ -d "$root" ] || continue
+            candidate=$(find "$root" -type f -path "*/microsoft.net.illink.tasks/$illink_version/*.nupkg" 2>/dev/null | head -1)
+            if [ -n "$candidate" ]; then illink_src="$candidate"; break; fi
+          done
+          if [ -z "$illink_src" ]; then
+            # The SDK restore may use a private/folder feed; the ILLink asset is
+            # also mirrored on the servicing AOT release. Reuse it rather than
+            # failing the mirror refresh.
+            mkdir -p "$RUNNER_TEMP/illink"
+            gh release download aot-packs-11.0.1 --repo "${{ github.repository_owner }}/sdk-ohos" \
+              --pattern "$illink_asset" --dir "$RUNNER_TEMP/illink" --clobber
+            illink_src="$RUNNER_TEMP/illink/$illink_asset"
+          fi
+          [ -f "$illink_src" ] || { echo "::error::ILLink.Tasks package missing: $illink_asset"; exit 1; }
+          cp "$illink_src" "aot-release/$illink_asset"
           n=$(ls -1 aot-release/*.nupkg 2>/dev/null | wc -l)
           [ "$n" -gt 0 ] || { echo "::error::no AOT nupkgs matched version $RT_VERSION"; exit 1; }
           (cd aot-release && sha256sum *.nupkg > SHA256SUMS)
