@@ -1,0 +1,17 @@
+name: ohos-runner-smoke
+
+on:
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: [self-hosted, openharmony, ohos-arm64]
+    steps:
+      - name: Host environment
+        run: |
+          set -eux
+          uname -a
+          node --version
+          git --version
+          dotnet --info | head -20
+          echo "ohos self-hosted runner works"
