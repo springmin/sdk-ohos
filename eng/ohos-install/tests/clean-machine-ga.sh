@@ -264,7 +264,9 @@ export NUGET_PACKAGES="$NUGET_DIR"
 export DOTNET_NOLOGO=1 DOTNET_CLI_TELEMETRY_OPTOUT=1
 # Do not disable MSBuild node reuse or the MSBuild server here: both make the
 # OpenHarmony runtime wedge before the first target runs (the server path also
-# hits a SIGSEGV).
+# hits a SIGSEGV). The runner supervisor exports MSBUILDDISABLENODEREUSE=1, so
+# drop the inherited value as well.
+unset MSBUILDDISABLENODEREUSE 2>/dev/null || true
 export UseSharedCompilation=false
 export DOTNET_NUGET_SIGNATURE_VERIFICATION=false
 # Keep TMPDIR short. MSBuild's server and diagnostics sockets are AF_UNIX
