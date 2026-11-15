@@ -310,9 +310,22 @@ if [ "$SKIP_826" != 1 ] || [ "$SKIP_JIT" != 1 ] || [ "$SKIP_AOT" != 1 ]; then
     [ -d "$OHOS_WORKLOAD_DIR/test/hello-maui-app" ] || die "OHOS_WORKLOAD_DIR is not an ohos-workload checkout: $OHOS_WORKLOAD_DIR"
 fi
 
+# A canceled run leaves setsid'd builds behind (they escape the listener's
+# process-group kill) and they keep spinning on the same obj directory, so a
+# fresh run must reap anything still building inside this workspace.
+kill_workspace_build_strays() {
+    for _kp in $(ps -eo pid,args 2>/dev/null | awk '/dotnet (build|publish)/ {print $1}'); do
+        _kcwd="$(readlink -f "/proc/$_kp/cwd" 2>/dev/null || true)"
+        case "$_kcwd" in
+            "$OHOS_WORKLOAD_DIR"*) kill -KILL "$_kp" 2>/dev/null || true ;;
+        esac
+    done
+}
+
 run_826() { # <log>
     _log="$1"
     : > "$_log"
+    kill_workspace_build_strays
     (
       cd "$OHOS_WORKLOAD_DIR/test/maui-platform-verify" || exit 1
       _arcade_tools="$NUGET_PACKAGES/microsoft.dotnet.arcade.sdk/11.0.0-beta.26527.113/tools"
@@ -371,7 +384,8 @@ fi
 JIT_HAP=""
 if [ "$SKIP_JIT" != 1 ]; then
     log "== JIT publish =="
-    _jit_hap="$OHOS_WORKLOAD_DIR/test/hello-maui-app/bin/Release/net11.0-openharmony26.0/openharmony-arm64/hello-maui-app.hap"
+    kill_workspace_build_strays
+    _jit_hap=""$OHOS_WORKLOAD_DIR/test/hello-maui-app/bin/Release/net11.0-openharmony26.0/openharmony-arm64/hello-maui-app.hap"
     _j=1
     while [ "$_j" -le 6 ]; do
         log "JIT publish attempt $_j/6"
