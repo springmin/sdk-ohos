@@ -210,10 +210,14 @@ if [ "$SKIP_826" != 1 ] || [ "$SKIP_JIT" != 1 ] || [ "$SKIP_AOT" != 1 ]; then
     [ -d "$OHOS_WORKLOAD_DIR/test/hello-maui-app" ] || die "OHOS_WORKLOAD_DIR is not an ohos-workload checkout: $OHOS_WORKLOAD_DIR"
 fi
 
+if command -v timeout >/dev/null 2>&1; then TMO="$(command -v timeout)"; else TMO=""; fi
+run_826_cmd() {
+    if [ -n "$TMO" ]; then "$TMO" 1800 "$@"; else "$@"; fi
+}
 run_826() { # <log>
     ( cd "$OHOS_WORKLOAD_DIR/test/maui-platform-verify" && rm -rf obj bin && \
-      "$CLEAN_DOTNET/dotnet" build -m:1 -nodeReuse:false -v:q /p:UseSharedCompilation=false && \
-      "$CLEAN_DOTNET/dotnet" bin/Debug/net11.0/verify.dll ) > "$1" 2>&1
+      run_826_cmd "$CLEAN_DOTNET/dotnet" build -m:1 -nodeReuse:false -v:m /p:UseSharedCompilation=false && \
+      run_826_cmd "$CLEAN_DOTNET/dotnet" bin/Debug/net11.0/verify.dll ) > "$1" 2>&1
 }
 
 if [ "$SKIP_826" != 1 ]; then

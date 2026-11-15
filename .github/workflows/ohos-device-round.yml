@@ -125,4 +125,5 @@ jobs:
           name: ohos-device-round
           path: ${{ runner.temp }}/device-round*
           if-no-files-found: warn
+          include-hidden-files: "false"
           retention-days: 14

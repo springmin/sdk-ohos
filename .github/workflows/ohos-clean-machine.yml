@@ -36,6 +36,21 @@ on:
         description: "sdk-ohos ref to validate (default: the dispatched branch)"
         required: false
         default: ""
+      skip_826:
+        description: "Skip the 826 harness"
+        type: choice
+        options: ["false", "true"]
+        default: "false"
+      skip_jit:
+        description: "Skip the JIT publish"
+        type: choice
+        options: ["false", "true"]
+        default: "false"
+      skip_aot:
+        description: "Skip the AOT publish"
+        type: choice
+        options: ["false", "true"]
+        default: "false"
 
 permissions:
   contents: read
@@ -66,13 +81,20 @@ jobs:
           path: ohos-workload
           persist-credentials: false
 
+      - name: Prepare clean root
+        run: rm -rf "${{ runner.workspace }}/ohos-clean-ga"
+
       - name: Run the clean-machine GA gate
+        timeout-minutes: 120
         env:
-          CLEAN_ROOT: ${{ runner.temp }}/ohos-clean-ga
+          CLEAN_ROOT: ${{ runner.workspace }}/ohos-clean-ga
           OHOS_WORKLOAD_DIR: ${{ github.workspace }}/ohos-workload
           SDK_TARBALL: ${{ inputs.sdk_tarball }}
           WORKLOAD_BUNDLE: ${{ inputs.workload_bundle }}
           SKIP_DEVICE: ${{ inputs.skip_device }}
+          SKIP_826: ${{ inputs.skip_826 }}
+          SKIP_JIT: ${{ inputs.skip_jit }}
+          SKIP_AOT: ${{ inputs.skip_aot }}
           COLD_NUGET: ${{ inputs.cold_nuget }}
           HDC: ${{ secrets.OHOS_HDC }}
           UDID: ${{ secrets.OHOS_UDID }}
@@ -84,6 +106,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ohos-clean-machine-logs
-          path: ${{ runner.temp }}/ohos-clean-ga/logs
+          path: ${{ runner.workspace }}/ohos-clean-ga/logs
           if-no-files-found: warn
+          include-hidden-files: "false"
           retention-days: 14
