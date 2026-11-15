@@ -262,12 +262,17 @@ export PATH="$CLEAN_DOTNET:$HOST_PATH"
 export DOTNET_CLI_HOME="$CLEAN_HOME"
 export NUGET_PACKAGES="$NUGET_DIR"
 export DOTNET_NOLOGO=1 DOTNET_CLI_TELEMETRY_OPTOUT=1
-# Do not set MSBUILDDISABLENODEREUSE here: disabling node reuse makes the
-# OpenHarmony runtime wedge MSBuild before the first target runs.
-export DOTNET_CLI_USE_MSBUILD_SERVER=0 UseSharedCompilation=false
-export MSBUILDUSESERVER=0 DOTNET_CLI_DO_NOT_USE_MSBUILD_SERVER=1
+# Do not disable MSBuild node reuse or the MSBuild server here: both make the
+# OpenHarmony runtime wedge before the first target runs (the server path also
+# hits a SIGSEGV).
+export UseSharedCompilation=false
 export DOTNET_NUGET_SIGNATURE_VERIFICATION=false
-export TMPDIR="$CLEAN_TMP"
+# Keep TMPDIR short. MSBuild's server and diagnostics sockets are AF_UNIX
+# paths capped at 108 bytes, and a long clean-root TMPDIR makes every build
+# stall silently with no output.
+GATE_TMP="${GATE_TMP:-/data/storage/el2/base/tmp/gate-tmp}"
+mkdir -p "$GATE_TMP"
+export TMPDIR="$GATE_TMP"
 if [ -f "$HOST_HOME/.harmonybrew/etc/openssl@3/openssl.cnf" ]; then
     export OPENSSL_CONF="$HOST_HOME/.harmonybrew/etc/openssl@3/openssl.cnf"
 fi
