@@ -101,6 +101,14 @@ jobs:
           rm -rf "$GITHUB_WORKSPACE/ohos-workload"
           git clone --no-hardlinks --local "$WORKLOAD_SOURCE" "$GITHUB_WORKSPACE/ohos-workload"
 
+      - name: Check out maui-ohos
+        env:
+          MAUI_SOURCE: /storage/Users/currentUser/springsources/maui-ohos
+        run: |
+          set -eux
+          rm -rf "$GITHUB_WORKSPACE/maui-ohos"
+          git clone --no-hardlinks --local "$MAUI_SOURCE" "$GITHUB_WORKSPACE/maui-ohos"
+
       - name: Prepare clean root
         run: rm -rf "${{ runner.workspace }}/ohos-clean-ga"
 
