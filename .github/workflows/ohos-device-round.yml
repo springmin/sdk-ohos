@@ -32,6 +32,10 @@ on:
         description: "Device id (default: first hdc target)"
         required: false
         default: ""
+      workload_source:
+        description: "Local ohos-workload checkout on the runner"
+        required: false
+        default: "/storage/Users/currentUser/springsources/ohos-workload"
 
 permissions:
   contents: read
@@ -50,10 +54,12 @@ jobs:
       MSBUILDDISABLENODEREUSE: "1"
     steps:
       - name: Check out ohos-workload
+        env:
+          WORKLOAD_SOURCE: ${{ inputs.workload_source }}
         run: |
           set -eux
           rm -rf "$GITHUB_WORKSPACE/ohos-workload"
-          git clone --depth 1 https://github.com/springmin/ohos-workload.git "$GITHUB_WORKSPACE/ohos-workload"
+          git clone --no-hardlinks --local "$WORKLOAD_SOURCE" "$GITHUB_WORKSPACE/ohos-workload"
 
       - name: Resolve kit and device
         env:

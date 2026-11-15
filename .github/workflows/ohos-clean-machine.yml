@@ -33,9 +33,17 @@ on:
         required: false
         default: ""
       sdk_ref:
-        description: "sdk-ohos ref to validate (default: the dispatched branch)"
+        description: "sdk-ohos ref to validate (remote mode; unused for local sources)"
         required: false
         default: ""
+      sdk_source:
+        description: "Local sdk-ohos checkout on the runner"
+        required: false
+        default: "/data/storage/el2/base/tmp/opencode/sdk-clean-gate"
+      workload_source:
+        description: "Local ohos-workload checkout on the runner"
+        required: false
+        default: "/storage/Users/currentUser/springsources/ohos-workload"
       skip_826:
         description: "Skip the 826 harness"
         type: choice
@@ -70,20 +78,19 @@ jobs:
     steps:
       - name: Check out sdk-ohos
         env:
-          SDK_REF: ${{ inputs.sdk_ref || github.ref_name }}
+          SDK_SOURCE: ${{ inputs.sdk_source }}
         run: |
           set -eux
-          git init "$GITHUB_WORKSPACE"
-          git -C "$GITHUB_WORKSPACE" remote remove origin 2>/dev/null || true
-          git -C "$GITHUB_WORKSPACE" remote add origin https://github.com/springmin/sdk-ohos.git
-          git -C "$GITHUB_WORKSPACE" fetch --depth 1 origin "$SDK_REF"
-          git -C "$GITHUB_WORKSPACE" checkout --detach FETCH_HEAD
+          rm -rf "$GITHUB_WORKSPACE"/* "$GITHUB_WORKSPACE"/.[!.]* 2>/dev/null || true
+          git clone --no-hardlinks --local "$SDK_SOURCE" "$GITHUB_WORKSPACE"
 
       - name: Check out ohos-workload
+        env:
+          WORKLOAD_SOURCE: ${{ inputs.workload_source }}
         run: |
           set -eux
           rm -rf "$GITHUB_WORKSPACE/ohos-workload"
-          git clone --depth 1 https://github.com/springmin/ohos-workload.git "$GITHUB_WORKSPACE/ohos-workload"
+          git clone --no-hardlinks --local "$WORKLOAD_SOURCE" "$GITHUB_WORKSPACE/ohos-workload"
 
       - name: Prepare clean root
         run: rm -rf "${{ runner.workspace }}/ohos-clean-ga"
