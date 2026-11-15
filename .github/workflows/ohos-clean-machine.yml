@@ -69,17 +69,21 @@ jobs:
       MSBUILDDISABLENODEREUSE: "1"
     steps:
       - name: Check out sdk-ohos
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.sdk_ref || github.ref_name }}
-          persist-credentials: false
+        env:
+          SDK_REF: ${{ inputs.sdk_ref || github.ref_name }}
+        run: |
+          set -eux
+          git init "$GITHUB_WORKSPACE"
+          git -C "$GITHUB_WORKSPACE" remote remove origin 2>/dev/null || true
+          git -C "$GITHUB_WORKSPACE" remote add origin https://github.com/springmin/sdk-ohos.git
+          git -C "$GITHUB_WORKSPACE" fetch --depth 1 origin "$SDK_REF"
+          git -C "$GITHUB_WORKSPACE" checkout --detach FETCH_HEAD
 
       - name: Check out ohos-workload
-        uses: actions/checkout@v4
-        with:
-          repository: springmin/ohos-workload
-          path: ohos-workload
-          persist-credentials: false
+        run: |
+          set -eux
+          rm -rf "$GITHUB_WORKSPACE/ohos-workload"
+          git clone --depth 1 https://github.com/springmin/ohos-workload.git "$GITHUB_WORKSPACE/ohos-workload"
 
       - name: Prepare clean root
         run: rm -rf "${{ runner.workspace }}/ohos-clean-ga"
@@ -101,11 +105,9 @@ jobs:
         run: |
           sh eng/ohos-install/tests/clean-machine-ga.sh
 
-      - name: Upload clean-machine logs
+      - name: Show clean-machine logs
         if: always()
-        uses: actions/upload-artifact@v4.3.1
-        with:
-          name: ohos-clean-machine-logs
-          path: ${{ runner.workspace }}/ohos-clean-ga/logs
-          if-no-files-found: warn
-          retention-days: 14
+        run: |
+          log_dir="${{ runner.workspace }}/ohos-clean-ga/logs"
+          echo "clean-machine logs: $log_dir"
+          ls -l "$log_dir" || true
