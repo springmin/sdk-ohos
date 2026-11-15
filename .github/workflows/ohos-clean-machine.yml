@@ -86,7 +86,6 @@ jobs:
     env:
       DOTNET_CLI_TELEMETRY_OPTOUT: "1"
       DOTNET_NOLOGO: "1"
-      MSBUILDDISABLENODEREUSE: "1"
       ALLOW_BUSY: "1"
     steps:
       - name: Check out sdk-ohos

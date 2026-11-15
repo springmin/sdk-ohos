@@ -68,6 +68,38 @@ run_bounded() { # <secs> <cmd...>
     wait "$_rb_wd" 2>/dev/null || true
     return "$_rb_rc"
 }
+# Same idea, but appends to <log> and kills the command when it stops making
+# progress: the flaky build path wedges silently (no output, ~1.7 cores of
+# spinning threads), so a stall is what a hang looks like from the outside.
+run_bounded_log() { # <log> <stall_secs> <max_secs> <cmd...>
+    _bl_log="$1"; _bl_stall="$2"; _bl_max="$3"; shift 3
+    setsid "$@" >> "$_bl_log" 2>&1 &
+    _bl_cmd=$!
+    (
+        _w=0; _s=0; _prev=-1
+        while kill -0 "$_bl_cmd" 2>/dev/null; do
+            sleep 15
+            _w=$((_w + 15))
+            _size="$(wc -c < "$_bl_log" 2>/dev/null || echo 0)"
+            if [ "$_size" = "$_prev" ]; then
+                _s=$((_s + 15))
+            else
+                _s=0
+                _prev="$_size"
+            fi
+            if [ "$_s" -ge "$_bl_stall" ] || [ "$_w" -ge "$_bl_max" ]; then
+                kill -KILL -"$_bl_cmd" 2>/dev/null || kill -KILL "$_bl_cmd" 2>/dev/null || true
+                break
+            fi
+        done
+    ) &
+    _bl_wd=$!
+    wait "$_bl_cmd"
+    _bl_rc=$?
+    kill -KILL "$_bl_wd" 2>/dev/null || true
+    wait "$_bl_wd" 2>/dev/null || true
+    return "$_bl_rc"
+}
 CLEAN_ROOT="${CLEAN_ROOT:-$HOME/.ohos-clean-machine-ga}"
 OHOS_WORKLOAD_DIR="${OHOS_WORKLOAD_DIR:-$W/../ohos-workload}"
 AOT_ASSETS="${AOT_ASSETS:-}"
@@ -206,7 +238,9 @@ export PATH="$CLEAN_DOTNET:$HOST_PATH"
 export DOTNET_CLI_HOME="$CLEAN_HOME"
 export NUGET_PACKAGES="$NUGET_DIR"
 export DOTNET_NOLOGO=1 DOTNET_CLI_TELEMETRY_OPTOUT=1
-export DOTNET_CLI_USE_MSBUILD_SERVER=0 MSBUILDDISABLENODEREUSE=1 UseSharedCompilation=false
+# Do not set MSBUILDDISABLENODEREUSE here: disabling node reuse makes the
+# OpenHarmony runtime wedge MSBuild before the first target runs.
+export DOTNET_CLI_USE_MSBUILD_SERVER=0 UseSharedCompilation=false
 export MSBUILDUSESERVER=0 DOTNET_CLI_DO_NOT_USE_MSBUILD_SERVER=1
 export DOTNET_NUGET_SIGNATURE_VERIFICATION=false
 export TMPDIR="$CLEAN_TMP"
@@ -245,27 +279,44 @@ if [ "$SKIP_826" != 1 ] || [ "$SKIP_JIT" != 1 ] || [ "$SKIP_AOT" != 1 ]; then
     [ -d "$OHOS_WORKLOAD_DIR/test/hello-maui-app" ] || die "OHOS_WORKLOAD_DIR is not an ohos-workload checkout: $OHOS_WORKLOAD_DIR"
 fi
 
-run_826_once() { # <log>
-    _arcade_tools="$NUGET_PACKAGES/microsoft.dotnet.arcade.sdk/11.0.0-beta.26527.113/tools"
-    # OpenHarmony hosts occasionally wedge MSBuild or crash csc (SIGSEGV) on
-    # this project, so restore and build are separate bounded steps that the
-    # caller retries. SIGTERM is unreliable here: kill the group with SIGKILL.
-    ( cd "$OHOS_WORKLOAD_DIR/test/maui-platform-verify" && rm -rf obj bin && \
-      run_bounded 300 "$CLEAN_DOTNET/dotnet" restore /p:RestoreSources= /p:NuGetAudit=false /p:ArcadeSdkDir="$_arcade_tools/" && \
-      run_bounded 900 "$CLEAN_DOTNET/dotnet" build --no-restore -m:1 -nodeReuse:false -v:m /p:UseSharedCompilation=false /p:NuGetAudit=false /p:ArcadeSdkDir="$_arcade_tools/" && \
-      run_bounded 900 "$CLEAN_DOTNET/dotnet" bin/Debug/net11.0/verify.dll ) > "$1" 2>&1
-}
-
 run_826() { # <log>
-    _i=1
-    while [ "$_i" -le 3 ]; do
-        log "826 attempt $_i/3"
-        run_826_once "$1" && return 0
-        log "826 attempt $_i/3 failed; retrying"
-        _i=$((_i + 1))
-        sleep 5
-    done
-    return 1
+    _log="$1"
+    : > "$_log"
+    (
+      cd "$OHOS_WORKLOAD_DIR/test/maui-platform-verify" || exit 1
+      _arcade_tools="$NUGET_PACKAGES/microsoft.dotnet.arcade.sdk/11.0.0-beta.26527.113/tools"
+      # OpenHarmony's runtime wedges MSBuild/Mono-style builds at random points
+      # (silent stall, spinning threads) and can hang at process exit. Keep the
+      # intermediate state between attempts so a retry resumes instead of
+      # restarting, and judge success by the produced binary, not by exit code.
+      rm -rf obj bin
+      _n=1
+      while [ "$_n" -le 10 ]; do
+          log "826 build attempt $_n/10"
+          rm -rf "$TMPDIR"/MSBuildTemp* "$TMPDIR"/.dotnet/lockfiles 2>/dev/null || true
+          if [ ! -f obj/project.assets.json ]; then
+              run_bounded_log "$_log" 120 240 "$CLEAN_DOTNET/dotnet" restore \
+                  /p:RestoreSources= /p:NuGetAudit=false /p:ArcadeSdkDir="$_arcade_tools/" || true
+          fi
+          run_bounded_log "$_log" 90 420 "$CLEAN_DOTNET/dotnet" build --no-restore -m:1 -v:m \
+              /p:UseSharedCompilation=false /p:NuGetAudit=false /p:ArcadeSdkDir="$_arcade_tools/" || true
+          [ -f bin/Debug/net11.0/verify.dll ] && break
+          _n=$((_n + 1))
+          sleep 3
+      done
+      [ -f bin/Debug/net11.0/verify.dll ] || { log "826 build never produced verify.dll"; exit 1; }
+      _r=1
+      while [ "$_r" -le 3 ]; do
+          log "826 suite attempt $_r/3"
+          # A pty keeps the suite output line-flushed even when the process
+          # wedges during shutdown.
+          run_bounded_log "$_log" 120 900 script -q -c "$CLEAN_DOTNET/dotnet bin/Debug/net11.0/verify.dll" /dev/null || true
+          grep -q '\[suite\] checks=' "$_log" && exit 0
+          _r=$((_r + 1))
+          sleep 3
+      done
+      exit 1
+    )
 }
 
 if [ "$SKIP_826" != 1 ]; then
@@ -289,26 +340,24 @@ fi
 JIT_HAP=""
 if [ "$SKIP_JIT" != 1 ]; then
     log "== JIT publish =="
-    _jit_ok=0
+    _jit_hap="$OHOS_WORKLOAD_DIR/test/hello-maui-app/bin/Release/net11.0-openharmony26.0/openharmony-arm64/hello-maui-app.hap"
     _j=1
-    while [ "$_j" -le 3 ]; do
-        log "JIT publish attempt $_j/3"
-        if ( cd "$OHOS_WORKLOAD_DIR/test/hello-maui-app" && rm -rf obj bin && \
-             run_bounded 1800 "$CLEAN_DOTNET/dotnet" publish hello-maui-app.csproj -c Release -r openharmony-arm64 -m:1 -nodeReuse:false \
-               -p:OpenHarmonyUIPage=pages/Index -p:OpenHarmonyHapPackage=true \
-               -f net11.0-openharmony26.0 -p:OpenHarmonyRuntimeMode=jit -p:InvariantGlobalization=true ) \
-               > "$LOG_DIR/jit-publish.log" 2>&1; then
-            _jit_ok=1
-            break
-        fi
-        log "JIT publish attempt $_j/3 failed; retrying"
+    while [ "$_j" -le 6 ]; do
+        log "JIT publish attempt $_j/6"
+        rm -rf "$TMPDIR"/MSBuildTemp* "$TMPDIR"/.dotnet/lockfiles 2>/dev/null || true
+        ( cd "$OHOS_WORKLOAD_DIR/test/hello-maui-app" && \
+          : > "$LOG_DIR/jit-publish.log" && \
+          run_bounded_log "$LOG_DIR/jit-publish.log" 240 1500 script -q -c \
+            "$CLEAN_DOTNET/dotnet publish hello-maui-app.csproj -c Release -r openharmony-arm64 -m:1 \
+              -p:OpenHarmonyUIPage=pages/Index -p:OpenHarmonyHapPackage=true \
+              -f net11.0-openharmony26.0 -p:OpenHarmonyRuntimeMode=jit -p:InvariantGlobalization=true" /dev/null ) || true
+        [ -f "$_jit_hap" ] && break
         _j=$((_j + 1))
-        sleep 5
+        sleep 3
     done
-    [ "$_jit_ok" = 1 ] || { tail -40 "$LOG_DIR/jit-publish.log"; die "JIT publish failed"; }
+    [ -f "$_jit_hap" ] || { tail -40 "$LOG_DIR/jit-publish.log"; die "JIT publish failed"; }
     grep -q 'OpenHarmony: signed' "$LOG_DIR/jit-publish.log" || die "JIT publish did not sign the hap"
-    JIT_HAP="$OHOS_WORKLOAD_DIR/test/hello-maui-app/bin/Release/net11.0-openharmony26.0/openharmony-arm64/hello-maui-app.hap"
-    [ -f "$JIT_HAP" ] || die "JIT hap missing"
+    JIT_HAP="$_jit_hap"
     [ "$(unzip -p "$JIT_HAP" ets/modules.abc | sha256sum | awk '{print $1}')" = "9aa02cf80d74f53662330e25bead00c0e4b1b059c824d24fabfab17ff43089b3" ] \
         || die "JIT hap does not carry the 38-built UI shell"
     log "JIT publish OK: $JIT_HAP"
@@ -358,22 +407,19 @@ if [ "$SKIP_AOT" != 1 ]; then
     rm -rf "$AOT_WORKDIR"; mkdir -p "$AOT_WORKDIR/feed"
     cp -f "$CLEAN_ROOT/aot-feed"/*.nupkg "$AOT_WORKDIR/feed/"
     ( cd "$OHOS_WORKLOAD_DIR/test/hello-maui-app" && rm -rf obj bin )
-    _aot_ok=0
     _a=1
-    while [ "$_a" -le 3 ]; do
-        log "AOT publish attempt $_a/3"
-        if ( cd "$OHOS_WORKLOAD_DIR" && \
-             AOT_WORKDIR="$AOT_WORKDIR" DOTNET="$CLEAN_DOTNET/dotnet" run_bounded 2400 sh test/hello-maui-app/publish-aot.sh ) \
-             > "$LOG_DIR/aot-publish.log" 2>&1; then
-            _aot_ok=1
-            break
-        fi
-        log "AOT publish attempt $_a/3 failed; retrying"
+    while [ "$_a" -le 4 ]; do
+        log "AOT publish attempt $_a/4"
+        rm -rf "$TMPDIR"/MSBuildTemp* "$TMPDIR"/.dotnet/lockfiles 2>/dev/null || true
+        ( cd "$OHOS_WORKLOAD_DIR" && \
+          : > "$LOG_DIR/aot-publish.log" && \
+          AOT_WORKDIR="$AOT_WORKDIR" DOTNET="$CLEAN_DOTNET/dotnet" run_bounded_log "$LOG_DIR/aot-publish.log" 300 2400 script -q -c \
+            "sh test/hello-maui-app/publish-aot.sh" /dev/null ) || true
+        grep -q 'EXIT=0' "$AOT_WORKDIR/publish-aot.log" 2>/dev/null && break
         _a=$((_a + 1))
-        sleep 5
+        sleep 3
     done
-    [ "$_aot_ok" = 1 ] || { tail -40 "$LOG_DIR/aot-publish.log"; die "AOT publish failed"; }
-    grep -q 'EXIT=0' "$AOT_WORKDIR/publish-aot.log" || die "AOT publish EXIT != 0"
+    grep -q 'EXIT=0' "$AOT_WORKDIR/publish-aot.log" || { tail -40 "$LOG_DIR/aot-publish.log"; die "AOT publish failed"; }
     AOT_HAP="$OHOS_WORKLOAD_DIR/test/hello-maui-app/bin/Release/net11.0-openharmony26.0/openharmony-arm64/hello-maui-app.hap"
     [ -f "$AOT_HAP" ] || die "AOT hap missing"
     [ -f "$OHOS_WORKLOAD_DIR/test/hello-maui-app/bin/Release/net11.0-openharmony26.0/openharmony-arm64/publish/libhello-maui-app.so" ] \
