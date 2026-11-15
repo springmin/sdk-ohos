@@ -34,6 +34,8 @@ run() { if [ "$DRY_RUN" = 1 ]; then printf '+ %s\n' "$*"; else "$@"; fi; }
 W="$(cd "$(dirname "$0")/../../.." && pwd)"
 HOST_HOME="${HOST_HOME:-$HOME}"
 HOST_PATH="${HOST_PATH:-$PATH}"
+if [ -x /usr/bin/timeout ]; then TMO=/usr/bin/timeout; elif [ -x /bin/timeout ]; then TMO=/bin/timeout; else TMO=""; fi
+run_limited() { if [ -n "$TMO" ]; then "$TMO" 1800 "$@"; else "$@"; fi; }
 CLEAN_ROOT="${CLEAN_ROOT:-$HOME/.ohos-clean-machine-ga}"
 OHOS_WORKLOAD_DIR="${OHOS_WORKLOAD_DIR:-$W/../ohos-workload}"
 AOT_ASSETS="${AOT_ASSETS:-}"
@@ -161,7 +163,7 @@ log "== install (isolated HOME/INSTALL_DIR) =="
     export WORKLOAD_BUNDLE="$BUNDLE_LOCAL"
     export WORKLOAD_SHA256="$BUNDLE_SHA"
     export PATH="$CLEAN_DOTNET:$HOST_PATH"
-    sh "$W/eng/ohos-install/install-dotnet-ohos.sh" "$SDK_LOCAL"
+    run_limited sh "$W/eng/ohos-install/install-dotnet-ohos.sh" "$SDK_LOCAL"
 ) > "$LOG_DIR/install.log" 2>&1 || { tail -40 "$LOG_DIR/install.log"; die "install failed"; }
 log "install OK"
 
@@ -210,14 +212,10 @@ if [ "$SKIP_826" != 1 ] || [ "$SKIP_JIT" != 1 ] || [ "$SKIP_AOT" != 1 ]; then
     [ -d "$OHOS_WORKLOAD_DIR/test/hello-maui-app" ] || die "OHOS_WORKLOAD_DIR is not an ohos-workload checkout: $OHOS_WORKLOAD_DIR"
 fi
 
-if command -v timeout >/dev/null 2>&1; then TMO="$(command -v timeout)"; else TMO=""; fi
-run_826_cmd() {
-    if [ -n "$TMO" ]; then "$TMO" 1800 "$@"; else "$@"; fi
-}
 run_826() { # <log>
     ( cd "$OHOS_WORKLOAD_DIR/test/maui-platform-verify" && rm -rf obj bin && \
-      run_826_cmd "$CLEAN_DOTNET/dotnet" build -m:1 -nodeReuse:false -v:m /p:UseSharedCompilation=false && \
-      run_826_cmd "$CLEAN_DOTNET/dotnet" bin/Debug/net11.0/verify.dll ) > "$1" 2>&1
+      run_limited "$CLEAN_DOTNET/dotnet" build -m:1 -nodeReuse:false -v:m /p:UseSharedCompilation=false && \
+      run_limited "$CLEAN_DOTNET/dotnet" bin/Debug/net11.0/verify.dll ) > "$1" 2>&1
 }
 
 if [ "$SKIP_826" != 1 ]; then
