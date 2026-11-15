@@ -345,7 +345,7 @@ run_826() { # <log>
           # ConsoleLogger randomly NREs (MSB1025) or wedges while being
           # constructed on this platform, which is what made every earlier
           # attempt look like a silent stall. Log through the file logger.
-          run_bounded_log "$_log" 300 900 "$CLEAN_DOTNET/dotnet" build --no-restore -m:1 -noconlog \
+          run_bounded_log "$_log" 300 900 "$CLEAN_DOTNET/dotnet" build --no-restore -m:1 -noconlog -tl:off \
               "-flp:logfile=$_log;verbosity=minimal;append" \
               /p:UseSharedCompilation=false /p:NuGetAudit=false /p:ArcadeSdkDir="$_arcade_tools/" || true
           [ -f bin/Debug/net11.0/verify.dll ] && break
@@ -397,7 +397,7 @@ if [ "$SKIP_JIT" != 1 ]; then
         ( cd "$OHOS_WORKLOAD_DIR/test/hello-maui-app" && \
           : > "$LOG_DIR/jit-publish.log" && \
           run_bounded_log "$LOG_DIR/jit-publish.log" 240 1500 script -q -c \
-            "$CLEAN_DOTNET/dotnet publish hello-maui-app.csproj -c Release -r openharmony-arm64 -m:1 \
+            "$CLEAN_DOTNET/dotnet publish hello-maui-app.csproj -c Release -r openharmony-arm64 -m:1 -tl:off \
               -p:OpenHarmonyUIPage=pages/Index -p:OpenHarmonyHapPackage=true \
               -f net11.0-openharmony26.0 -p:OpenHarmonyRuntimeMode=jit -p:InvariantGlobalization=true" /dev/null ) || true
         [ -f "$_jit_hap" ] && break
