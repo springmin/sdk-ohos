@@ -342,7 +342,11 @@ run_826() { # <log>
               run_bounded_log "$_log" 120 240 "$CLEAN_DOTNET/dotnet" restore \
                   /p:RestoreSources= /p:NuGetAudit=false /p:ArcadeSdkDir="$_arcade_tools/" || true
           fi
-          run_bounded_log "$_log" 90 420 "$CLEAN_DOTNET/dotnet" build --no-restore -m:1 -v:m \
+          # ConsoleLogger randomly NREs (MSB1025) or wedges while being
+          # constructed on this platform, which is what made every earlier
+          # attempt look like a silent stall. Log through the file logger.
+          run_bounded_log "$_log" 90 420 "$CLEAN_DOTNET/dotnet" build --no-restore -m:1 -noconlog \
+              "-flp:logfile=$_log;verbosity=minimal;append" \
               /p:UseSharedCompilation=false /p:NuGetAudit=false /p:ArcadeSdkDir="$_arcade_tools/" || true
           [ -f bin/Debug/net11.0/verify.dll ] && break
           _n=$((_n + 1))
