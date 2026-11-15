@@ -63,10 +63,6 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: ohos-clean-machine-${{ github.ref }}
-  cancel-in-progress: false
-
 jobs:
   clean-machine:
     runs-on: [self-hosted, openharmony, ohos-arm64]

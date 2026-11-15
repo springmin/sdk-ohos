@@ -40,10 +40,6 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: ohos-device-round-${{ github.ref }}
-  cancel-in-progress: false
-
 jobs:
   device-round:
     runs-on: [self-hosted, openharmony, ohos-arm64]
