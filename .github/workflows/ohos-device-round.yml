@@ -120,10 +120,9 @@ jobs:
 
       - name: Upload device round archive
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v4.3.1
         with:
           name: ohos-device-round
           path: ${{ runner.temp }}/device-round*
           if-no-files-found: warn
-          include-hidden-files: "false"
           retention-days: 14

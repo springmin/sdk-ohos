@@ -103,10 +103,9 @@ jobs:
 
       - name: Upload clean-machine logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v4.3.1
         with:
           name: ohos-clean-machine-logs
           path: ${{ runner.workspace }}/ohos-clean-ga/logs
           if-no-files-found: warn
-          include-hidden-files: "false"
           retention-days: 14
