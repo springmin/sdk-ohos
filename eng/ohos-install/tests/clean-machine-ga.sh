@@ -103,6 +103,30 @@ run_bounded_log() { # <log> <stall_secs> <max_secs> <cmd...>
 CLEAN_ROOT="${CLEAN_ROOT:-$HOME/.ohos-clean-machine-ga}"
 OHOS_WORKLOAD_DIR="${OHOS_WORKLOAD_DIR:-$W/../ohos-workload}"
 AOT_ASSETS="${AOT_ASSETS:-}"
+
+# The self-hosted runner keeps _work behind a symlink (/storage/.../_work ->
+# /data/...). MSBuild then sees one project under two spellings, evaluates it
+# twice and either deadlocks or races two restores into the same obj files.
+# Resolve every path once so the whole gate uses canonical spelling.
+canon_path() {
+    if [ -d "$1" ]; then
+        ( cd "$1" && pwd -P )
+    elif [ -d "$(dirname "$1")" ]; then
+        printf '%s/%s' "$( cd "$(dirname "$1")" && pwd -P )" "$(basename "$1")"
+    else
+        printf '%s' "$1"
+    fi
+}
+W="$(canon_path "$W")"
+CLEAN_ROOT="$(canon_path "$CLEAN_ROOT")"
+OHOS_WORKLOAD_DIR="$(canon_path "$OHOS_WORKLOAD_DIR")"
+if [ -n "$AOT_ASSETS" ]; then AOT_ASSETS="$(canon_path "$AOT_ASSETS")"; fi
+NUGET_PACKAGES="$(canon_path "${NUGET_PACKAGES:-$HOST_HOME/.nuget/packages}")"
+export NUGET_PACKAGES
+if [ -n "${GITHUB_WORKSPACE:-}" ]; then
+    GITHUB_WORKSPACE="$(canon_path "$GITHUB_WORKSPACE")"
+    export GITHUB_WORKSPACE
+fi
 SKIP_826="${SKIP_826:-0}"
 SKIP_JIT="${SKIP_JIT:-0}"
 SKIP_AOT="${SKIP_AOT:-0}"
