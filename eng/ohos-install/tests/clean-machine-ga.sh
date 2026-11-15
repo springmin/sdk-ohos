@@ -34,8 +34,22 @@ run() { if [ "$DRY_RUN" = 1 ]; then printf '+ %s\n' "$*"; else "$@"; fi; }
 W="$(cd "$(dirname "$0")/../../.." && pwd)"
 HOST_HOME="${HOST_HOME:-$HOME}"
 HOST_PATH="${HOST_PATH:-$PATH}"
-if [ -x /usr/bin/timeout ]; then TMO=/usr/bin/timeout; elif [ -x /bin/timeout ]; then TMO=/bin/timeout; else TMO=""; fi
-run_limited() { if [ -n "$TMO" ]; then "$TMO" 1800 "$@"; else "$@"; fi; }
+run_limited() {
+    "$@" &
+    _rl_cmd=$!
+    (
+        sleep 1800
+        kill -TERM "$_rl_cmd" 2>/dev/null || true
+        sleep 30
+        kill -KILL "$_rl_cmd" 2>/dev/null || true
+    ) &
+    _rl_wd=$!
+    wait "$_rl_cmd"
+    _rl_rc=$?
+    kill -TERM "$_rl_wd" 2>/dev/null || true
+    wait "$_rl_wd" 2>/dev/null || true
+    return "$_rl_rc"
+}
 CLEAN_ROOT="${CLEAN_ROOT:-$HOME/.ohos-clean-machine-ga}"
 OHOS_WORKLOAD_DIR="${OHOS_WORKLOAD_DIR:-$W/../ohos-workload}"
 AOT_ASSETS="${AOT_ASSETS:-}"
@@ -215,7 +229,7 @@ fi
 
 run_826() { # <log>
     ( cd "$OHOS_WORKLOAD_DIR/test/maui-platform-verify" && rm -rf obj bin && \
-      run_limited "$CLEAN_DOTNET/dotnet" build -m:1 -nodeReuse:false -v:m /p:UseSharedCompilation=false && \
+      run_limited "$CLEAN_DOTNET/dotnet" build -m:1 -nodeReuse:false -v:m /p:UseSharedCompilation=false /p:RestoreSources= /p:NuGetAudit=false && \
       run_limited "$CLEAN_DOTNET/dotnet" bin/Debug/net11.0/verify.dll ) > "$1" 2>&1
 }
 
