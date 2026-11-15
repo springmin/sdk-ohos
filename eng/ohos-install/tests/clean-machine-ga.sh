@@ -162,6 +162,7 @@ log "== install (isolated HOME/INSTALL_DIR) =="
     export TARBALL_SHA256="$SDK_SHA"
     export WORKLOAD_BUNDLE="$BUNDLE_LOCAL"
     export WORKLOAD_SHA256="$BUNDLE_SHA"
+    export WORKLOAD_BUNDLE_VERSION
     export PATH="$CLEAN_DOTNET:$HOST_PATH"
     run_limited sh "$W/eng/ohos-install/install-dotnet-ohos.sh" "$SDK_LOCAL"
 ) > "$LOG_DIR/install.log" 2>&1 || { tail -40 "$LOG_DIR/install.log"; die "install failed"; }

@@ -32,6 +32,18 @@ on:
         description: "Optional local workload bundle path (default: published release URL)"
         required: false
         default: ""
+      sdk_sha256:
+        description: "Optional SDK tarball SHA256 override"
+        required: false
+        default: ""
+      workload_sha256:
+        description: "Optional workload bundle SHA256 override"
+        required: false
+        default: ""
+      workload_version:
+        description: "Optional workload bundle version override"
+        required: false
+        default: ""
       sdk_ref:
         description: "sdk-ohos ref to validate (remote mode; unused for local sources)"
         required: false
@@ -99,6 +111,9 @@ jobs:
           OHOS_WORKLOAD_DIR: ${{ github.workspace }}/ohos-workload
           SDK_TARBALL: ${{ inputs.sdk_tarball }}
           WORKLOAD_BUNDLE: ${{ inputs.workload_bundle }}
+          SDK_TARBALL_SHA256: ${{ inputs.sdk_sha256 }}
+          WORKLOAD_BUNDLE_SHA256: ${{ inputs.workload_sha256 }}
+          WORKLOAD_BUNDLE_VERSION: ${{ inputs.workload_version }}
           SKIP_DEVICE: ${{ inputs.skip_device }}
           SKIP_826: ${{ inputs.skip_826 }}
           SKIP_JIT: ${{ inputs.skip_jit }}
