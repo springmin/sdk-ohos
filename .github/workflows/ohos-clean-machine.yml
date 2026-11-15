@@ -89,25 +89,27 @@ jobs:
         env:
           SDK_SOURCE: ${{ inputs.sdk_source }}
         run: |
-          set -eux
+          set -euxo pipefail
           rm -rf "$GITHUB_WORKSPACE"/* "$GITHUB_WORKSPACE"/.[!.]* 2>/dev/null || true
-          git clone --no-hardlinks --local "$SDK_SOURCE" "$GITHUB_WORKSPACE"
+          (cd "$SDK_SOURCE" && tar -cf - --exclude=.git .) | (cd "$GITHUB_WORKSPACE" && tar -xf -)
 
       - name: Check out ohos-workload
         env:
           WORKLOAD_SOURCE: ${{ inputs.workload_source }}
         run: |
-          set -eux
+          set -euxo pipefail
           rm -rf "$GITHUB_WORKSPACE/ohos-workload"
-          git clone --no-hardlinks --local "$WORKLOAD_SOURCE" "$GITHUB_WORKSPACE/ohos-workload"
+          mkdir -p "$GITHUB_WORKSPACE/ohos-workload"
+          (cd "$WORKLOAD_SOURCE" && tar -cf - --exclude=.git .) | (cd "$GITHUB_WORKSPACE/ohos-workload" && tar -xf -)
 
       - name: Check out maui-ohos
         env:
           MAUI_SOURCE: /storage/Users/currentUser/springsources/maui-ohos
         run: |
-          set -eux
+          set -euxo pipefail
           rm -rf "$GITHUB_WORKSPACE/maui-ohos"
-          git clone --no-hardlinks --local "$MAUI_SOURCE" "$GITHUB_WORKSPACE/maui-ohos"
+          mkdir -p "$GITHUB_WORKSPACE/maui-ohos"
+          (cd "$MAUI_SOURCE" && tar -cf - --exclude=.git .) | (cd "$GITHUB_WORKSPACE/maui-ohos" && tar -xf -)
 
       - name: Prepare clean root
         run: rm -rf "${{ runner.workspace }}/ohos-clean-ga"
