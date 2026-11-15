@@ -335,8 +335,8 @@ run_826() { # <log>
       # restarting, and judge success by the produced binary, not by exit code.
       rm -rf obj bin
       _n=1
-      while [ "$_n" -le 10 ]; do
-          log "826 build attempt $_n/10"
+      while [ "$_n" -le 20 ]; do
+          log "826 build attempt $_n/20"
           rm -rf "$TMPDIR"/MSBuildTemp* "$TMPDIR"/.dotnet/lockfiles 2>/dev/null || true
           if [ ! -f obj/project.assets.json ]; then
               run_bounded_log "$_log" 120 240 "$CLEAN_DOTNET/dotnet" restore \
@@ -345,7 +345,7 @@ run_826() { # <log>
           # ConsoleLogger randomly NREs (MSB1025) or wedges while being
           # constructed on this platform, which is what made every earlier
           # attempt look like a silent stall. Log through the file logger.
-          run_bounded_log "$_log" 90 420 "$CLEAN_DOTNET/dotnet" build --no-restore -m:1 -noconlog \
+          run_bounded_log "$_log" 60 420 "$CLEAN_DOTNET/dotnet" build --no-restore -m:1 -noconlog \
               "-flp:logfile=$_log;verbosity=minimal;append" \
               /p:UseSharedCompilation=false /p:NuGetAudit=false /p:ArcadeSdkDir="$_arcade_tools/" || true
           [ -f bin/Debug/net11.0/verify.dll ] && break
