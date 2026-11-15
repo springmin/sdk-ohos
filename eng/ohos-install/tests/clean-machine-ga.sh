@@ -385,7 +385,7 @@ JIT_HAP=""
 if [ "$SKIP_JIT" != 1 ]; then
     log "== JIT publish =="
     kill_workspace_build_strays
-    _jit_hap=""$OHOS_WORKLOAD_DIR/test/hello-maui-app/bin/Release/net11.0-openharmony26.0/openharmony-arm64/hello-maui-app.hap"
+    _jit_hap="$OHOS_WORKLOAD_DIR/test/hello-maui-app/bin/Release/net11.0-openharmony26.0/openharmony-arm64/hello-maui-app.hap"
     _j=1
     while [ "$_j" -le 6 ]; do
         log "JIT publish attempt $_j/6"
