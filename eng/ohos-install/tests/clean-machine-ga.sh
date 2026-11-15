@@ -228,8 +228,9 @@ if [ "$SKIP_826" != 1 ] || [ "$SKIP_JIT" != 1 ] || [ "$SKIP_AOT" != 1 ]; then
 fi
 
 run_826() { # <log>
+    _arcade_tools="$NUGET_PACKAGES/microsoft.dotnet.arcade.sdk/11.0.0-beta.26527.113/tools"
     ( cd "$OHOS_WORKLOAD_DIR/test/maui-platform-verify" && rm -rf obj bin && \
-      run_limited "$CLEAN_DOTNET/dotnet" build -m:1 -nodeReuse:false -v:m /p:UseSharedCompilation=false /p:RestoreSources= /p:NuGetAudit=false && \
+      run_limited "$CLEAN_DOTNET/dotnet" build -m:1 -nodeReuse:false -v:m /p:UseSharedCompilation=false /p:RestoreSources= /p:NuGetAudit=false /p:ArcadeSdkDir="$_arcade_tools/" && \
       run_limited "$CLEAN_DOTNET/dotnet" bin/Debug/net11.0/verify.dll ) > "$1" 2>&1
 }
 
