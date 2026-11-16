@@ -503,17 +503,19 @@ fi
 AOT_HAP=""
 if [ "$SKIP_AOT" != 1 ]; then
     log "== AOT fetch/publish =="
-    (
-        cd "$W"
-        if [ -n "$AOT_ASSETS" ]; then
-            sh eng/ohos-install/fetch-nativeaot-packs.sh --local "$AOT_ASSETS" "$CLEAN_ROOT/aot-feed"
-        else
-            sh eng/ohos-install/fetch-nativeaot-packs.sh "$CLEAN_ROOT/aot-feed"
-        fi
-    ) > "$LOG_DIR/aot-fetch.log" 2>&1 || { tail -40 "$LOG_DIR/aot-fetch.log"; die "AOT fetch failed"; }
     AOT_WORKDIR="$CLEAN_ROOT/aot-work"
     rm -rf "$AOT_WORKDIR"; mkdir -p "$AOT_WORKDIR/feed"
-    cp -f "$CLEAN_ROOT/aot-feed"/*.nupkg "$AOT_WORKDIR/feed/"
+    if [ "${PREBUILT_AOT:-0}" != 1 ]; then
+        (
+            cd "$W"
+            if [ -n "$AOT_ASSETS" ]; then
+                sh eng/ohos-install/fetch-nativeaot-packs.sh --local "$AOT_ASSETS" "$CLEAN_ROOT/aot-feed"
+            else
+                sh eng/ohos-install/fetch-nativeaot-packs.sh "$CLEAN_ROOT/aot-feed"
+            fi
+        ) > "$LOG_DIR/aot-fetch.log" 2>&1 || { tail -40 "$LOG_DIR/aot-fetch.log"; die "AOT fetch failed"; }
+        cp -f "$CLEAN_ROOT/aot-feed"/*.nupkg "$AOT_WORKDIR/feed/"
+    fi
     ( cd "$OHOS_WORKLOAD_DIR/test/hello-maui-app" && rm -rf obj bin )
     if [ "${PREBUILT_AOT:-0}" = 1 ]; then
         _pa="${PREBUILT_AOT_DIR:-/data/storage/el2/base/tmp/opencode/prebuilt-aot}"
