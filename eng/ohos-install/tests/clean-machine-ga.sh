@@ -171,6 +171,8 @@ COLD_NUGET="${COLD_NUGET:-0}"
 KEEP="${KEEP:-1}"
 norm_bool() { case "${1:-0}" in 1|true|TRUE|yes|on) printf 1 ;; *) printf 0 ;; esac; }
 SKIP_826="$(norm_bool "$SKIP_826")"
+PREBUILT_826="$(norm_bool "$PREBUILT_826")"
+PREBUILT_JIT="$(norm_bool "$PREBUILT_JIT")"
 SKIP_JIT="$(norm_bool "$SKIP_JIT")"
 SKIP_AOT="$(norm_bool "$SKIP_AOT")"
 SKIP_DEVICE="$(norm_bool "$SKIP_DEVICE")"
