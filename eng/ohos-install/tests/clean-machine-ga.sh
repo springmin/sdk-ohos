@@ -373,7 +373,7 @@ run_826() { # <log>
       if [ "${PREBUILT_826:-0}" = 1 ]; then
           # The runtime wedges MSBuild inside the runner's process tree but
           # builds fine from a plain shell, so allow a prebuilt verify.dll.
-          _pb="$CLEAN_ROOT/prebuilt/826"
+          _pb="${PREBUILT_826_DIR:-/data/storage/el2/base/tmp/opencode/prebuilt-826}"
           [ -f "$_pb/bin/Debug/net11.0/verify.dll" ] \
               || { log "PREBUILT_826=1 but $_pb/bin/Debug/net11.0/verify.dll is missing"; exit 1; }
           cp -a "$_pb/bin" .
