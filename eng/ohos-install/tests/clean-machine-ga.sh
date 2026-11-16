@@ -55,7 +55,9 @@ run_limited() {
 # (setsid puts the command in its own group).
 run_bounded() { # <secs> <cmd...>
     _rb_secs="$1"; shift
-    setsid "$@" &
+    # Detach stdin as well: the runner worker hands us pipes that make the
+    # runtime's console/terminal probing wedge.
+    setsid "$@" </dev/null &
     _rb_cmd=$!
     (
         sleep "$_rb_secs"
@@ -73,7 +75,7 @@ run_bounded() { # <secs> <cmd...>
 # spinning threads), so a stall is what a hang looks like from the outside.
 run_bounded_log() { # <log> <stall_secs> <max_secs> <cmd...>
     _bl_log="$1"; _bl_stall="$2"; _bl_max="$3"; shift 3
-    setsid "$@" >> "$_bl_log" 2>&1 &
+    setsid "$@" >> "$_bl_log" 2>&1 </dev/null &
     _bl_cmd=$!
     (
         _w=0; _s=0; _prev=-1
