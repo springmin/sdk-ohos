@@ -173,7 +173,7 @@ norm_bool() { case "${1:-0}" in 1|true|TRUE|yes|on) printf 1 ;; *) printf 0 ;; e
 SKIP_826="$(norm_bool "$SKIP_826")"
 PREBUILT_826="$(norm_bool "$PREBUILT_826")"
 PREBUILT_JIT="$(norm_bool "$PREBUILT_JIT")"
-PREBUILT_AOT="$(norm_bool "${PREBUILT_AOT:-0}")
+PREBUILT_AOT="$(norm_bool "${PREBUILT_AOT:-0}")"
 SKIP_JIT="$(norm_bool "$SKIP_JIT")"
 SKIP_AOT="$(norm_bool "$SKIP_AOT")"
 SKIP_DEVICE="$(norm_bool "$SKIP_DEVICE")"
