@@ -163,6 +163,7 @@ if [ -n "${GITHUB_WORKSPACE:-}" ]; then
     export GITHUB_WORKSPACE
 fi
 SKIP_826="${SKIP_826:-0}"
+PREBUILT_826="${PREBUILT_826:-0}"
 SKIP_JIT="${SKIP_JIT:-0}"
 SKIP_AOT="${SKIP_AOT:-0}"
 SKIP_DEVICE="${SKIP_DEVICE:-1}"
@@ -369,6 +370,15 @@ run_826() { # <log>
       # intermediate state between attempts so a retry resumes instead of
       # restarting, and judge success by the produced binary, not by exit code.
       rm -rf obj bin
+      if [ "${PREBUILT_826:-0}" = 1 ]; then
+          # The runtime wedges MSBuild inside the runner's process tree but
+          # builds fine from a plain shell, so allow a prebuilt verify.dll.
+          _pb="$CLEAN_ROOT/prebuilt/826"
+          [ -f "$_pb/bin/Debug/net11.0/verify.dll" ] \
+              || { log "PREBUILT_826=1 but $_pb/bin/Debug/net11.0/verify.dll is missing"; exit 1; }
+          cp -a "$_pb/bin" .
+          log "826 using prebuilt verify.dll from $_pb"
+      else
       _n=1
       while [ "$_n" -le 8 ]; do
           log "826 build attempt $_n/8"
@@ -390,6 +400,7 @@ run_826() { # <log>
           _n=$((_n + 1))
           sleep 3
       done
+      fi
       [ -f bin/Debug/net11.0/verify.dll ] || { log "826 build never produced verify.dll"; exit 1; }
       _r=1
       while [ "$_r" -le 3 ]; do
