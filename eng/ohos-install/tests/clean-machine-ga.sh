@@ -73,6 +73,39 @@ run_bounded() { # <secs> <cmd...>
 # Same idea, but appends to <log> and kills the command when it stops making
 # progress: the flaky build path wedges silently (no output, ~1.7 cores of
 # spinning threads), so a stall is what a hang looks like from the outside.
+# The MSBuild file logger must be the only writer of its log file: on this
+# platform a concurrent appending handle on the same file deadlocks the
+# logger. Watch the logger's file but send stdout/stderr to /dev/null.
+run_bounded_filelog() { # <log> <stall_secs> <max_secs> <cmd...>
+    _fl_log="$1"; _fl_stall="$2"; _fl_max="$3"; shift 3
+    setsid "$@" </dev/null >/dev/null 2>&1 &
+    _fl_cmd=$!
+    (
+        _w=0; _s=0; _prev=-1
+        while kill -0 "$_fl_cmd" 2>/dev/null; do
+            sleep 15
+            _w=$((_w + 15))
+            _size="$(wc -c < "$_fl_log" 2>/dev/null || echo 0)"
+            if [ "$_size" = "$_prev" ]; then
+                _s=$((_s + 15))
+            else
+                _s=0
+                _prev="$_size"
+            fi
+            if [ "$_s" -ge "$_fl_stall" ] || [ "$_w" -ge "$_fl_max" ]; then
+                kill -KILL -"$_fl_cmd" 2>/dev/null || kill -KILL "$_fl_cmd" 2>/dev/null || true
+                break
+            fi
+        done
+    ) &
+    _fl_wd=$!
+    wait "$_fl_cmd"
+    _fl_rc=$?
+    kill -KILL "$_fl_wd" 2>/dev/null || true
+    wait "$_fl_wd" 2>/dev/null || true
+    return "$_fl_rc"
+}
+
 run_bounded_log() { # <log> <stall_secs> <max_secs> <cmd...>
     _bl_log="$1"; _bl_stall="$2"; _bl_max="$3"; shift 3
     setsid "$@" >> "$_bl_log" 2>&1 </dev/null &
@@ -345,11 +378,14 @@ run_826() { # <log>
                   /p:RestoreSources= /p:NuGetAudit=false /p:ArcadeSdkDir="$_arcade_tools/" || true
           fi
           # ConsoleLogger randomly NREs (MSB1025) or wedges while being
-          # constructed on this platform, which is what made every earlier
-          # attempt look like a silent stall. Log through the file logger.
-          run_bounded_log "$_log" 300 900 "$CLEAN_DOTNET/dotnet" build --no-restore -m:1 -noconlog -tl:off \
-              "-flp:logfile=$_log;verbosity=minimal;append" \
+          # constructed on this platform, so log through the file logger. The
+          # logger owns its file; the attempt log is appended afterwards.
+          _blog="$_log.build"
+          : > "$_blog"
+          run_bounded_filelog "$_blog" 300 900 "$CLEAN_DOTNET/dotnet" build --no-restore -m:1 -noconlog -tl:off \
+              "-flp:logfile=$_blog;verbosity=minimal;append" \
               /p:UseSharedCompilation=false /p:NuGetAudit=false /p:ArcadeSdkDir="$_arcade_tools/" || true
+          cat "$_blog" >> "$_log" 2>/dev/null || true
           [ -f bin/Debug/net11.0/verify.dll ] && break
           _n=$((_n + 1))
           sleep 3
