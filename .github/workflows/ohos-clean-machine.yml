@@ -81,6 +81,11 @@ on:
         type: choice
         options: ["false", "true"]
         default: "false"
+      prebuilt_aot:
+        description: "Use prebuilt AOT artifacts (workaround for the runner-side build wedge)"
+        type: choice
+        options: ["false", "true"]
+        default: "false"
       aot_assets:
         description: "Optional local nativeaot pack assets dir (default: download the feed)"
         required: false
@@ -145,6 +150,7 @@ jobs:
           AOT_ASSETS: ${{ inputs.aot_assets }}
           PREBUILT_826: ${{ inputs.prebuilt_826 }}
           PREBUILT_JIT: ${{ inputs.prebuilt_jit }}
+          PREBUILT_AOT: ${{ inputs.prebuilt_aot }}
           HDC: ${{ secrets.OHOS_HDC }}
           UDID: ${{ secrets.OHOS_UDID }}
         run: |

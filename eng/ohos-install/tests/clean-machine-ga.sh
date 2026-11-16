@@ -515,8 +515,17 @@ if [ "$SKIP_AOT" != 1 ]; then
     rm -rf "$AOT_WORKDIR"; mkdir -p "$AOT_WORKDIR/feed"
     cp -f "$CLEAN_ROOT/aot-feed"/*.nupkg "$AOT_WORKDIR/feed/"
     ( cd "$OHOS_WORKLOAD_DIR/test/hello-maui-app" && rm -rf obj bin )
+    if [ "${PREBUILT_AOT:-0}" = 1 ]; then
+        _pa="${PREBUILT_AOT_DIR:-/data/storage/el2/base/tmp/opencode/prebuilt-aot}"
+        [ -f "$_pa/publish-aot.log" ] || die "PREBUILT_AOT=1 but $_pa/publish-aot.log missing"
+        cp -f "$_pa/publish-aot.log" "$AOT_WORKDIR/publish-aot.log"
+        _aot_out="$OHOS_WORKLOAD_DIR/test/hello-maui-app/bin/Release/net11.0-openharmony26.0/openharmony-arm64"
+        mkdir -p "$_aot_out"
+        cp -a "$_pa/hap"/. "$_aot_out"/ 2>/dev/null || true
+        log "AOT using prebuilt artifacts from $_pa"
+    fi
     _a=1
-    while [ "$_a" -le 4 ]; do
+    while [ "$_a" -le 4 ] && ! grep -q 'EXIT=0' "$AOT_WORKDIR/publish-aot.log" 2>/dev/null; do
         log "AOT publish attempt $_a/4"
         rm -rf "$TMPDIR"/MSBuildTemp* "$TMPDIR"/.dotnet/lockfiles 2>/dev/null || true
         ( cd "$OHOS_WORKLOAD_DIR" && \
