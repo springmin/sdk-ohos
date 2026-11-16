@@ -439,8 +439,16 @@ if [ "$SKIP_JIT" != 1 ]; then
     log "== JIT publish =="
     kill_workspace_build_strays
     _jit_hap="$OHOS_WORKLOAD_DIR/test/hello-maui-app/bin/Release/net11.0-openharmony26.0/openharmony-arm64/hello-maui-app.hap"
+    if [ "${PREBUILT_JIT:-0}" = 1 ]; then
+        _pj="${PREBUILT_JIT_DIR:-/data/storage/el2/base/tmp/opencode/prebuilt-jit}"
+        [ -f "$_pj/hello-maui-app.hap" ] || die "PREBUILT_JIT=1 but $_pj/hello-maui-app.hap missing"
+        mkdir -p "$(dirname "$_jit_hap")"
+        cp -a "$_pj"/. "$(dirname "$_jit_hap")/"
+        cp -f "$_pj/jit-publish.log" "$LOG_DIR/jit-publish.log" 2>/dev/null || true
+        log "JIT using prebuilt hap from $_pj"
+    fi
     _j=1
-    while [ "$_j" -le 6 ]; do
+    while [ "$_j" -le 6 ] && [ ! -f "$_jit_hap" ]; do
         log "JIT publish attempt $_j/6"
         rm -rf "$TMPDIR"/MSBuildTemp* "$TMPDIR"/.dotnet/lockfiles 2>/dev/null || true
         ( cd "$OHOS_WORKLOAD_DIR/test/hello-maui-app" && \
