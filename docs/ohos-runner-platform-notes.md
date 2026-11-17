@@ -115,3 +115,42 @@ prebuilt validation run) once builds work inside the runner process tree.
 
 Device rounds additionally depend on the device being reachable: the
 workflow now runs `hdc tconn <device>` when `hdc list targets` is empty.
+
+## Operations: a wedged runner session
+
+Symptom: the runner shows `online` with `busy=false`, jobs stay `queued`
+forever, and `_diag/supervisor.log` repeats:
+
+```
+√ Connected to GitHub
+A session for this runner already exists.
+```
+
+Cause: a job was killed (cancel, watchdog, host restart) and GitHub still
+holds the session; the listener cannot claim a new one. Killing listeners or
+restarting the supervisor does *not* clear it (verified).
+
+Recovery (keeps `bin/` patches and `_work` intact):
+
+```bash
+cd /storage/Users/currentUser/actions-runner-fd
+tok=$(gh api -X POST repos/springmin/sdk-ohos/actions/runners/registration-token --jq .token)
+./config.sh remove --token "$tok"
+./config.sh --url https://github.com/springmin/sdk-ohos --token "$tok" \
+  --name ohos-arm64-01 --labels self-hosted,openharmony,ohos-arm64 \
+  --work _work --unattended --replace
+# restart the supervisor (the old one holds a dead session)
+rm -rf .supervisor.lock && setsid ./supervise.sh >> _diag/supervisor.log 2>&1 < /dev/null &
+```
+
+`judge-watchdog.sh` (host-side, started once per boot) automates this: every
+`INTERVAL` seconds it looks for queued runs older than `STALE` while the
+runner is `online`/`busy=false`, and then re-registers + restarts the
+supervisor. A workflow-based watchdog cannot help here, because its own job
+would queue behind the wedged session.
+
+Scheduled workflows: `schedule` only fires for workflows on the **default
+branch** (`feature/openharmony` here) and GitHub treats cron as best effort.
+If no run with `event=schedule` shows up after 18:00 UTC, enable scheduled
+workflows for the fork under Settings -> Actions (forked repositories can have
+them disabled, which the API does not report as `disabled_manually`).
