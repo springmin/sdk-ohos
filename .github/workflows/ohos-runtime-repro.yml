@@ -37,15 +37,18 @@ jobs:
           dotnet_bin="$(command -v dotnet || true)"
           [ -n "$dotnet_bin" ] || dotnet_bin="${DOTNET_ROOT:-$HOME/.dotnet}/dotnet"
           timeout -s KILL 120 "$dotnet_bin" build -v:q >/dev/null 2>&1 || true
-          dual=hang; single=ok
+          dual=hang; single=fail
+          rm -rf bin obj
           : > dual.log
           timeout -s KILL 120 "$dotnet_bin" build --no-restore -noconlog \
-            "-flp:logfile=$work/dual.log;verbosity=minimal" >> "$work/dual.log" 2>&1 </dev/null || dual=hang
-          [ -f bin/Debug/net11.0/t.dll ] && dual=ok || dual=hang
+            "-flp:logfile=$work/dual.log;verbosity=minimal" >> "$work/dual.log" 2>&1 </dev/null || true
+          grep -q 'Build succeeded' "$work/dual.log" && dual=ok || dual=hang
+          rm -rf bin obj
           : > single.log
           timeout -s KILL 120 "$dotnet_bin" build --no-restore -noconlog \
             "-flp:logfile=$work/single.log;verbosity=minimal" >/dev/null 2>&1 </dev/null || true
-          [ -f bin/Debug/net11.0/t.dll ] && single=ok || single=fail
+          grep -q 'Build succeeded' "$work/single.log" && single=ok || single=fail
+          echo "dual-write=$dual single-writer=$single"
           {
             echo "dual-write=$dual"
             echo "single-writer=$single"
@@ -78,15 +81,18 @@ jobs:
           EOF
           echo 'class C { static void Main() {} }' > C.cs
           timeout -s KILL 120 dotnet build -v:q >/dev/null 2>&1 || true
-          dual=ok; single=ok
+          dual=ok; single=fail
+          rm -rf bin obj
           : > dual.log
           timeout -s KILL 120 dotnet build --no-restore -noconlog \
-            "-flp:logfile=$work/dual.log;verbosity=minimal" >> "$work/dual.log" 2>&1 </dev/null || dual=hang
-          [ -f bin/Debug/net11.0/t.dll ] || dual=fail
+            "-flp:logfile=$work/dual.log;verbosity=minimal" >> "$work/dual.log" 2>&1 </dev/null || true
+          grep -q 'Build succeeded' "$work/dual.log" && dual=ok || dual=hang
+          rm -rf bin obj
           : > single.log
           timeout -s KILL 120 dotnet build --no-restore -noconlog \
             "-flp:logfile=$work/single.log;verbosity=minimal" >/dev/null 2>&1 </dev/null || true
-          [ -f bin/Debug/net11.0/t.dll ] || single=fail
+          grep -q 'Build succeeded' "$work/single.log" && single=ok || single=fail
+          echo "dual-write=$dual single-writer=$single"
           {
             echo "dual-write=$dual"
             echo "single-writer=$single"
@@ -119,6 +125,7 @@ jobs:
             grep -q 'MSB1025' "$work/run-$_i.log" && nre=$((nre + 1))
             sleep 1
           done
+          echo "MSB1025 runs: $nre/$runs"
           {
             echo "MSB1025 runs: $nre/$runs"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -150,6 +157,7 @@ jobs:
           timeout -s KILL 60 "$dotnet_bin" build --no-restore -v:m </dev/null > run.log 2>&1
           rc=$?
           end=$(date +%s)
+          echo "rc=$rc elapsed=$((end - start))s"
           {
             echo "rc=$rc elapsed=$((end - start))s"
           } >> "$GITHUB_STEP_SUMMARY"
