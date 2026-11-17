@@ -53,6 +53,14 @@ finishes in ~60 s.
 
 **Fix:** `run_bounded_filelog` gives the file logger exclusive ownership of
 `826.log.build`, discards stdout/stderr, and appends the file afterwards.
+This is load-bearing: the gate only became reproducible after the logger
+stopped fighting a second appending handle.
+
+Tracked upstream: https://github.com/springmin/msbuild/issues/1
+(`FileLogger deadlocks when another process appends to the same log file`).
+The probe that produced the evidence lives in
+`.github/workflows/ohos-runtime-repro.yml` (`dual-write file logger`), where
+the ubuntu control and the OpenHarmony host are judged the same way.
 
 ## 6. `dotnet` can hang during process shutdown
 
