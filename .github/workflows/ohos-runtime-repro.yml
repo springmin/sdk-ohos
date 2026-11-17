@@ -43,12 +43,12 @@ jobs:
           : > dual.log
           timeout -s KILL 120 "$dotnet_bin" build --no-restore -noconlog \
             "-flp:logfile=$work/dual.log;verbosity=minimal" >> "$work/dual.log" 2>&1 </dev/null || true
-          grep -q 'Build succeeded' "$work/dual.log" && dual=ok || dual=hang
+          [ -f bin/Debug/net11.0/t.dll ] && dual=ok || dual=hang
           rm -rf bin
           : > single.log
           timeout -s KILL 120 "$dotnet_bin" build --no-restore -noconlog \
             "-flp:logfile=$work/single.log;verbosity=minimal" >/dev/null 2>&1 </dev/null || true
-          grep -q 'Build succeeded' "$work/single.log" && single=ok || single=fail
+          [ -f bin/Debug/net11.0/t.dll ] && single=ok || single=fail
           echo "dual-write=$dual single-writer=$single"
           {
             echo "dual-write=$dual"
@@ -88,12 +88,12 @@ jobs:
           : > dual.log
           timeout -s KILL 120 dotnet build --no-restore -noconlog \
             "-flp:logfile=$work/dual.log;verbosity=minimal" >> "$work/dual.log" 2>&1 </dev/null || true
-          grep -q 'Build succeeded' "$work/dual.log" && dual=ok || dual=hang
+          [ -f bin/Debug/net11.0/t.dll ] && dual=ok || dual=hang
           rm -rf bin
           : > single.log
           timeout -s KILL 120 dotnet build --no-restore -noconlog \
             "-flp:logfile=$work/single.log;verbosity=minimal" >/dev/null 2>&1 </dev/null || true
-          grep -q 'Build succeeded' "$work/single.log" && single=ok || single=fail
+          [ -f bin/Debug/net11.0/t.dll ] && single=ok || single=fail
           echo "dual-write=$dual single-writer=$single"
           {
             echo "dual-write=$dual"
