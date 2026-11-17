@@ -143,7 +143,7 @@ tok=$(gh api -X POST repos/springmin/sdk-ohos/actions/runners/registration-token
 rm -rf .supervisor.lock && setsid ./supervise.sh >> _diag/supervisor.log 2>&1 < /dev/null &
 ```
 
-`judge-watchdog.sh` (host-side, started once per boot) automates this: every
+`queue-watchdog.sh` (host-side, started once per boot) automates this: every
 `INTERVAL` seconds it looks for queued runs older than `STALE` while the
 runner is `online`/`busy=false`, and then re-registers + restarts the
 supervisor. A workflow-based watchdog cannot help here, because its own job
