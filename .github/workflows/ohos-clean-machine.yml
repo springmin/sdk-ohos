@@ -172,7 +172,9 @@ jobs:
     # Nightly probe: can MSBuild build inside the runner process tree again?
     # Never fails the workflow; when it flips to green we open an issue so the
     # prebuilt workaround can be retired.
-    if: github.event_name == 'schedule'
+    # always(): the probe must run even when the gating job fails, otherwise
+    # a red gate would hide the real-build signal we are waiting for.
+    if: always() && github.event_name == 'schedule'
     needs: clean-machine
     continue-on-error: true
     runs-on: [self-hosted, openharmony, ohos-arm64]
