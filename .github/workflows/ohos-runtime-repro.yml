@@ -36,7 +36,7 @@ jobs:
           echo 'class C { static void Main() {} }' > C.cs
           dotnet_bin="$(command -v dotnet || true)"
           [ -n "$dotnet_bin" ] || dotnet_bin="${DOTNET_ROOT:-$HOME/.dotnet}/dotnet"
-          "$dotnet_bin" build -v:q >/dev/null 2>&1 || true
+          timeout -s KILL 120 "$dotnet_bin" build -v:q >/dev/null 2>&1 || true
           dual=hang; single=ok
           : > dual.log
           timeout -s KILL 120 "$dotnet_bin" build --no-restore -noconlog \
@@ -77,7 +77,7 @@ jobs:
           </Project>
           EOF
           echo 'class C { static void Main() {} }' > C.cs
-          dotnet build -v:q >/dev/null 2>&1 || true
+          timeout -s KILL 120 dotnet build -v:q >/dev/null 2>&1 || true
           dual=ok; single=ok
           : > dual.log
           timeout -s KILL 120 dotnet build --no-restore -noconlog \
