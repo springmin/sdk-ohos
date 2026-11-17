@@ -38,12 +38,13 @@ jobs:
           [ -n "$dotnet_bin" ] || dotnet_bin="${DOTNET_ROOT:-$HOME/.dotnet}/dotnet"
           timeout -s KILL 120 "$dotnet_bin" build -v:q >/dev/null 2>&1 || true
           dual=hang; single=fail
-          rm -rf bin obj
+          "$dotnet_bin" restore -v:q >/dev/null 2>&1 || true
+          rm -rf bin
           : > dual.log
           timeout -s KILL 120 "$dotnet_bin" build --no-restore -noconlog \
             "-flp:logfile=$work/dual.log;verbosity=minimal" >> "$work/dual.log" 2>&1 </dev/null || true
           grep -q 'Build succeeded' "$work/dual.log" && dual=ok || dual=hang
-          rm -rf bin obj
+          rm -rf bin
           : > single.log
           timeout -s KILL 120 "$dotnet_bin" build --no-restore -noconlog \
             "-flp:logfile=$work/single.log;verbosity=minimal" >/dev/null 2>&1 </dev/null || true
@@ -82,12 +83,13 @@ jobs:
           echo 'class C { static void Main() {} }' > C.cs
           timeout -s KILL 120 dotnet build -v:q >/dev/null 2>&1 || true
           dual=ok; single=fail
-          rm -rf bin obj
+          dotnet restore -v:q >/dev/null 2>&1 || true
+          rm -rf bin
           : > dual.log
           timeout -s KILL 120 dotnet build --no-restore -noconlog \
             "-flp:logfile=$work/dual.log;verbosity=minimal" >> "$work/dual.log" 2>&1 </dev/null || true
           grep -q 'Build succeeded' "$work/dual.log" && dual=ok || dual=hang
-          rm -rf bin obj
+          rm -rf bin
           : > single.log
           timeout -s KILL 120 dotnet build --no-restore -noconlog \
             "-flp:logfile=$work/single.log;verbosity=minimal" >/dev/null 2>&1 </dev/null || true
