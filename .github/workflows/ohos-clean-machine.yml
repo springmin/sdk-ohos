@@ -12,6 +12,10 @@ name: ohos-clean-machine-ga
 # runs 826, JIT publish and the AOT fetch/publish flow. Device checks are
 # enabled by setting skip_device=false and providing OHOS_HDC / OHOS_UDID.
 on:
+  # Nightly gating run (02:00 CST). Scheduled runs use the pinned GA inputs
+  # and the prebuilt artifacts; manual runs keep the clean defaults.
+  schedule:
+    - cron: '0 18 * * *'
   workflow_dispatch:
     inputs:
       skip_device:
@@ -93,6 +97,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 jobs:
   clean-machine:
@@ -137,20 +142,20 @@ jobs:
         env:
           CLEAN_ROOT: ${{ runner.workspace }}/ohos-clean-ga
           OHOS_WORKLOAD_DIR: ${{ github.workspace }}/ohos-workload
-          SDK_TARBALL: ${{ inputs.sdk_tarball }}
-          WORKLOAD_BUNDLE: ${{ inputs.workload_bundle }}
-          SDK_TARBALL_SHA256: ${{ inputs.sdk_sha256 }}
-          WORKLOAD_BUNDLE_SHA256: ${{ inputs.workload_sha256 }}
-          WORKLOAD_BUNDLE_VERSION: ${{ inputs.workload_version }}
+          SDK_TARBALL: ${{ github.event_name == 'schedule' && '/data/storage/el2/base/tmp/opencode/ga-clean/dotnet-sdk-11.0.100-openharmony-arm64.tar.gz' || inputs.sdk_tarball }}
+          WORKLOAD_BUNDLE: ${{ github.event_name == 'schedule' && '/storage/Users/currentUser/springsources/ohos-workload/dist/openharmony-workload-1.0.0.tar.gz' || inputs.workload_bundle }}
+          SDK_TARBALL_SHA256: ${{ github.event_name == 'schedule' && 'a8fa784e950521895c2986252566ac78ca0f95934f6a4e51fad3ea0ccf000c56' || inputs.sdk_sha256 }}
+          WORKLOAD_BUNDLE_SHA256: ${{ github.event_name == 'schedule' && '86ef38e3146dd8294b8c5d027dcdcd0f07306012c8dddc0a2919592a9ac63700' || inputs.workload_sha256 }}
+          WORKLOAD_BUNDLE_VERSION: ${{ github.event_name == 'schedule' && '1.0.0' || inputs.workload_version }}
           SKIP_DEVICE: ${{ inputs.skip_device }}
           SKIP_826: ${{ inputs.skip_826 }}
           SKIP_JIT: ${{ inputs.skip_jit }}
           SKIP_AOT: ${{ inputs.skip_aot }}
           COLD_NUGET: ${{ inputs.cold_nuget }}
           AOT_ASSETS: ${{ inputs.aot_assets }}
-          PREBUILT_826: ${{ inputs.prebuilt_826 }}
-          PREBUILT_JIT: ${{ inputs.prebuilt_jit }}
-          PREBUILT_AOT: ${{ inputs.prebuilt_aot }}
+          PREBUILT_826: ${{ github.event_name == 'schedule' && 'true' || inputs.prebuilt_826 }}
+          PREBUILT_JIT: ${{ github.event_name == 'schedule' && 'true' || inputs.prebuilt_jit }}
+          PREBUILT_AOT: ${{ github.event_name == 'schedule' && 'true' || inputs.prebuilt_aot }}
           HDC: ${{ secrets.OHOS_HDC }}
           UDID: ${{ secrets.OHOS_UDID }}
         run: |
@@ -162,3 +167,55 @@ jobs:
           log_dir="${{ runner.workspace }}/ohos-clean-ga/logs"
           echo "clean-machine logs: $log_dir"
           ls -l "$log_dir" || true
+
+  probe-real-build:
+    # Nightly probe: can MSBuild build inside the runner process tree again?
+    # Never fails the workflow; when it flips to green we open an issue so the
+    # prebuilt workaround can be retired.
+    if: github.event_name == 'schedule'
+    needs: clean-machine
+    continue-on-error: true
+    runs-on: [self-hosted, openharmony, ohos-arm64]
+    timeout-minutes: 30
+    steps:
+      - name: Probe the real build path
+        id: probe
+        run: |
+          set -u
+          root="${{ runner.workspace }}/ohos-clean-ga"
+          project="${{ runner.workspace }}/sdk-ohos/ohos-workload/test/maui-platform-verify"
+          if [ ! -d "$project" ] || [ ! -x "$root/dotnet/dotnet" ]; then
+            echo "result=SKIP" >> "$GITHUB_OUTPUT"
+            echo "no clean SDK or workspace left by the gate job"
+            exit 0
+          fi
+          arc="/storage/Users/currentUser/.nuget/packages/microsoft.dotnet.arcade.sdk/11.0.0-beta.26527.113/tools"
+          export HOME="$root/home" DOTNET_ROOT="$root/dotnet" DOTNET_CLI_HOME="$root/home"
+          export TMPDIR=/data/storage/el2/base/tmp/gate-tmp
+          export NUGET_PACKAGES=/storage/Users/currentUser/.nuget/packages
+          cd "$project" || exit 0
+          rm -f probe.log
+          if timeout -s KILL 600 "$root/dotnet/dotnet" build --no-restore -m:1 -noconlog -tl:off \
+               "-flp:logfile=probe.log;verbosity=minimal" \
+               /p:UseSharedCompilation=false /p:NuGetAudit=false /p:ArcadeSdkDir="$arc/" \
+               </dev/null >/dev/null 2>&1 \
+             && [ -f bin/Debug/net11.0/verify.dll ]; then
+            echo "result=PASS" >> "$GITHUB_OUTPUT"
+          else
+            echo "result=FAIL" >> "$GITHUB_OUTPUT"
+          fi
+          tail -5 probe.log 2>/dev/null || true
+
+      - name: Report the probe result
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESULT: ${{ steps.probe.outputs.result }}
+        run: |
+          set -u
+          echo "real-build probe: $RESULT"
+          if [ "$RESULT" = PASS ]; then
+            gh issue create --repo "${{ github.repository }}" \
+              --title "real-build probe passed: consider retiring the prebuilt gate workaround" \
+              --body "The nightly probe built verify.csproj inside the runner process tree. Re-run the clean-machine gate with prebuilt_826=false and remove the workaround if it stays green." \
+              || true
+          fi
