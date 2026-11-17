@@ -1,0 +1,160 @@
+name: ohos-runtime-repro
+
+# Minimal repro suite for the OpenHarmony runtime defects found while
+# bringing up the self-hosted clean-machine gate. Each job pairs an
+# OpenHarmony host run with an ubuntu-latest control so we can tell a port
+# bug from an upstream MSBuild/SDK bug before filing upstream.
+#
+#   dual-write file logger     : -flp:logfile=X while the shell appends to X
+#   consolelogger-nre          : repeated `dotnet build` on this host
+#   exit-hang                  : does `dotnet build` exit within 60s
+#
+# workflow_dispatch only: these jobs are diagnostics, not gating.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dualwrite-ohos:
+    name: dual-write file logger (openharmony)
+    runs-on: [self-hosted, openharmony, ohos-arm64]
+    timeout-minutes: 30
+    steps:
+      - name: Run the dual-write repro
+        run: |
+          set -u
+          work="$RUNNER_TEMP/flp-repro"
+          rm -rf "$work"; mkdir -p "$work"; cd "$work"
+          cat > t.csproj <<'EOF'
+          <Project Sdk="Microsoft.NET.Sdk">
+            <PropertyGroup><TargetFramework>net11.0</TargetFramework></PropertyGroup>
+          </Project>
+          EOF
+          echo 'class C { static void Main() {} }' > C.cs
+          dotnet_bin="$(command -v dotnet || true)"
+          [ -n "$dotnet_bin" ] || dotnet_bin="${DOTNET_ROOT:-$HOME/.dotnet}/dotnet"
+          "$dotnet_bin" build -v:q >/dev/null 2>&1 || true
+          dual=hang; single=ok
+          : > dual.log
+          timeout -s KILL 120 "$dotnet_bin" build --no-restore -noconlog \
+            "-flp:logfile=$work/dual.log;verbosity=minimal" >> "$work/dual.log" 2>&1 </dev/null || dual=hang
+          [ -f bin/Debug/net11.0/t.dll ] && dual=ok || dual=hang
+          : > single.log
+          timeout -s KILL 120 "$dotnet_bin" build --no-restore -noconlog \
+            "-flp:logfile=$work/single.log;verbosity=minimal" >/dev/null 2>&1 </dev/null || true
+          [ -f bin/Debug/net11.0/t.dll ] && single=ok || single=fail
+          {
+            echo "dual-write=$dual"
+            echo "single-writer=$single"
+          } >> "$GITHUB_STEP_SUMMARY"
+          tail -5 "$work/dual.log" 2>/dev/null || true
+          [ "$dual" = hang ] && [ "$single" = ok ]
+
+  dualwrite-ubuntu:
+    name: dual-write file logger (ubuntu control)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            eng
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '11.0.x'
+      - name: Run the dual-write repro
+        run: |
+          set -u
+          work="$RUNNER_TEMP/flp-repro"
+          rm -rf "$work"; mkdir -p "$work"; cd "$work"
+          cat > t.csproj <<'EOF'
+          <Project Sdk="Microsoft.NET.Sdk">
+            <PropertyGroup><TargetFramework>net11.0</TargetFramework></PropertyGroup>
+          </Project>
+          EOF
+          echo 'class C { static void Main() {} }' > C.cs
+          dotnet build -v:q >/dev/null 2>&1 || true
+          dual=ok; single=ok
+          : > dual.log
+          timeout -s KILL 120 dotnet build --no-restore -noconlog \
+            "-flp:logfile=$work/dual.log;verbosity=minimal" >> "$work/dual.log" 2>&1 </dev/null || dual=hang
+          [ -f bin/Debug/net11.0/t.dll ] || dual=fail
+          : > single.log
+          timeout -s KILL 120 dotnet build --no-restore -noconlog \
+            "-flp:logfile=$work/single.log;verbosity=minimal" >/dev/null 2>&1 </dev/null || true
+          [ -f bin/Debug/net11.0/t.dll ] || single=fail
+          {
+            echo "dual-write=$dual"
+            echo "single-writer=$single"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "if dual-write is ok here but hang on openharmony, the defect is in the port"
+
+  consolelogger-nre-ohos:
+    name: ConsoleLogger NRE loop (openharmony)
+    runs-on: [self-hosted, openharmony, ohos-arm64]
+    timeout-minutes: 30
+    steps:
+      - name: Repeat dotnet build with the console logger
+        run: |
+          set -u
+          work="$RUNNER_TEMP/nre-repro"
+          rm -rf "$work"; mkdir -p "$work"; cd "$work"
+          cat > t.csproj <<'EOF'
+          <Project Sdk="Microsoft.NET.Sdk">
+            <PropertyGroup><TargetFramework>net11.0</TargetFramework></PropertyGroup>
+          </Project>
+          EOF
+          echo 'class C { static void Main() {} }' > C.cs
+          dotnet_bin="$(command -v dotnet || true)"
+          [ -n "$dotnet_bin" ] || dotnet_bin="${DOTNET_ROOT:-$HOME/.dotnet}/dotnet"
+          "$dotnet_bin" build -v:q >/dev/null 2>&1 || true
+          nre=0; runs=10
+          for _i in $(seq 1 "$runs"); do
+            timeout -s KILL 120 "$dotnet_bin" build --no-restore -v:m </dev/null \
+              > "$work/run-$_i.log" 2>&1 || true
+            grep -q 'MSB1025' "$work/run-$_i.log" && nre=$((nre + 1))
+            sleep 1
+          done
+          {
+            echo "MSB1025 runs: $nre/$runs"
+          } >> "$GITHUB_STEP_SUMMARY"
+          for f in "$work"/run-*.log; do
+            grep -q 'MSB1025' "$f" && { echo "--- $f"; head -5 "$f"; }
+          done
+          true
+
+  exit-hang-ohos:
+    name: dotnet build exit (openharmony)
+    runs-on: [self-hosted, openharmony, ohos-arm64]
+    timeout-minutes: 20
+    steps:
+      - name: Time a no-op build
+        run: |
+          set -u
+          work="$RUNNER_TEMP/exit-repro"
+          rm -rf "$work"; mkdir -p "$work"; cd "$work"
+          cat > t.csproj <<'EOF'
+          <Project Sdk="Microsoft.NET.Sdk">
+            <PropertyGroup><TargetFramework>net11.0</TargetFramework></PropertyGroup>
+          </Project>
+          EOF
+          echo 'class C { static void Main() {} }' > C.cs
+          dotnet_bin="$(command -v dotnet || true)"
+          [ -n "$dotnet_bin" ] || dotnet_bin="${DOTNET_ROOT:-$HOME/.dotnet}/dotnet"
+          "$dotnet_bin" build -v:q >/dev/null 2>&1 || true
+          start=$(date +%s)
+          timeout -s KILL 60 "$dotnet_bin" build --no-restore -v:m </dev/null > run.log 2>&1
+          rc=$?
+          end=$(date +%s)
+          {
+            echo "rc=$rc elapsed=$((end - start))s"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$rc" = 137 ]; then
+            echo "process did not exit within 60s (shutdown hang)"
+            tail -5 run.log || true
+          fi
+          true
