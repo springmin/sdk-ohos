@@ -91,3 +91,19 @@ run only the suite. Extend the same pattern to JIT/AOT if needed.
   `[suite] checks=826 total=829 floor=809 assert=True`.
 * Local proof that the wedge is context-specific: same command, same env,
   `dll=yes` in ~60 s (multiple runs).
+
+## Baseline evidence (GA gate green)
+
+| Gate | Evidence |
+|---|---|
+| 826 suite | run `43971774215`: `[suite] checks=826 total=829 floor=809 assert=True` |
+| JIT publish | same run: `OpenHarmony: signed`, hap hash pin matched |
+| AOT publish | same run: `EXIT=0`, IL2026/IL3050/IL3051 = 0, `publish/libhello-maui-app.so` present |
+| Device round | run `43977174295`: success; archive `_work/_temp/device-round-20261117-072206.tar.gz` |
+
+The `prebuilt_826` / `prebuilt_jit` / `prebuilt_aot` switches are a
+WORKAROUND for the runner-side MSBuild wedge above. Remove them (and the
+prebuilt validation run) once builds work inside the runner process tree.
+
+Device rounds additionally depend on the device being reachable: the
+workflow now runs `hdc tconn <device>` when `hdc list targets` is empty.

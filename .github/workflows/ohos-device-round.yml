@@ -98,6 +98,23 @@ jobs:
           echo "device: $DEVICE"
           echo "kit: $KIT"
 
+      - name: Ensure the device is connected
+        env:
+          INPUT_DEVICE: ${{ inputs.device }}
+          HDC: ${{ secrets.OHOS_HDC }}
+        run: |
+          set -u
+          hdc_bin="${HDC:-hdc}"
+          targets="$("$hdc_bin" list targets 2>/dev/null || true)"
+          if ! printf '%s' "$targets" | grep -q '[^[:space:]]'; then
+            echo "no device connected; trying hdc tconn $INPUT_DEVICE"
+            "$hdc_bin" tconn "$INPUT_DEVICE" || true
+            sleep 3
+          fi
+          "$hdc_bin" list targets
+          printf '%s' "$("$hdc_bin" list targets 2>/dev/null)" | grep -q '[^[:space:]]' \
+            || { echo "device is still not connected"; exit 1; }
+
       - name: Run device round
         env:
           HDC: ${{ env.HDC }}
