@@ -778,14 +778,28 @@ install_workload() {
     info "installing the OpenHarmony platform workload from ${bundle}"
     dry=""
     [ "${WORKLOAD_DRY_RUN:-0}" = "1" ] && dry="--dry-run"
-    if sh "${bundle}/install-ohos-workload.sh" $dry --dotnet "${INSTALL_DIR}/dotnet" "$bundle"; then
-        info "workload installed (dotnet workload list)"
-        [ -n "$WL_TMP" ] && { rm -rf "$WL_TMP"; WL_TMP=""; }
-        return 0
+    # Right after the ELF signing pass the freshly installed SDK can briefly
+    # fail to resolve its commands ("The application 'workload' does not
+    # exist"). Wait for the host to answer, then retry once.
+    _i=1
+    while [ "$_i" -le 6 ]; do
+        "${INSTALL_DIR}/dotnet" --list-sdks >/dev/null 2>&1 && break
+        info "waiting for the freshly installed SDK (probe ${_i}/6)"
+        sleep 5
+        _i=$((_i + 1))
+    done
+    if ! sh "${bundle}/install-ohos-workload.sh" $dry --dotnet "${INSTALL_DIR}/dotnet" "$bundle"; then
+        info "workload install failed; retrying once after a short delay"
+        sleep 10
+        if ! sh "${bundle}/install-ohos-workload.sh" $dry --dotnet "${INSTALL_DIR}/dotnet" "$bundle"; then
+            [ -n "$WL_TMP" ] && { rm -rf "$WL_TMP"; WL_TMP=""; }
+            workload_error "OpenHarmony workload installation failed"
+            return $?
+        fi
     fi
+    info "workload installed (dotnet workload list)"
     [ -n "$WL_TMP" ] && { rm -rf "$WL_TMP"; WL_TMP=""; }
-    workload_error "OpenHarmony workload installation failed"
-    return $?
+    return 0
 }
 
 # ------------------------------------------------------------------ cxx runtime
