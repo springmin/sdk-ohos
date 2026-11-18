@@ -310,7 +310,7 @@ log "== install (isolated HOME/INSTALL_DIR) =="
     _band="$(basename "$(ls -d "$CLEAN_DOTNET"/sdk/*/ | sort -V | tail -1)")"
     mkdir -p "$CLEAN_DOTNET/sdk-manifests/$_band"
     cp -r "$_wl_dir/manifests/microsoft.net.sdk.openharmony" "$CLEAN_DOTNET/sdk-manifests/$_band/"
-    env HOME="$CLEAN_HOME" DOTNET_ROOT="$CLEAN_DOTNET" DOTNET_CLI_HOME="$CLEAN_HOME" \
+    HOME="$CLEAN_HOME" DOTNET_ROOT="$CLEAN_DOTNET" DOTNET_CLI_HOME="$CLEAN_HOME" \
       run_limited "$CLEAN_DOTNET/dotnet" workload install openharmony \
         --skip-manifest-update --source "$_wl_dir/feed"
 ) > "$LOG_DIR/install.log" 2>&1 || { tail -40 "$LOG_DIR/install.log"; die "install failed"; }
