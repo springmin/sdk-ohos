@@ -110,7 +110,7 @@ jobs:
     steps:
       - name: Check out sdk-ohos
         env:
-          SDK_SOURCE: ${{ inputs.sdk_source }}
+          SDK_SOURCE: ${{ github.event_name == 'schedule' && '/data/storage/el2/base/tmp/opencode/sdk-clean-gate' || inputs.sdk_source }}
         run: |
           set -euxo pipefail
           rm -rf "$GITHUB_WORKSPACE"/* "$GITHUB_WORKSPACE"/.[!.]* 2>/dev/null || true
@@ -118,7 +118,7 @@ jobs:
 
       - name: Check out ohos-workload
         env:
-          WORKLOAD_SOURCE: ${{ inputs.workload_source }}
+          WORKLOAD_SOURCE: ${{ github.event_name == 'schedule' && '/storage/Users/currentUser/springsources/ohos-workload' || inputs.workload_source }}
         run: |
           set -euxo pipefail
           rm -rf "$GITHUB_WORKSPACE/ohos-workload"
@@ -147,11 +147,11 @@ jobs:
           SDK_TARBALL_SHA256: ${{ github.event_name == 'schedule' && 'a8fa784e950521895c2986252566ac78ca0f95934f6a4e51fad3ea0ccf000c56' || inputs.sdk_sha256 }}
           WORKLOAD_BUNDLE_SHA256: ${{ github.event_name == 'schedule' && '86ef38e3146dd8294b8c5d027dcdcd0f07306012c8dddc0a2919592a9ac63700' || inputs.workload_sha256 }}
           WORKLOAD_BUNDLE_VERSION: ${{ github.event_name == 'schedule' && '1.0.0' || inputs.workload_version }}
-          SKIP_DEVICE: ${{ inputs.skip_device }}
-          SKIP_826: ${{ inputs.skip_826 }}
-          SKIP_JIT: ${{ inputs.skip_jit }}
-          SKIP_AOT: ${{ inputs.skip_aot }}
-          COLD_NUGET: ${{ inputs.cold_nuget }}
+          SKIP_DEVICE: ${{ github.event_name == 'schedule' && 'true' || inputs.skip_device }}
+          SKIP_826: ${{ github.event_name == 'schedule' && 'false' || inputs.skip_826 }}
+          SKIP_JIT: ${{ github.event_name == 'schedule' && 'false' || inputs.skip_jit }}
+          SKIP_AOT: ${{ github.event_name == 'schedule' && 'false' || inputs.skip_aot }}
+          COLD_NUGET: ${{ github.event_name == 'schedule' && 'false' || inputs.cold_nuget }}
           AOT_ASSETS: ${{ inputs.aot_assets }}
           PREBUILT_826: ${{ github.event_name == 'schedule' && 'true' || inputs.prebuilt_826 }}
           PREBUILT_JIT: ${{ github.event_name == 'schedule' && 'true' || inputs.prebuilt_jit }}
