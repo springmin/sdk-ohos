@@ -510,10 +510,11 @@ if [ "$SKIP_JIT" != 1 ]; then
         rm -rf "$TMPDIR"/MSBuildTemp* "$TMPDIR"/.dotnet/lockfiles 2>/dev/null || true
         ( cd "$OHOS_WORKLOAD_DIR/test/hello-maui-app" && \
           : > "$LOG_DIR/jit-publish.log" && \
-          run_bounded_log "$LOG_DIR/jit-publish.log" 240 1500 script -q -c \
-            "$CLEAN_DOTNET/dotnet publish hello-maui-app.csproj -c Release -r openharmony-arm64 -m:1 -tl:off \
+          run_bounded_filelog "$LOG_DIR/jit-publish.log" 240 1500 \
+            "$CLEAN_DOTNET/dotnet" publish hello-maui-app.csproj -c Release -r openharmony-arm64 -m:1 \
+              -noconlog -tl:off "-flp:logfile=$LOG_DIR/jit-publish.log;verbosity=minimal" \
               -p:OpenHarmonyUIPage=pages/Index -p:OpenHarmonyHapPackage=true \
-              -f net11.0-openharmony26.0 -p:OpenHarmonyRuntimeMode=jit -p:InvariantGlobalization=true" /dev/null ) || true
+              -f net11.0-openharmony26.0 -p:OpenHarmonyRuntimeMode=jit -p:InvariantGlobalization=true ) || true
         [ -f "$_jit_hap" ] && break
         _j=$((_j + 1))
         sleep 3
