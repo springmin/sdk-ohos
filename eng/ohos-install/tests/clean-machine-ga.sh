@@ -297,7 +297,7 @@ log "== install (isolated HOME/INSTALL_DIR) =="
     # prefer a cached selfsign: downloading it from GitHub stalls on this host
     _ss=/data/storage/el2/base/tmp/opencode/ga-clean/selfsign-ohos-arm64
     if [ -x "$_ss" ]; then
-        export SELFSIGN_URL="file://$_ss" SELFSIGN_SHA256=""
+        export SELFSIGN_URL="file://$_ss" SELFSIGN_SHA256="e6984a541c3de6e8c8e63ddc79762e9869f9e94954aa4b7d4fdf8b89abb7a3cc"
     fi
     run_limited sh "$W/eng/ohos-install/install-dotnet-ohos.sh" "$SDK_LOCAL"
 ) > "$LOG_DIR/install.log" 2>&1 || { tail -40 "$LOG_DIR/install.log"; die "install failed"; }
