@@ -314,6 +314,12 @@ log "== install (isolated HOME/INSTALL_DIR) =="
     cp -r "$_wl_dir/manifests/microsoft.net.sdk.openharmony" "$CLEAN_DOTNET/sdk-manifests/$_band/"
     ls -d "$CLEAN_DOTNET/sdk-manifests/$_band/microsoft.net.sdk.openharmony" \
         || die "manifest copy landed elsewhere"
+    # A freshly installed host needs one SDK-resolving invocation before the
+    # muxer knows the `workload` command (--version does not resolve the SDK).
+    HOME="$CLEAN_HOME" DOTNET_ROOT="$CLEAN_DOTNET" DOTNET_CLI_HOME="$CLEAN_HOME" \
+      "$CLEAN_DOTNET/dotnet" --info >/dev/null 2>&1 || true
+    HOME="$CLEAN_HOME" DOTNET_ROOT="$CLEAN_DOTNET" DOTNET_CLI_HOME="$CLEAN_HOME" \
+      "$CLEAN_DOTNET/dotnet" --list-sdks >/dev/null 2>&1 || true
     HOME="$CLEAN_HOME" DOTNET_ROOT="$CLEAN_DOTNET" DOTNET_CLI_HOME="$CLEAN_HOME" \
       "$CLEAN_DOTNET/dotnet" workload install openharmony \
         --skip-manifest-update --source "$_wl_dir/feed" \
