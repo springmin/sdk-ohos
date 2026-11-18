@@ -30,6 +30,14 @@ namespace Microsoft.DotNet.Cli.New.IntegrationTests
                 .And
                 .NotHaveStdErr();
 
+            new DotnetNewCommand(log, "install", TemplatePackagesPaths.MicrosoftDotNetCommonProjectTemplates110Path)
+                .WithCustomHive(s_mstestTemplateSelectionHome)
+                .Execute()
+                .Should()
+                .ExitWith(0)
+                .And
+                .NotHaveStdErr();
+
             new DotnetNewCommand(log, "install", TemplatePackagesPaths.MicrosoftDotNetCommonProjectTemplates100Path)
                 .WithCustomHive(s_mstestTemplateSelectionHome)
                 .Execute()
@@ -53,7 +61,7 @@ namespace Microsoft.DotNet.Cli.New.IntegrationTests
         {
             string workingDirectory = CreateTemporaryFolder();
 
-            new DotnetNewCommand(_log, "console")
+            new DotnetNewCommand(_log, "console", "--no-restore")
                 .WithCustomHive(_fixture.HomeDirectory)
                 .WithWorkingDirectory(workingDirectory)
                 .Execute()
@@ -64,13 +72,50 @@ namespace Microsoft.DotNet.Cli.New.IntegrationTests
         }
 
         [TestMethod]
+        [DataRow("console", "C#", "csproj")]
+        [DataRow("console", "F#", "fsproj")]
+        [DataRow("console", "VB", "vbproj")]
+        [DataRow("classlib", "C#", "csproj")]
+        [DataRow("classlib", "F#", "fsproj")]
+        [DataRow("classlib", "VB", "vbproj")]
+        [DataRow("mstest", "C#", "csproj")]
+        [DataRow("mstest", "F#", "fsproj")]
+        [DataRow("mstest", "VB", "vbproj")]
+        [DataRow("nunit", "C#", "csproj")]
+        [DataRow("nunit", "F#", "fsproj")]
+        [DataRow("nunit", "VB", "vbproj")]
+        [DataRow("xunit", "C#", "csproj")]
+        [DataRow("xunit", "F#", "fsproj")]
+        [DataRow("xunit", "VB", "vbproj")]
+        [DataRow("nunit-playwright", "C#", "csproj")]
+        [DataRow("mstest-playwright", "C#", "csproj")]
+        public void CommonProjectTemplates_DefaultToCurrentFrameworkWithOlderTemplatesInstalled(
+            string templateName, string language, string projectExtension)
+        {
+            const string projectName = "TemplateProject";
+            string workingDirectory = CreateTemporaryFolder();
+            string outputDirectory = Path.Combine(workingDirectory, projectName);
+
+            new DotnetNewCommand(_log, templateName, "--no-restore", "--language", language,
+                    "--name", projectName, "--output", outputDirectory)
+                .WithCustomHive(s_mstestTemplateSelectionHome)
+                .WithWorkingDirectory(workingDirectory)
+                .Execute()
+                .Should()
+                .ExitWith(0)
+                .And.NotHaveStdErr();
+
+            string projectContents = File.ReadAllText(Path.Combine(outputDirectory, $"{projectName}.{projectExtension}"));
+            projectContents.Should().Contain($"<TargetFramework>{ToolsetInfo.CurrentTargetFramework}</TargetFramework>");
+        }
+
+        [TestMethod]
         [DynamicData(nameof(MSTestTemplateSelectionData))]
         public void MSTestTemplate_SelectsCurrentTemplateForEverySupportedTargetFramework(
             string templateName,
             string targetFramework,
             string language,
-            string projectExtension,
-            bool useMSTestSdk)
+            string projectExtension)
         {
             const string projectName = "MSTestProject";
             string workingDirectory = CreateTemporaryFolder();
@@ -84,8 +129,6 @@ namespace Microsoft.DotNet.Cli.New.IntegrationTests
                     targetFramework,
                     "--language",
                     language,
-                    "--sdk",
-                    useMSTestSdk ? "true" : "false",
                     "--name",
                     projectName,
                     "--output",
@@ -101,27 +144,15 @@ namespace Microsoft.DotNet.Cli.New.IntegrationTests
             string projectContents = File.ReadAllText(Path.Combine(outputDirectory, $"{projectName}.{projectExtension}"));
 
             projectContents.Should().Contain($"<TargetFramework>{targetFramework}</TargetFramework>");
-            projectContents.Should().Contain(useMSTestSdk
-                ? """<Project Sdk="MSTest.Sdk/4.5.2">"""
-                : """<PackageReference Include="MSTest" Version="4.5.2" />""");
-
-            if (templateName == "mstest-playwright")
-            {
-                projectContents.Should().Contain(useMSTestSdk
-                    ? "<MicrosoftPlaywrightVersion>1.64.1</MicrosoftPlaywrightVersion>"
-                    : """<PackageReference Include="Microsoft.Playwright.MSTest.v4" Version="1.64.1" />""");
-
-                if (useMSTestSdk)
-                {
-                    projectContents.Should().Contain("""<Using Include="System.Text.RegularExpressions" />""");
-                }
-            }
+            projectContents.Should().Contain("""<PackageReference Include="MSTest" Version="4.4.0" />""");
         }
 
         public static IEnumerable<object[]> MSTestTemplateSelectionData()
         {
             string[] mstestTargetFrameworks =
             [
+                "net12.0",
+                "net12.0-windows",
                 "net11.0",
                 "net11.0-windows",
                 "net10.0",
@@ -140,13 +171,13 @@ namespace Microsoft.DotNet.Cli.New.IntegrationTests
 
             foreach (string targetFramework in mstestTargetFrameworks)
             {
-                yield return ["mstest", targetFramework, "C#", "csproj", false];
+                yield return ["mstest", targetFramework, "C#", "csproj"];
             }
 
             // Cover the language-specific template groups at the framework where the
-            // Microsoft.DotNet.Common.ProjectTemplates.10.0 package can otherwise win.
-            yield return ["mstest", "net10.0", "F#", "fsproj", false];
-            yield return ["mstest", "net10.0", "VB", "vbproj", false];
+            // Microsoft.DotNet.Common.ProjectTemplates.11.0 package can otherwise win.
+            yield return ["mstest", "net11.0", "F#", "fsproj"];
+            yield return ["mstest", "net11.0", "VB", "vbproj"];
 
             string[] additionalPlaywrightTargetFrameworks =
             [
@@ -159,13 +190,8 @@ namespace Microsoft.DotNet.Cli.New.IntegrationTests
 
             foreach (string targetFramework in mstestTargetFrameworks.Concat(additionalPlaywrightTargetFrameworks))
             {
-                yield return ["mstest-playwright", targetFramework, "C#", "csproj", false];
+                yield return ["mstest-playwright", targetFramework, "C#", "csproj"];
             }
-
-            yield return ["mstest", "net11.0", "C#", "csproj", true];
-            yield return ["mstest", "net11.0", "F#", "fsproj", true];
-            yield return ["mstest", "net11.0", "VB", "vbproj", true];
-            yield return ["mstest-playwright", "net11.0", "C#", "csproj", true];
         }
 
 #pragma warning disable xUnit1004 // Test methods should not be skipped

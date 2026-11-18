@@ -93,7 +93,8 @@ internal sealed class VirtualProjectBuildingCommand : CommandBase
     public VirtualProjectBuildingCommand(
         string entryPointFileFullPath,
         MSBuildArgs msbuildArgs,
-        string? artifactsPath = null)
+        CommandServices services,
+        string? artifactsPath = null) : base(services)
     {
         MSBuildArgs = msbuildArgs.CloneWithAdditionalProperties(
             CommonRunHelpers.CreateFileBasedRunGlobalProperties().AsReadOnly());
@@ -117,7 +118,7 @@ internal sealed class VirtualProjectBuildingCommand : CommandBase
             ? null
             : minimizeStdOut
             ? new SimpleErrorLogger()
-            : CommonRunHelpers.GetConsoleLogger(MSBuildArgs.CloneWithExplicitArgs([$"--verbosity:{verbosity}", .. MSBuildArgs.OtherMSBuildArgs]));
+            : CommonRunHelpers.GetConsoleLogger(MSBuildArgs.CloneWithExplicitArgs([$"--verbosity:{verbosity}", .. MSBuildArgs.OtherMSBuildArgs]), Services);
         var binaryLogger = GetBinaryLogger(MSBuildArgs.OtherMSBuildArgs);
 
         FileBasedAppCacheInfo? cache = null;
@@ -242,6 +243,7 @@ internal sealed class VirtualProjectBuildingCommand : CommandBase
                 MultiThreaded = multiThreaded,
             };
 
+            using var activity = Activities.PerformanceSource.StartActivity("msbuild-submission");
             BuildManager.DefaultBuildManager.BeginBuild(parameters);
 
             int exitCode = 0;
@@ -307,6 +309,7 @@ internal sealed class VirtualProjectBuildingCommand : CommandBase
                         CacheCscArguments(cache, buildResult);
                         WriteCscRsp(cache);
                         CollectAdditionalSources(cache, buildRequest.ProjectInstance);
+                        CollectBuildOutputs(cache, buildRequest.ProjectInstance);
 
                         MarkBuildSuccess(cache);
                     }
@@ -441,6 +444,23 @@ internal sealed class VirtualProjectBuildingCommand : CommandBase
 
                 return arg;
             }
+        }
+
+        void CollectBuildOutputs(FileBasedAppCacheInfo cache, ProjectInstance projectInstance)
+        {
+            string outputDirectory = projectInstance.GetPropertyValue("TargetDir");
+            if (string.IsNullOrEmpty(outputDirectory))
+            {
+                Reporter.Verbose.WriteLine("Not tracking build outputs because TargetDir is empty.");
+                return;
+            }
+
+            cache.CurrentEntry.BuildOutputs = projectInstance.GetItems("FileWrites")
+                .Concat(projectInstance.GetItems("FileWritesShareable"))
+                .Select(static item => item.GetMetadataValue(Constants.FullPath))
+                .Where(path => PathUtility.IsChildOfDirectory(outputDirectory, path) && File.Exists(path))
+                .Distinct(RunFileBuildCacheEntry.FilePathComparer)
+                .ToImmutableArray();
         }
 
         void ReuseInfoFromPreviousCacheEntry(FileBasedAppCacheInfo cache)

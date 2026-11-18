@@ -4,6 +4,10 @@
     <TargetFramework>$(SdkTargetFramework)</TargetFramework>
     <GenerateDependencyFile>false</GenerateDependencyFile>
     <CopyBuildOutputToPublishDirectory>false</CopyBuildOutputToPublishDirectory>
+    <!-- The package's publish output includes runtime dependencies as well as the harvested content.
+         Keep those dependencies on source-built versions in source-build, but don't pin them to this
+         SDK band's NuGet versions in regular builds. -->
+    <CentralPackageTransitivePinningEnabled Condition="'$(DotNetBuildSourceOnly)' != 'true'">false</CentralPackageTransitivePinningEnabled>
   </PropertyGroup>
 
   <ItemGroup>

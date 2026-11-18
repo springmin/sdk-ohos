@@ -126,21 +126,21 @@ public class Program
         finally
         {
             TelemetryInstance.TrackEvent("command/finish", new Dictionary<string, string?> { { "exitCode", exitCode.ToString() } });
-            Shutdown(default!, exitCode);
+            Shutdown(null, exitCode);
             TelemetryClient.WriteLogIfNecessary();
         }
     }
 
     internal static int ProcessArgsAndExecute(string[] args)
     {
-        ParseResult parseResult = ParseArgs(args);
+        ParseResult parseResult = ParseArgs(args, out bool genericCommandHelp);
         // Run the cross-cutting first-run experience (first-time-use notice, telemetry message,
         // ASP.NET dev cert, global-tools PATH, workload integrity check). Terminating options such as
         // "dotnet --version" are skipped inside Setup.
         FirstRunExperience.Setup(parseResult);
 
         TelemetryEventEntry.SendFiltered(new ParseResultWithGlobalJsonState(parseResult, s_globalJsonState));
-        if (parseResult.CanBeInvoked())
+        if (genericCommandHelp || parseResult.CanBeInvoked())
         {
             return CommandInvocation.ExecuteInternalCommand(parseResult);
         }
@@ -156,12 +156,21 @@ public class Program
             return 1;
         }
 
-        static ParseResult ParseArgs(string[] args)
+        static ParseResult ParseArgs(string[] args, out bool genericCommandHelp)
         {
             ParseResult parseResult;
             using (var parseActivity = Activities.Source.StartActivity("parse"))
             {
-                parseResult = Parser.Parse(args);
+                if (Parser.TryParseGenericCommandHelp(args, out ParseResult? genericHelpParseResult))
+                {
+                    genericCommandHelp = true;
+                    parseResult = genericHelpParseResult;
+                }
+                else
+                {
+                    genericCommandHelp = false;
+                    parseResult = Parser.Parse(args);
+                }
 
                 // Avoid create temp directory with root permission and later prevent access in non sudo
                 // This method need to be run very early before temp folder get created
@@ -209,17 +218,22 @@ public class Program
         return null;
     }
 
-    public static void Shutdown(PosixSignalContext context)
+    public static void Shutdown(PosixSignalContext? context)
         => Shutdown(context, 0);
 
-    private static void Shutdown(PosixSignalContext context, int exitCode)
+    private static void Shutdown(PosixSignalContext? context, int exitCode)
     {
+        s_mainActivity?.SetEndTime(DateTime.UtcNow);
         s_sigIntRegistration.Dispose();
         s_sigQuitRegistration.Dispose();
         s_sigTermRegistration.Dispose();
         if (TelemetryInstance is TelemetryClient telemetryClient)
         {
             telemetryClient.WaitForPendingEvents();
+        }
+        if (context is null)
+        {
+            TelemetryClient.WaitForInternalMicrosoftDetection();
         }
         s_mainActivity?.Stop();
         TelemetryClient.FlushProviders(exitCode);

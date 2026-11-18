@@ -385,6 +385,24 @@ namespace Microsoft.TemplateEngine.Cli {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Unable to verify template package availability: none of the selected NuGet feeds could be reached..
+        /// </summary>
+        internal static string CliTemplateSearchCoordinator_Error_AllFeedsFailed {
+            get {
+                return ResourceManager.GetString("CliTemplateSearchCoordinator_Error_AllFeedsFailed", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to The --add-source option cannot be combined with package source mapping. To use an additional source, update your NuGet configuration file&apos;s source mapping settings. Learn more: https://aka.ms/nuget-package-source-mapping.
+        /// </summary>
+        internal static string CannotUseAddSourceWithSourceMapping {
+            get {
+                return ResourceManager.GetString("CannotUseAddSourceWithSourceMapping", resourceCulture);
+            }
+        }
+
+        /// <summary>
         ///   Looks up a localized string similar to Search failed: not enough information specified for search..
         /// </summary>
         internal static string CliTemplateSearchCoordinator_Error_NoTemplateName {
@@ -1465,7 +1483,7 @@ namespace Microsoft.TemplateEngine.Cli {
                 return ResourceManager.GetString("PostAction_ModifyJson_Error_PropertyAlreadyExists", resourceCulture);
             }
         }
-        
+
         /// <summary>
         ///   Looks up a localized string similar to Successfully modified {0}..
         /// </summary>

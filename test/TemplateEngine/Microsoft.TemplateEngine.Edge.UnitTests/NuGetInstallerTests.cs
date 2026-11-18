@@ -326,6 +326,30 @@ namespace Microsoft.TemplateEngine.Edge.UnitTests
         }
 
         [TestMethod]
+        public async Task Install_RemotePackage_PackageSourceMappingMatchNotFound_ReturnsSpecificError()
+        {
+            MockManagedTemplatePackageProvider provider = new MockManagedTemplatePackageProvider();
+            IEngineEnvironmentSettings engineEnvironmentSettings = s_environmentSettingsHelper.CreateEnvironment(virtualize: true);
+            MockPackageManager mockPackageManager = new MockPackageManager();
+            NuGetInstaller installer = new NuGetInstaller(
+                new MockInstallerFactory(),
+                engineEnvironmentSettings,
+                s_environmentSettingsHelper.CreateTemporaryFolder(),
+                mockPackageManager,
+                mockPackageManager);
+            InstallRequest request = new InstallRequest(MockPackageManager.PackageSourceMappingMatchNotFound);
+
+            InstallResult installResult = await installer.InstallAsync(request, provider, CancellationToken.None);
+
+            installResult.Success.Should().BeFalse();
+            installResult.Error.Should().Be(InstallerErrorCode.PackageNotFound);
+            installResult.ErrorMessage.Should().Be(
+                string.Format(
+                    LocalizableStrings.NuGetInstaller_Error_PackageSourceMappingMatchNotFound,
+                    MockPackageManager.PackageSourceMappingMatchNotFound));
+        }
+
+        [TestMethod]
         public async Task GetLatestVersion_RemotePackage()
         {
             MockInstallerFactory factory = new MockInstallerFactory();
@@ -439,6 +463,35 @@ namespace Microsoft.TemplateEngine.Edge.UnitTests
             Assert.AreEqual(source, result.TemplatePackage);
             Assert.AreEqual(expectedErrorCode, result.Error);
             result.ErrorMessage.Should().NotBeNullOrEmpty();
+        }
+
+        [TestMethod]
+        public async Task GetLatestVersion_RemotePackage_PackageSourceMappingMatchNotFound_ReturnsSpecificError()
+        {
+            MockManagedTemplatePackageProvider provider = new MockManagedTemplatePackageProvider();
+            IEngineEnvironmentSettings engineEnvironmentSettings = s_environmentSettingsHelper.CreateEnvironment(virtualize: true);
+            MockPackageManager mockPackageManager = new MockPackageManager();
+            NuGetInstaller installer = new NuGetInstaller(
+                new MockInstallerFactory(),
+                engineEnvironmentSettings,
+                s_environmentSettingsHelper.CreateTemporaryFolder(),
+                mockPackageManager,
+                mockPackageManager);
+            NuGetManagedTemplatePackage source = new NuGetManagedTemplatePackage(
+                engineEnvironmentSettings,
+                installer,
+                provider,
+                "test.nupkg",
+                MockPackageManager.PackageSourceMappingMatchNotFound);
+
+            CheckUpdateResult result = (await installer.GetLatestVersionAsync(new[] { source }, provider, CancellationToken.None)).Single();
+
+            result.Success.Should().BeFalse();
+            result.Error.Should().Be(InstallerErrorCode.PackageNotFound);
+            result.ErrorMessage.Should().Be(
+                string.Format(
+                    LocalizableStrings.NuGetInstaller_Error_PackageSourceMappingMatchNotFound,
+                    MockPackageManager.PackageSourceMappingMatchNotFound));
         }
 
         [TestMethod]
