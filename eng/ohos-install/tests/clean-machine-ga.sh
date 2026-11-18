@@ -294,6 +294,11 @@ log "== install (isolated HOME/INSTALL_DIR) =="
     # point the muxer at the SDK being installed: the host DOTNET_ROOT makes
     # `dotnet workload` resolve against the wrong SDK and fail.
     export DOTNET_ROOT="$CLEAN_DOTNET" DOTNET_MULTILEVEL_LOOKUP=0
+    # prefer a cached selfsign: downloading it from GitHub stalls on this host
+    _ss=/data/storage/el2/base/tmp/opencode/ga-clean/selfsign-ohos-arm64
+    if [ -x "$_ss" ]; then
+        export SELFSIGN_URL="file://$_ss" SELFSIGN_SHA256=""
+    fi
     run_limited sh "$W/eng/ohos-install/install-dotnet-ohos.sh" "$SDK_LOCAL"
 ) > "$LOG_DIR/install.log" 2>&1 || { tail -40 "$LOG_DIR/install.log"; die "install failed"; }
 log "install OK"
