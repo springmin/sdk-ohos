@@ -308,11 +308,18 @@ log "== install (isolated HOME/INSTALL_DIR) =="
     tar -xzf "$BUNDLE_LOCAL" -C "$_wl"
     _wl_dir="$(find "$_wl" -mindepth 1 -maxdepth 1 -type d | head -1)"
     _band="$(basename "$(ls -d "$CLEAN_DOTNET"/sdk/*/ | sort -V | tail -1)")"
+    [ -d "$_wl_dir/manifests/microsoft.net.sdk.openharmony" ] \
+        || die "workload bundle has no openharmony manifest"
     mkdir -p "$CLEAN_DOTNET/sdk-manifests/$_band"
     cp -r "$_wl_dir/manifests/microsoft.net.sdk.openharmony" "$CLEAN_DOTNET/sdk-manifests/$_band/"
+    ls -d "$CLEAN_DOTNET/sdk-manifests/$_band/microsoft.net.sdk.openharmony" \
+        || die "manifest copy landed elsewhere"
     HOME="$CLEAN_HOME" DOTNET_ROOT="$CLEAN_DOTNET" DOTNET_CLI_HOME="$CLEAN_HOME" \
-      run_limited "$CLEAN_DOTNET/dotnet" workload install openharmony \
-        --skip-manifest-update --source "$_wl_dir/feed"
+      "$CLEAN_DOTNET/dotnet" workload install openharmony \
+        --skip-manifest-update --source "$_wl_dir/feed" \
+      || { "$CLEAN_DOTNET/dotnet" --version; \
+           ls -R "$CLEAN_DOTNET/sdk-manifests" | head -20; \
+           die "workload install failed"; }
 ) > "$LOG_DIR/install.log" 2>&1 || { tail -40 "$LOG_DIR/install.log"; die "install failed"; }
 log "install OK"
 
