@@ -32,6 +32,10 @@ die() { log "ERROR: $*" >&2; exit 1; }
 run() { if [ "$DRY_RUN" = 1 ]; then printf '+ %s\n' "$*"; else "$@"; fi; }
 
 W="$(cd "$(dirname "$0")/../../.." && pwd)"
+# The repo pins an SDK in global.json; the gate must exercise the SDK it
+# just installed, and a mismatched pin makes the muxer treat SDK commands
+# (restore/build/workload) as application names.
+rm -f "$W/global.json" 2>/dev/null || true
 HOST_HOME="${HOST_HOME:-$HOME}"
 HOST_PATH="${HOST_PATH:-$PATH}"
 run_limited() {
