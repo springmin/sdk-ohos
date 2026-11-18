@@ -513,6 +513,10 @@ install_tarball() {
 # The selfsign asset lives in the sdk-ohos release, same tag as the SDK.
 SDK_TAG="$(printf '%s\n' "$RELEASES" | sed -n 's/^ *sdk|sdk-ohos|\([^|]*\)|.*/\1/p' | head -n 1)"
 SELFSIGN_URL="${SELFSIGN_URL:-https://github.com/${GH_USER}/sdk-ohos/releases/download/${SDK_TAG}/${SELFSIGN_ASSET}}"
+if [ -x "${INSTALL_DIR}/selfsign" ] && [ -z "${SELFSIGN_URL_FORCE:-}" ]; then
+    info "using the selfsign already deployed at ${INSTALL_DIR}/selfsign"
+    SELFSIGN="${INSTALL_DIR}/selfsign"
+fi
 
 # verify_selfsign_asset <file> -> 0 verified, 1 mismatch, 2 no anchored digest
 # The signer is executed with the caller's privileges, so it must match the
@@ -565,6 +569,7 @@ deploy_selfsign() {
                 ;;
         esac
     fi
+    [ -n "$SELFSIGN" ] && return 0
     SELFSIGN_TMP="$(mktemp "${TMPDIR:-/tmp}/selfsign-ohos.XXXXXX")" || {
         warn_echo "  WARN: mktemp failed; cannot download selfsign"
         return 1
