@@ -322,8 +322,10 @@ log "== install (isolated HOME/INSTALL_DIR) =="
       "$CLEAN_DOTNET/dotnet" workload --help 2>&1 | sed 's/^/  wl: /' || true
     file "$CLEAN_DOTNET/dotnet" 2>&1 | sed 's/^/  file: /' || true
     ls -l "$CLEAN_DOTNET/sdk/11.0.100/dotnet.dll" "$CLEAN_DOTNET/dotnet" 2>&1 | sed 's/^/  ls: /' || true
+    # the muxer does not dispatch `workload` for this freshly installed host,
+    # but running the SDK dll directly works
     HOME="$CLEAN_HOME" DOTNET_ROOT="$CLEAN_DOTNET" DOTNET_CLI_HOME="$CLEAN_HOME" \
-      "$CLEAN_DOTNET/dotnet" workload install openharmony \
+      "$CLEAN_DOTNET/dotnet" exec "$CLEAN_DOTNET/sdk/$_band/dotnet.dll" workload install openharmony \
         --skip-manifest-update --source "$_wl_dir/feed" \
       || { "$CLEAN_DOTNET/dotnet" --version; \
            ls -R "$CLEAN_DOTNET/sdk-manifests" | head -20; \
@@ -357,7 +359,7 @@ export DOTNET_SYSTEM_CRYPTOGRAPHY_OPENSSL_NO_LOCKING=1
 
 "$CLEAN_DOTNET/dotnet" --info > "$LOG_DIR/dotnet-info.log" 2>&1 || die "clean dotnet --info failed"
 grep -qE "Version:[[:space:]]*${SDK_VERSION}" "$LOG_DIR/dotnet-info.log" || die "unexpected SDK version (want $SDK_VERSION)"
-"$CLEAN_DOTNET/dotnet" workload list > "$LOG_DIR/workload-list.log" 2>&1 || die "workload list failed"
+"$CLEAN_DOTNET/dotnet" exec "$(ls -d "$CLEAN_DOTNET"/sdk/*/ | sort -V | tail -1)dotnet.dll" workload list > "$LOG_DIR/workload-list.log" 2>&1 || die "workload list failed"
 # The workload manifest band tracks the SDK feature band, including the
 # prerelease label (the dev rc.3 SDK installs sdk-manifests/11.0.100-rc.3).
 SDK_PRERELEASE="$(printf '%s' "$SDK_VERSION" | sed -n 's/^[0-9][0-9.]*\(-[A-Za-z][A-Za-z0-9]*\.[0-9][0-9]*\).*/\1/p')"
