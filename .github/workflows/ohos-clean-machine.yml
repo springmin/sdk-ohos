@@ -142,11 +142,11 @@ jobs:
         env:
           CLEAN_ROOT: ${{ runner.workspace }}/ohos-clean-ga
           OHOS_WORKLOAD_DIR: ${{ github.workspace }}/ohos-workload
-          SDK_TARBALL: ${{ github.event_name == 'schedule' && '/data/storage/el2/base/tmp/opencode/ga-clean/dotnet-sdk-11.0.100-openharmony-arm64.tar.gz' || inputs.sdk_tarball }}
-          WORKLOAD_BUNDLE: ${{ github.event_name == 'schedule' && '/storage/Users/currentUser/springsources/ohos-workload/dist/openharmony-workload-1.0.0.tar.gz' || inputs.workload_bundle }}
-          SDK_TARBALL_SHA256: ${{ github.event_name == 'schedule' && 'a8fa784e950521895c2986252566ac78ca0f95934f6a4e51fad3ea0ccf000c56' || inputs.sdk_sha256 }}
-          WORKLOAD_BUNDLE_SHA256: ${{ github.event_name == 'schedule' && '86ef38e3146dd8294b8c5d027dcdcd0f07306012c8dddc0a2919592a9ac63700' || inputs.workload_sha256 }}
-          WORKLOAD_BUNDLE_VERSION: ${{ github.event_name == 'schedule' && '1.0.0' || inputs.workload_version }}
+          SDK_TARBALL: ${{ inputs.sdk_tarball != '' && inputs.sdk_tarball || '/data/storage/el2/base/tmp/opencode/ga-clean/dotnet-sdk-11.0.100-openharmony-arm64.tar.gz' }}
+          WORKLOAD_BUNDLE: ${{ inputs.workload_bundle != '' && inputs.workload_bundle || '/storage/Users/currentUser/springsources/ohos-workload/dist/openharmony-workload-1.0.0.tar.gz' }}
+          SDK_TARBALL_SHA256: ${{ inputs.sdk_sha256 != '' && inputs.sdk_sha256 || 'a8fa784e950521895c2986252566ac78ca0f95934f6a4e51fad3ea0ccf000c56' }}
+          WORKLOAD_BUNDLE_SHA256: ${{ inputs.workload_sha256 != '' && inputs.workload_sha256 || '86ef38e3146dd8294b8c5d027dcdcd0f07306012c8dddc0a2919592a9ac63700' }}
+          WORKLOAD_BUNDLE_VERSION: ${{ inputs.workload_version != '' && inputs.workload_version || '1.0.0' }}
           SKIP_DEVICE: ${{ github.event_name == 'schedule' && 'true' || inputs.skip_device }}
           SKIP_826: ${{ github.event_name == 'schedule' && 'false' || inputs.skip_826 }}
           SKIP_JIT: ${{ github.event_name == 'schedule' && 'false' || inputs.skip_jit }}
