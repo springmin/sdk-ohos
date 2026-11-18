@@ -776,6 +776,8 @@ install_workload() {
     fi
 
     info "installing the OpenHarmony platform workload from ${bundle}"
+    info "workload env: DOTNET_ROOT=${DOTNET_ROOT:-} HOME=${HOME:-} PATH=${PATH}"
+    "${INSTALL_DIR}/dotnet" --list-sdks 2>&1 | sed "s/^/  sdk: /" || info "list-sdks failed here"
     dry=""
     [ "${WORKLOAD_DRY_RUN:-0}" = "1" ] && dry="--dry-run"
     # Right after the ELF signing pass the freshly installed SDK can briefly
@@ -788,10 +790,10 @@ install_workload() {
         sleep 5
         _i=$((_i + 1))
     done
-    if ! sh "${bundle}/install-ohos-workload.sh" $dry --dotnet "${INSTALL_DIR}/dotnet" "$bundle"; then
+    if ! env -u DOTNET_MULTILEVEL_LOOKUP DOTNET_ROOT="${INSTALL_DIR}" sh "${bundle}/install-ohos-workload.sh" $dry --dotnet "${INSTALL_DIR}/dotnet" "$bundle"; then
         info "workload install failed; retrying once after a short delay"
         sleep 10
-        if ! sh "${bundle}/install-ohos-workload.sh" $dry --dotnet "${INSTALL_DIR}/dotnet" "$bundle"; then
+        if ! env -u DOTNET_MULTILEVEL_LOOKUP DOTNET_ROOT="${INSTALL_DIR}" sh "${bundle}/install-ohos-workload.sh" $dry --dotnet "${INSTALL_DIR}/dotnet" "$bundle"; then
             [ -n "$WL_TMP" ] && { rm -rf "$WL_TMP"; WL_TMP=""; }
             workload_error "OpenHarmony workload installation failed"
             return $?
