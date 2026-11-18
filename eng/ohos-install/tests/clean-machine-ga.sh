@@ -451,7 +451,7 @@ if [ "$SKIP_JIT" != 1 ]; then
         log "JIT using prebuilt hap from $_pj"
     fi
     _j=1
-    while [ "$_j" -le 6 ] && [ ! -f "$_jit_hap" ]; do
+    while [ "$_j" -le 6 ] && { [ ! -f "$_jit_hap" ] || [ ! -f "$LOG_DIR/jit-publish.log" ]; }; do
         log "JIT publish attempt $_j/6"
         rm -rf "$TMPDIR"/MSBuildTemp* "$TMPDIR"/.dotnet/lockfiles 2>/dev/null || true
         ( cd "$OHOS_WORKLOAD_DIR/test/hello-maui-app" && \
