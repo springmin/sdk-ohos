@@ -298,7 +298,21 @@ log "== install (isolated HOME/INSTALL_DIR) =="
     _ss=/data/storage/el2/base/tmp/opencode/ga-clean/selfsign-ohos-arm64
     if [ -x "$_ss" ]; then mkdir -p "$CLEAN_DOTNET" && cp -f "$_ss" "$CLEAN_DOTNET/selfsign" && chmod +x "$CLEAN_DOTNET/selfsign"; fi
     # prefer a cached selfsign: downloading it from GitHub stalls on this host
+    export INSTALL_WORKLOAD=0
     run_limited sh "$W/eng/ohos-install/install-dotnet-ohos.sh" "$SDK_LOCAL"
+    # Install the workload exactly the way it is verified to work on this host
+    # (the installer wrapper's invocation resolves the muxer differently and
+    # reports "The application 'workload' does not exist").
+    _wl="$CLEAN_ROOT/wl-bundle"
+    rm -rf "$_wl"; mkdir -p "$_wl"
+    tar -xzf "$BUNDLE_LOCAL" -C "$_wl"
+    _wl_dir="$(find "$_wl" -mindepth 1 -maxdepth 1 -type d | head -1)"
+    _band="$(basename "$(ls -d "$CLEAN_DOTNET"/sdk/*/ | sort -V | tail -1)")"
+    mkdir -p "$CLEAN_DOTNET/sdk-manifests/$_band"
+    cp -r "$_wl_dir/manifests/microsoft.net.sdk.openharmony" "$CLEAN_DOTNET/sdk-manifests/$_band/"
+    env HOME="$CLEAN_HOME" DOTNET_ROOT="$CLEAN_DOTNET" DOTNET_CLI_HOME="$CLEAN_HOME" \
+      run_limited "$CLEAN_DOTNET/dotnet" workload install openharmony \
+        --skip-manifest-update --source "$_wl_dir/feed"
 ) > "$LOG_DIR/install.log" 2>&1 || { tail -40 "$LOG_DIR/install.log"; die "install failed"; }
 log "install OK"
 
