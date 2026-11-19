@@ -36,18 +36,16 @@ W="$(cd "$(dirname "$0")/../../.." && pwd)"
 # installed, and a mismatched pin makes the muxer treat SDK commands
 # (restore/build/workload) as application names. Keep msbuild-sdks (Arcade)
 # but drop only the sdk selection.
-if [ -f "$W/global.json" ]; then
-    python3 - "$W/global.json" <<'PYJSON'
-import json, sys
-path = sys.argv[1]
-with open(path) as fh:
-    data = json.load(fh)
-data.pop("sdk", None)
-with open(path, "w") as fh:
-    json.dump(data, fh, indent=2)
-    fh.write("\n")
-PYJSON
-fi
+# The repo's global.json pins an SDK and an Arcade version that do not match
+# the SDK under test; write a minimal one that keeps the Arcade SDK resolvable
+# (the version used by the verified runs) and drops the SDK pin.
+cat > "$W/global.json" <<'JSON'
+{
+  "msbuild-sdks": {
+    "Microsoft.DotNet.Arcade.Sdk": "11.0.0-beta.26527.113"
+  }
+}
+JSON
 HOST_HOME="${HOST_HOME:-$HOME}"
 HOST_PATH="${HOST_PATH:-$PATH}"
 run_limited() {
