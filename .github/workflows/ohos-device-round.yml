@@ -104,7 +104,7 @@ jobs:
           HDC: ${{ secrets.OHOS_HDC }}
         run: |
           set -u
-          hdc_bin="${HDC:-hdc}"
+          hdc_bin="${HDC:-/storage/Users/currentUser/.harmonybrew/Cellar/ohos-sdk-toolchains/26.0.0.38/hdc}"
           targets="$("$hdc_bin" list targets 2>/dev/null || true)"
           if ! printf '%s' "$targets" | grep -q '[^[:space:]]'; then
             echo "no device connected; trying hdc tconn $INPUT_DEVICE"
