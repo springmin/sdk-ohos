@@ -81,10 +81,10 @@ on:
         options: ["false", "true"]
         default: "false"
       prebuilt_jit:
-        description: "Use a prebuilt JIT hap (workaround for the runner-side build wedge)"
+        description: "Use a prebuilt JIT hap (workaround: the real publish stalls in HAP packaging)"
         type: choice
-        options: ["false", "true"]
-        default: "false"
+        options: ["true", "false"]
+        default: "true"
       prebuilt_aot:
         description: "Use prebuilt AOT artifacts (workaround for the runner-side build wedge)"
         type: choice
