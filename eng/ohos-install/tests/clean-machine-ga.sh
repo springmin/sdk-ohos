@@ -46,6 +46,16 @@ cat > "$W/global.json" <<'JSON'
   }
 }
 JSON
+# The repo NuGet.config points at dnceng feeds that time out from this host;
+# everything the gate needs is in the global packages folder, so run offline.
+cat > "$W/NuGet.config" <<'NUGETCFG'
+<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <packageSources>
+    <clear />
+  </packageSources>
+</configuration>
+NUGETCFG
 HOST_HOME="${HOST_HOME:-$HOME}"
 HOST_PATH="${HOST_PATH:-$PATH}"
 run_limited() {
