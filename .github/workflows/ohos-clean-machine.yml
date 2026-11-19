@@ -86,10 +86,10 @@ on:
         options: ["true", "false"]
         default: "true"
       prebuilt_aot:
-        description: "Use prebuilt AOT artifacts (workaround for the runner-side build wedge)"
+        description: "Use prebuilt AOT artifacts (workaround: the pack feed comes from GitHub, which resets here)"
         type: choice
-        options: ["false", "true"]
-        default: "false"
+        options: ["true", "false"]
+        default: "true"
       aot_assets:
         description: "Optional local nativeaot pack assets dir (default: download the feed)"
         required: false
