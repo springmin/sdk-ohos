@@ -752,24 +752,24 @@ The following are names of parameters or literal values and should not be transl
         <note>{StrBegins="NETSDK1151: "}</note>
       </trans-unit>
       <trans-unit id="OpenHarmonyCodesignFailedToEnumerate">
-        <source>NETSDK1247: Failed to enumerate '{0}' while signing OpenHarmony outputs: {1}</source>
-        <target state="new">NETSDK1247: Failed to enumerate '{0}' while signing OpenHarmony outputs: {1}</target>
-        <note>{StrBegins="NETSDK1247: "}</note>
-      </trans-unit>
-      <trans-unit id="OpenHarmonyCodesignFailedToSign">
-        <source>NETSDK1248: Failed to sign '{0}': {1}</source>
-        <target state="new">NETSDK1248: Failed to sign '{0}': {1}</target>
+        <source>NETSDK1248: Failed to enumerate '{0}' while signing OpenHarmony outputs: {1}</source>
+        <target state="new">NETSDK1248: Failed to enumerate '{0}' while signing OpenHarmony outputs: {1}</target>
         <note>{StrBegins="NETSDK1248: "}</note>
       </trans-unit>
-      <trans-unit id="OpenHarmonyCodesignRetainedForeignSignature">
-        <source>NETSDK1249: '{0}' carries a .codesign section that this signer did not create; it was left untouched. Run 'dotnet selfsign --force' to replace it with a self-signature.</source>
-        <target state="new">NETSDK1249: '{0}' carries a .codesign section that this signer did not create; it was left untouched. Run 'dotnet selfsign --force' to replace it with a self-signature.</target>
+      <trans-unit id="OpenHarmonyCodesignFailedToSign">
+        <source>NETSDK1249: Failed to sign '{0}': {1}</source>
+        <target state="new">NETSDK1249: Failed to sign '{0}': {1}</target>
         <note>{StrBegins="NETSDK1249: "}</note>
       </trans-unit>
-      <trans-unit id="OpenHarmonyCodesignSkippedSymbolicLink">
-        <source>NETSDK1250: Skipping symbolic link '{0}' while signing OpenHarmony outputs: signing never follows links outside the output tree.</source>
-        <target state="new">NETSDK1250: Skipping symbolic link '{0}' while signing OpenHarmony outputs: signing never follows links outside the output tree.</target>
+      <trans-unit id="OpenHarmonyCodesignRetainedForeignSignature">
+        <source>NETSDK1250: '{0}' carries a .codesign section that this signer did not create; it was left untouched. Run 'dotnet selfsign --force' to replace it with a self-signature.</source>
+        <target state="new">NETSDK1250: '{0}' carries a .codesign section that this signer did not create; it was left untouched. Run 'dotnet selfsign --force' to replace it with a self-signature.</target>
         <note>{StrBegins="NETSDK1250: "}</note>
+      </trans-unit>
+      <trans-unit id="OpenHarmonyCodesignSkippedSymbolicLink">
+        <source>NETSDK1251: Skipping symbolic link '{0}' while signing OpenHarmony outputs: signing never follows links outside the output tree.</source>
+        <target state="new">NETSDK1251: Skipping symbolic link '{0}' while signing OpenHarmony outputs: signing never follows links outside the output tree.</target>
+        <note>{StrBegins="NETSDK1251: "}</note>
       </trans-unit>
       <trans-unit id="PDBGeneratorInputExecutableNotFound">
         <source>NETSDK1162: PDB generation: R2R executable '{0}' not found.</source>
@@ -845,6 +845,11 @@ The following are names of parameters or literal values and should not be transl
         <source>NETSDK1226: Prune Package data not found {0} {1} {2}.  To ignore this error, set the AllowMissingPrunePackageData to true.</source>
         <target state="translated">NETSDK1226: Ayıklama Paket verileri bulunamadı {0} {1} {2}.  Bu hatayı yok saymak için, AllowMissingPrunePackageData öğesini true değerine ayarlayın.</target>
         <note>{StrBegins="NETSDK1226: "}</note>
+      </trans-unit>
+      <trans-unit id="PublishInputFileNotFound">
+        <source>NETSDK1247: The file '{0}' required for publishing was not found. Publish without '--no-build', or ensure the project has been built with the appropriate Configuration, TargetFramework, RuntimeIdentifier, and SelfContained properties.</source>
+        <target state="new">NETSDK1247: The file '{0}' required for publishing was not found. Publish without '--no-build', or ensure the project has been built with the appropriate Configuration, TargetFramework, RuntimeIdentifier, and SelfContained properties.</target>
+        <note>{StrBegins="NETSDK1247: "}{Locked="{0}"}{Locked="--no-build"}{Locked="Configuration"}{Locked="TargetFramework"}{Locked="RuntimeIdentifier"}{Locked="SelfContained"}</note>
       </trans-unit>
       <trans-unit id="PublishProfileNotPresent">
         <source>NETSDK1198: A publish profile with the name '{0}' was not found in the project. Set the PublishProfile property to a valid file name.</source>
