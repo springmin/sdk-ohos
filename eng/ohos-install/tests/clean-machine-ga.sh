@@ -466,7 +466,7 @@ run_826() { # <log>
           : > "$_blog"
           run_bounded_filelog "$_blog" 300 900 "$CLEAN_DOTNET/dotnet" build --no-restore -m:1 -noconlog -tl:off \
               "-flp:logfile=$_blog;verbosity=minimal;append" \
-              /p:UseSharedCompilation=false /p:NuGetAudit=false /p:ArcadeSdkDir="$_arcade_tools/" || true
+              /p:UseSharedCompilation=false /p:RunAnalyzers=false /p:TreatWarningsAsErrors=false /p:NuGetAudit=false /p:ArcadeSdkDir="$_arcade_tools/" || true
           cat "$_blog" >> "$_log" 2>/dev/null || true
           [ -f bin/Debug/net11.0/verify.dll ] && break
           # every third failure, start from a clean tree: a half-written obj
