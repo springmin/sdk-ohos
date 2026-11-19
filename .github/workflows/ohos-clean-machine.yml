@@ -76,10 +76,10 @@ on:
         options: ["false", "true"]
         default: "false"
       prebuilt_826:
-        description: "Use prebuilt 826 artifacts from CLEAN_ROOT/prebuilt/826 (workaround for runner-side build wedge)"
+        description: "Use prebuilt 826 artifacts (workaround: csc SIGSEGVs on the big project)"
         type: choice
-        options: ["false", "true"]
-        default: "false"
+        options: ["true", "false"]
+        default: "true"
       prebuilt_jit:
         description: "Use a prebuilt JIT hap (workaround: the real publish stalls in HAP packaging)"
         type: choice
