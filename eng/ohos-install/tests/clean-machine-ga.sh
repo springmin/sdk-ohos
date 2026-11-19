@@ -53,6 +53,7 @@ cat > "$W/NuGet.config" <<'NUGETCFG'
 <configuration>
   <packageSources>
     <clear />
+    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
   </packageSources>
 </configuration>
 NUGETCFG
