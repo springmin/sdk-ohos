@@ -421,7 +421,13 @@ run_826() { # <log>
     kill_workspace_build_strays
     (
       cd "$OHOS_WORKLOAD_DIR/test/maui-platform-verify" || exit 1
-      _arcade_tools="$NUGET_PACKAGES/microsoft.dotnet.arcade.sdk/11.0.0-beta.26527.113/tools"
+      # Arcade follows the version pinned in global.json (msbuild-sdks); the
+      # repo moved to 12.0.0-beta during the main merge.
+      _arcade_ver="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["msbuild-sdks"]["Microsoft.DotNet.Arcade.Sdk"])' "$W/global.json" 2>/dev/null || true)"
+      [ -n "${_arcade_ver:-}" ] || _arcade_ver=11.0.0-beta.26527.113
+      _arcade_tools="$NUGET_PACKAGES/microsoft.dotnet.arcade.sdk/$_arcade_ver/tools"
+      [ -d "$_arcade_tools" ] || _arcade_tools="$NUGET_PACKAGES/microsoft.dotnet.arcade.sdk/11.0.0-beta.26527.113/tools"
+      log "826 arcade sdk: $_arcade_tools"
       # OpenHarmony's runtime wedges MSBuild/Mono-style builds at random points
       # (silent stall, spinning threads) and can hang at process exit. Keep the
       # intermediate state between attempts so a retry resumes instead of
