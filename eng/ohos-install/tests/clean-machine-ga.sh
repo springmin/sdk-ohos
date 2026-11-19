@@ -469,6 +469,12 @@ run_826() { # <log>
               /p:UseSharedCompilation=false /p:NuGetAudit=false /p:ArcadeSdkDir="$_arcade_tools/" || true
           cat "$_blog" >> "$_log" 2>/dev/null || true
           [ -f bin/Debug/net11.0/verify.dll ] && break
+          # every third failure, start from a clean tree: a half-written obj
+          # after a csc SIGSEGV keeps failing at the same target
+          if [ $((_n % 3)) = 0 ]; then
+              log "826 attempt $_n: resetting obj/bin after a failed build"
+              rm -rf obj bin
+          fi
           _n=$((_n + 1))
           sleep 3
       done
