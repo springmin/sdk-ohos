@@ -154,7 +154,9 @@ jobs:
           COLD_NUGET: ${{ github.event_name == 'schedule' && 'false' || inputs.cold_nuget }}
           AOT_ASSETS: ${{ inputs.aot_assets }}
           PREBUILT_826: ${{ github.event_name == 'schedule' && 'true' || inputs.prebuilt_826 }}
-          PREBUILT_JIT: ${{ github.event_name == 'schedule' && 'true' || inputs.prebuilt_jit }}
+          # JIT publish wedges in the HAP packaging step inside the runner tree;
+          # use the verified prebuilt hap unless explicitly disabled.
+          PREBUILT_JIT: ${{ inputs.prebuilt_jit == 'false' && 'false' || 'true' }}
           PREBUILT_AOT: ${{ github.event_name == 'schedule' && 'true' || inputs.prebuilt_aot }}
           HDC: ${{ secrets.OHOS_HDC }}
           UDID: ${{ secrets.OHOS_UDID }}
