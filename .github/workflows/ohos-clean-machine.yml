@@ -90,6 +90,10 @@ on:
         type: choice
         options: ["true", "false"]
         default: "true"
+      runtime_libcoreclr:
+        description: "Optional libcoreclr.so to install after the SDK (CI cross-build artifact)"
+        required: false
+        default: ""
       aot_assets:
         description: "Optional local nativeaot pack assets dir (default: download the feed)"
         required: false
@@ -153,6 +157,7 @@ jobs:
           SKIP_AOT: ${{ github.event_name == 'schedule' && 'false' || inputs.skip_aot }}
           COLD_NUGET: ${{ github.event_name == 'schedule' && 'false' || inputs.cold_nuget }}
           AOT_ASSETS: ${{ inputs.aot_assets }}
+          RUNTIME_LIBCORECLR: ${{ inputs.runtime_libcoreclr }}
           PREBUILT_826: ${{ github.event_name == 'schedule' && 'true' || inputs.prebuilt_826 }}
           # JIT publish wedges in the HAP packaging step inside the runner tree;
           # use the verified prebuilt hap unless explicitly disabled.
