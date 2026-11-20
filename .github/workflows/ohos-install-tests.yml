@@ -56,6 +56,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: sh eng/ohos-install/tests/test-fetch-aot-packs-resolution.sh
 
+      - name: Host ilc architecture guard (NativeAOT host pack)
+        if: ${{ !cancelled() }}
+        run: sh eng/ohos-install/tests/test-ilc-arch-check.sh
+
       - name: Clean-machine GA plan (dry-run)
         if: ${{ !cancelled() }}
         run: sh eng/ohos-install/tests/test-clean-machine-plan.sh
