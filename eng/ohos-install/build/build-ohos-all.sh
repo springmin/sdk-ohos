@@ -1373,6 +1373,9 @@ for x in glob.glob(dirp+'/*.nuspec'): shutil.copy(x, dirp+'/$HOSTPACK_ID.nuspec'
   # (the device split publish hit the same issue, dotnet/runtime #133296); the
   # host ilc is a build tool, so size is secondary to a working compiler.
   info "rebuilding the host ilc ($host_rid), cross JIT for $ARCH..."
+  # Start clean: the directory is also ILCompiler_inbuild's normal output, and
+  # a stale target-arch file must not survive into the host pack.
+  rm -rf "$host_ilcd"
   ./.dotnet/dotnet build "$host_ilcp" -c "$CONFIG" -t:Publish \
     -p:TargetOS=openharmony -p:TargetArchitecture="$ARCH" -p:BuildArchitecture="$host_arch" \
     -p:CrossBuild=true -p:CrossHostArch="$host_arch" -p:RuntimeIdentifier="$host_rid" \
