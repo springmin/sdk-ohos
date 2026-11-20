@@ -318,6 +318,16 @@ if [ "$WANT_LIST" = 1 ]; then
     exit 0
 fi
 
+# A line does not have to mirror a host ilc for every RID (11.0.0 has only the
+# OHOS device compiler). Say so instead of leaving the user wondering why the
+# folder feed has no compiler for this machine.
+if [ -n "$HOST_RID" ]; then
+    case "$assets" in
+        *"runtime.$HOST_RID.Microsoft.DotNet.ILCompiler."*) ;;
+        *) echo "NOTE: $AOT_PACKS_VERSION has no host ilc for $HOST_RID; the SDK's stock host ilc is used" ;;
+    esac
+fi
+
 if [ "$WANT_CROSSGEN2" = 1 ]; then
     cg_tag="$(crossgen2_packs_tag "$AOT_PACKS_VERSION")"
     cg_asset="$(crossgen2_pack_asset "$AOT_PACKS_VERSION")"
