@@ -121,7 +121,9 @@ Added PackageDownload for Microsoft.NETCore.App.Runtime.NativeAOT.linux-musl-arm
 > `libclrjit_universal_arm64_x64.so` 交叉 JIT），并校验 `tools/ilc` 的 ELF 架构后
 > 重组同一个包；`aot-packs-*` 也开始镜像该 host ilc。桌面交叉发布因此不再依赖
 > stock nuget.org host ilc，`pack-sdk.sh` 的自签名发布也不再过滤该包、不再回退
-> dnceng 的官方 x64 ilc。
+> dnceng 的官方 x64 ilc。`fetch-nativeaot-packs.sh` 按 `HOST_RID` 只取本机可执行
+> 的 host ilc（设备 `openharmony-arm64`，linux-x64 桌面取 `linux-x64`），
+> `--list` 可预览选择结果。
 
 `springmin/sdk-ohos` Release **`aot-packs-11.0.0-rc.2`** 镜像了 rc.2 线的两件原生包
 （`SHA256SUMS` 随附、asset id `597667550`；来源 = `runtime-ohos`
