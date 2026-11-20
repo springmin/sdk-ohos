@@ -683,6 +683,12 @@ jobs:
           mkdir -p aot-release
           find "$ship" -maxdepth 1 -name "Microsoft.NETCore.App.Runtime.NativeAOT.openharmony-arm64.$RT_VERSION*.nupkg" ! -name '*symbols*' -exec cp {} aot-release/ \;
           find "$ship" -maxdepth 1 -name "runtime.openharmony-arm64.Microsoft.DotNet.ILCompiler.$RT_VERSION*.nupkg" ! -name '*symbols*' -exec cp {} aot-release/ \;
+          # The host ilc is built for the runner's RID (linux-x64 on CI).
+          # build-ohos-all.sh rebuilds it from the target ilc and verifies
+          # tools/ilc, so desktop cross-publish does not need the stock
+          # nuget.org host compiler.
+          host_rid="linux-$(uname -m | sed 's/x86_64/x64/; s/aarch64/arm64/')"
+          find "$ship" -maxdepth 1 -name "runtime.$host_rid.Microsoft.DotNet.ILCompiler.$RT_VERSION*.nupkg" ! -name '*symbols*' -exec cp {} aot-release/ \;
           # The host ILCompiler pack is built by nativeaot-packages.proj when
           # BuildHostTools=true; it carries the fork's BuildIntegration targets
           # (openharmony RID mapping, lld, Net.Security skip), so publish it

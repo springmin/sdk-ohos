@@ -1343,6 +1343,58 @@ for x in glob.glob(dirp+'/*.nuspec'): shutil.copy(x, dirp+'/$HOSTPACK_ID.nuspec'
   python3 "$SCRIPT_DIR/assemble-ilc-pack.py" "$ilcd" "$ilc_ref" "$ilcpk" "$rtpack_nupkg" "$BOOTSTRAP_RUNTIME_VERSION" --tfm "$TFM" \
     || die "assemble ilc split pack failed"
 
+  # --- host ilc pack: the compiler that runs on the build host -------------
+  # `clr.aot+packs` publishes the TARGET ilc (openharmony-arm64) under the
+  # `runtime.<hostRid>.Microsoft.DotNet.ILCompiler` name, so the pack contains
+  # an aarch64 apphost and cannot execute on the build host (pack-sdk.sh used
+  # to filter it out and fall back to the official nuget.org host ilc).
+  #
+  # Rebuild ILCompiler_inbuild (the in-build cross tool: host apphost + the
+  # TARGET JIT) with an explicit host RuntimeIdentifier.  The JIT is what makes
+  # the compiler able to emit openharmony-arm64 code:
+  # libclrjit_universal_arm64_x64.so is copied from the build's x64/ artifacts.
+  local host_os="linux"
+  local host_arch
+  case "$(uname -m)" in
+    x86_64|amd64)  host_arch="x64" ;;
+    aarch64|arm64) host_arch="arm64" ;;
+    *) die "unsupported build host architecture: $(uname -m)" ;;
+  esac
+  local host_elf_arch
+  case "$host_arch" in
+    x64)   host_elf_arch="x86-64" ;;
+    arm64) host_elf_arch="aarch64" ;;
+  esac
+  local host_rid="$host_os-$host_arch"
+  local host_ilcp="$RUNTIME_REPO/src/coreclr/tools/aot/ILCompiler/ILCompiler_inbuild.csproj"
+  local host_ilcd="$RUNTIME_REPO/artifacts/bin/coreclr/openharmony.$ARCH.$CONFIG/$host_arch/ilc"
+  # Keep trimming off: ILLink strips interface-dispatched methods such as
+  # CustomAttributeTypeProvider.GetPrimitiveType from ILCompiler.TypeSystem.dll
+  # (the device split publish hit the same issue, dotnet/runtime #133296); the
+  # host ilc is a build tool, so size is secondary to a working compiler.
+  info "rebuilding the host ilc ($host_rid), cross JIT for $ARCH..."
+  ./.dotnet/dotnet build "$host_ilcp" -c "$CONFIG" -t:Publish \
+    -p:TargetOS=openharmony -p:TargetArchitecture="$ARCH" -p:BuildArchitecture="$host_arch" \
+    -p:CrossBuild=true -p:CrossHostArch="$host_arch" -p:RuntimeIdentifier="$host_rid" \
+    -p:PublishTrimmed=false -p:IncludeSymbols=false -v:q -nologo \
+    2>&1 | tee -a "$LOG" || die "host ilc publish failed"
+  # Fail now, not when the SDK build tries to exec a foreign-arch binary.
+  python3 "$SCRIPT_DIR/check-elf-arch.py" "$host_ilcd/ilc" --expect "$host_elf_arch" \
+    || die "host ilc publish produced the wrong architecture"
+  local host_ilcpk="$ship/runtime.$host_rid.Microsoft.DotNet.ILCompiler.$RT_VERSION.nupkg"
+  local host_ilc_ref=$(ls "$ship"/runtime.$host_rid.Microsoft.DotNet.ILCompiler.*.nupkg 2>/dev/null | grep -v "$RT_VERSION" | head -1)
+  [ -n "$host_ilc_ref" ] || host_ilc_ref="$host_ilcpk"  # same-pack metadata is safe (atomic write)
+  [ -f "$host_ilc_ref" ] || die "host ilc reference pack missing: $host_ilc_ref"
+  python3 "$SCRIPT_DIR/assemble-ilc-pack.py" "$host_ilcd" "$host_ilc_ref" "$host_ilcpk" \
+    || die "assemble host ilc pack failed"
+  # The published artifact, not just the publish directory, is what consumers
+  # restore; check tools/ilc inside the nupkg too.
+  python3 "$SCRIPT_DIR/check-elf-arch.py" "$host_ilcpk" --entry tools/ilc --expect "$host_elf_arch" \
+    || die "assembled host ilc pack has the wrong architecture"
+  # The in-build symbols package was cut from the target ilc; it cannot match
+  # the host compiler. Drop it instead of publishing mismatched symbols.
+  rm -f "$ship/runtime.$host_rid.Microsoft.DotNet.ILCompiler.$RT_VERSION.symbols.nupkg"
+
   # --- crossgen2 pack: untrimmed split re-publish (device R2R) ---
   # The in-build crossgen2 pack is a TRIMMED SINGLE-FILE publish; ILLink strips
   # interface-dispatched methods such as CustomAttributeTypeProvider.GetPrimitiveType
