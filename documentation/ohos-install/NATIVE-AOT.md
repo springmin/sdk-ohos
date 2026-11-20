@@ -114,6 +114,14 @@ Added PackageDownload for Microsoft.NETCore.App.Runtime.NativeAOT.linux-musl-arm
 > `eng/ohos-install/tests/test-aot-host-provenance.sh` 校验 SHA + 两个 targets 的
 > openharmony 映射；`.github/workflows/ohos-aot-host-provenance.yml` 下载 release asset
 > 并执行该检查。
+>
+> **11.0.1+ 的 host ilc（2026-11-20）**：`build-ohos-all.sh` 不再把目标 ilc 装进
+> `runtime.<hostRID>.Microsoft.DotNet.ILCompiler`，而是用 runtime 的
+> `ILCompiler_inbuild` 重编 host 编译器（host apphost +
+> `libclrjit_universal_arm64_x64.so` 交叉 JIT），并校验 `tools/ilc` 的 ELF 架构后
+> 重组同一个包；`aot-packs-*` 也开始镜像该 host ilc。桌面交叉发布因此不再依赖
+> stock nuget.org host ilc，`pack-sdk.sh` 的自签名发布也不再过滤该包、不再回退
+> dnceng 的官方 x64 ilc。
 
 `springmin/sdk-ohos` Release **`aot-packs-11.0.0-rc.2`** 镜像了 rc.2 线的两件原生包
 （`SHA256SUMS` 随附、asset id `597667550`；来源 = `runtime-ohos`
