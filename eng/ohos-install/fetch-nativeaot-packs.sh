@@ -46,17 +46,20 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 LOCAL_DIR=""
 WANT_CROSSGEN2=0
+WANT_LIST=0
 DEST=""
 usage() {
     cat <<'EOF'
-usage: fetch-nativeaot-packs.sh [--crossgen2] [--local <dir-with-nupkgs>] [dest-dir]
+usage: fetch-nativeaot-packs.sh [--list] [--crossgen2] [--local <dir-with-nupkgs>] [dest-dir]
 
 Fetches the NativeAOT packs of the resolved build line (AOT_PACKS_VERSION,
 default: RT_VERSION) from the sdk-ohos mirror release, verifying the sha256
 pins in eng/ohos-install/versions.env. --crossgen2 also fetches the Crossgen2
 pack of the same line (JIT ReadyToRun; not needed for PublishAot).
+--list prints the host-selected assets without downloading.
 Env overrides: AOT_PACKS_VERSION, AOT_PACKS_TAG, AOT_PACKS_PROXY,
-AOT_PACKS_BASE_URL, CROSSGEN2_BASE_URL.
+AOT_PACKS_BASE_URL, CROSSGEN2_BASE_URL, HOST_RID (default: uname; selects
+the host ilc that this machine can execute).
 exit: 0 ok, 1 usage/download/verification error.
 EOF
 }
@@ -68,6 +71,7 @@ while [ $# -gt 0 ]; do
             LOCAL_DIR="$1"
             ;;
         --crossgen2) WANT_CROSSGEN2=1 ;;
+        --list) WANT_LIST=1 ;;
         -h|--help) usage; exit 0 ;;
         -*) echo "unknown argument: $1 (try --help)" >&2; exit 1 ;;
         *)
@@ -90,6 +94,63 @@ if [ -n "${AOT_PACKS_TAG:-}" ]; then
 fi
 AOT_PACKS_TAG="${AOT_PACKS_TAG:-$(aot_packs_tag "$AOT_PACKS_VERSION")}"
 assets="$(aot_packs_assets "$AOT_PACKS_VERSION")"
+
+# Host RID of the machine that will execute ilc. A mirror may carry host ilcs
+# for several RIDs (openharmony-arm64 for the device, linux-x64 for the
+# desktop build host). NuGet picks the exact RID, but fetching the others is
+# pure bandwidth (a device should not download a 36 MB x64 compiler, and a
+# linux-x64 host does not need the 43 MB OHOS compiler).
+if [ -z "${HOST_RID:-}" ]; then
+    _host_os="$(uname -s 2>/dev/null || true)"
+    case "$_host_os" in
+        HarmonyOS|OpenHarmony) _host_os=openharmony ;;
+        Linux)                 _host_os=linux ;;
+        Darwin)                _host_os=osx ;;
+        FreeBSD)               _host_os=freebsd ;;
+        *)                     _host_os="" ;;
+    esac
+    _host_arch="$(uname -m 2>/dev/null || true)"
+    case "$_host_arch" in
+        x86_64|amd64)  _host_arch=x64 ;;
+        aarch64|arm64) _host_arch=arm64 ;;
+        armv7l|armv7)  _host_arch=arm ;;
+        *)             _host_arch="" ;;
+    esac
+    if [ -n "$_host_os" ] && [ -n "$_host_arch" ]; then
+        HOST_RID="$_host_os-$_host_arch"
+    else
+        HOST_RID=""
+    fi
+fi
+
+# asset_host_rid <asset> -> RID encoded in runtime.<rid>.Microsoft.DotNet.ILCompiler.*
+# (empty for every other asset: build integration, target runtime pack, ILLink).
+asset_host_rid() {
+    case "$1" in
+        runtime.*.Microsoft.DotNet.ILCompiler.*)
+            _asset_rest="${1#runtime.}"
+            printf '%s' "${_asset_rest%%.Microsoft.DotNet.ILCompiler.*}" ;;
+        *) printf '%s' "" ;;
+    esac
+}
+
+# asset_selected <asset>: non-host assets always; host ilcs only for HOST_RID.
+asset_selected() {
+    _asset_rid="$(asset_host_rid "$1")"
+    if [ -z "$_asset_rid" ]; then
+        return 0
+    fi
+    [ -n "$HOST_RID" ] && [ "$_asset_rid" = "$HOST_RID" ]
+}
+
+if [ -z "$HOST_RID" ] && [ -n "$assets" ]; then
+    echo "WARN: could not derive HOST_RID; host ilc packs are skipped (the SDK's stock host ilc is used)" >&2
+fi
+if [ "$WANT_LIST" = 1 ]; then
+    echo "line: $AOT_PACKS_VERSION"
+    echo "mirror: $AOT_PACKS_TAG"
+    echo "host_rid: ${HOST_RID:-unknown}"
+fi
 
 if [ -z "$AOT_PACKS_TAG" ] || [ -z "$assets" ]; then
     echo "ERROR: no NativeAOT mirror release for version '${AOT_PACKS_VERSION:-<unset>}'" >&2
@@ -224,18 +285,38 @@ verify_nativeaot_shim() {
     return 0
 }
 
-mkdir -p "$DEST"
+if [ "$WANT_LIST" != 1 ]; then
+    mkdir -p "$DEST"
+fi
 
 failed=0
 for asset in $assets; do
+    if ! asset_selected "$asset"; then
+        _asset_rid="$(asset_host_rid "$asset")"
+        if [ "$WANT_LIST" = 1 ]; then
+            printf 'skip  %s (host %s)\n' "$asset" "$_asset_rid"
+        else
+            echo "skipping $asset (host pack for $_asset_rid, this host is ${HOST_RID:-unknown})"
+        fi
+        continue
+    fi
     want="$(aot_pack_sha256 "$asset")"
     if [ -z "$want" ]; then
         echo "ERROR: no pinned sha256 for $asset (update aot_pack_sha256 in versions.env)" >&2
         failed=1
         continue
     fi
+    if [ "$WANT_LIST" = 1 ]; then
+        printf 'fetch %s\n' "$asset"
+        continue
+    fi
     fetch_asset "$asset" "$want" "$AOT_PACKS_BASE_URL" "$AOT_PACKS_TAG" || failed=1
 done
+
+if [ "$WANT_LIST" = 1 ]; then
+    [ "$failed" = 0 ] || exit 1
+    exit 0
+fi
 
 if [ "$WANT_CROSSGEN2" = 1 ]; then
     cg_tag="$(crossgen2_packs_tag "$AOT_PACKS_VERSION")"

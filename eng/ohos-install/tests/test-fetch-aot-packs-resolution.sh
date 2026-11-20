@@ -105,6 +105,42 @@ done
     && pass "an unknown line maps to no tag/assets" \
     || fail "an unknown line must not map to a tag/assets"
 
+# ---- host ilc selection ------------------------------------------------------
+# A mirror may carry host ilcs for more than one RID (openharmony-arm64 for the
+# device, linux-x64 for the desktop build host). --list exercises the same
+# selection logic without downloading. Use the current line so the test works
+# on both the dev and servicing branches.
+list_ohos="$(AOT_PACKS_VERSION="$RT_VERSION" HOST_RID=openharmony-arm64 sh "$FETCH" --list 2>&1)"; rc=$?
+expect_rc "$rc" 0 "host-aware --list (openharmony-arm64) exits 0" "$list_ohos"
+expect_msg "$list_ohos" "fetch runtime.openharmony-arm64.Microsoft.DotNet.ILCompiler." \
+    "the OpenHarmony host ilc is selected on the device"
+
+list_linux="$(AOT_PACKS_VERSION="$RT_VERSION" HOST_RID=linux-x64 sh "$FETCH" --list 2>&1)"; rc=$?
+expect_rc "$rc" 0 "host-aware --list (linux-x64) exits 0" "$list_linux"
+case "$list_linux" in
+    *"fetch runtime.openharmony-arm64.Microsoft.DotNet.ILCompiler."*)
+        fail "the OpenHarmony host ilc must be skipped on linux-x64" ;;
+    *) pass "the OpenHarmony host ilc is skipped on linux-x64" ;;
+esac
+case "$(aot_packs_assets "$RT_VERSION")" in
+    *runtime.linux-x64.Microsoft.DotNet.ILCompiler.*)
+        expect_msg "$list_linux" "fetch runtime.linux-x64.Microsoft.DotNet.ILCompiler." \
+            "the linux-x64 host ilc is selected on linux-x64" ;;
+    *) pass "this line has no linux-x64 host ilc (nothing to select)" ;;
+esac
+
+list_win="$(AOT_PACKS_VERSION="$RT_VERSION" HOST_RID=win-x64 sh "$FETCH" --list 2>&1)"; rc=$?
+expect_rc "$rc" 0 "host-aware --list (win-x64) exits 0" "$list_win"
+case "$list_win" in
+    *"fetch runtime."*".Microsoft.DotNet.ILCompiler."*)
+        fail "no mirrored host ilc matches win-x64; none must be selected" ;;
+    *) pass "no mirrored host ilc matches win-x64" ;;
+esac
+expect_msg "$list_win" "fetch Microsoft.NETCore.App.Runtime.NativeAOT.openharmony-arm64." \
+    "the target runtime pack is selected on every host"
+expect_msg "$list_win" "fetch Microsoft.DotNet.ILCompiler." \
+    "the build integration pack is selected on every host"
+
 # ---- the script's fail-closed path -------------------------------------------
 out="$(AOT_PACKS_VERSION=11.0.0-rc.9.1.1 sh "$FETCH" "$TMP/out-unknown" 2>&1)"; rc=$?
 expect_rc "$rc" 1 "an unmapped line fails closed before any download" "$out"
