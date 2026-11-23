@@ -105,6 +105,9 @@ OpenHarmony 只执行带 `.codesign` 段的 ELF。**Release 产物未预签名**
 > 签名分两层：SDK 负责 build/publish 产物的本地执行签名（`.codesign`，覆盖
 > `dotnet run file.cs` / portable，对应 macOS 的 `codesign --sign -`）；HAP 载荷和
 > HAP 包的分发签名由 OpenHarmony workload 的 HAP targets 负责。两层都需要，不能互相替代。
+>
+> 构建/发布时的签名错误码（NETSDK1248–NETSDK1251）见
+> [SIGNING-ERRORS.md](SIGNING-ERRORS.md)。
 
 脚本按顺序使用签名工具（**selfsign 优先**）：
 1. `selfsign`（C# AOT 单文件签名工具，见下方）——脚本自动从
