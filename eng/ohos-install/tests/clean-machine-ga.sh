@@ -359,6 +359,20 @@ log "== install (isolated HOME/INSTALL_DIR) =="
 ) > "$LOG_DIR/install.log" 2>&1 || { tail -40 "$LOG_DIR/install.log"; die "install failed"; }
 log "install OK"
 
+# Swap in a CI cross-built runtime when provided, then re-sign it.
+if [ -n "${RUNTIME_LIBCORECLR:-}" ] && [ -f "$RUNTIME_LIBCORECLR" ]; then
+    _ver="$("$CLEAN_DOTNET/dotnet" --list-runtimes 2>/dev/null | awk '/Microsoft.NETCore.App/{print $2; exit}')"
+    _rt="$CLEAN_DOTNET/shared/Microsoft.NETCore.App/$_ver/libcoreclr.so"
+    if [ -f "$_rt" ]; then
+        cp -f "$_rt" "$_rt.bak" 2>/dev/null || true
+        cp -f "$RUNTIME_LIBCORECLR" "$_rt"
+        if [ -x "$CLEAN_DOTNET/selfsign" ]; then "$CLEAN_DOTNET/selfsign" "$_rt" --force >/dev/null 2>&1 || true; fi
+        log "installed CI runtime: $RUNTIME_LIBCORECLR -> $_rt"
+    else
+        log "WARN: no libcoreclr.so under $CLEAN_DOTNET"
+    fi
+fi
+
 export HOME="$CLEAN_HOME"
 export DOTNET_ROOT="$CLEAN_DOTNET"
 export PATH="$CLEAN_DOTNET:$HOST_PATH"
