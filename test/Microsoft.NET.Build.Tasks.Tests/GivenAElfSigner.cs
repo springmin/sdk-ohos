@@ -325,6 +325,80 @@ namespace Microsoft.NET.Build.Tasks.UnitTests
         }
 
         [TestMethod]
+        public void SignFileInPlace_ReSignsAStaleForeignSignatureWhenOptedIn()
+        {
+            // Build/publish outputs start from pre-signed inputs (the apphost from the runtime
+            // pack); once the build rewrites them the retained foreign signature is stale and the
+            // device rejects the file with EPERM. With the build-output opt-in, it is re-signed.
+            byte[] signed = ElfSigner.SignElf(CreateMinimalElf(), force: false);
+            byte[] staleForeign = MakeForeignSignature(signed, intact: false);
+
+            string path = TempPath();
+            try
+            {
+                File.WriteAllBytes(path, staleForeign);
+
+                ElfSigner.SignFileInPlace(path, reSignStaleForeign: true)
+                    .Should().Be(ElfSigner.SignOutcome.StaleForeignSignatureReplaced);
+                ElfSigner.SignFileInPlace(path).Should().Be(ElfSigner.SignOutcome.AlreadyValid);
+            }
+            finally
+            {
+                File.Delete(path);
+            }
+        }
+
+        [TestMethod]
+        public void SignFileInPlace_RetainsAnIntactForeignSignatureWhenOptedIn()
+        {
+            // A foreign signature that still matches the content belongs to whoever published the
+            // file; the build-output opt-in must only replace stale ones.
+            byte[] signed = ElfSigner.SignElf(CreateMinimalElf(), force: false);
+            byte[] intactForeign = MakeForeignSignature(signed, intact: true);
+
+            string path = TempPath();
+            try
+            {
+                File.WriteAllBytes(path, intactForeign);
+
+                ElfSigner.SignFileInPlace(path, reSignStaleForeign: true)
+                    .Should().Be(ElfSigner.SignOutcome.ForeignSignatureRetained);
+                File.ReadAllBytes(path).Should().Equal(intactForeign);
+            }
+            finally
+            {
+                File.Delete(path);
+            }
+        }
+
+        /// <summary>
+        /// Turns a self-signed ELF into a foreign one by clearing FLAG_SELF_SIGN, optionally
+        /// re-computing the descriptor digest so the foreign signature still matches the content.
+        /// </summary>
+        private static byte[] MakeForeignSignature(byte[] signed, bool intact)
+        {
+            byte[] foreign = (byte[])signed.Clone();
+            (int csOffset, _) = FindSection(foreign, ".codesign")!.Value;
+            int descriptor = csOffset + 8;
+            Array.Clear(foreign, descriptor + 112, 4); // FLAG_SELF_SIGN = 0
+
+            if (intact)
+            {
+                byte[] descriptorForDigest = foreign.AsSpan(descriptor, DescriptorSize).ToArray();
+                descriptorForDigest[4] = descriptorForDigest[5] = descriptorForDigest[6] = descriptorForDigest[7] = 0;
+                byte[] signature;
+                using (SHA256 sha = SHA256.Create())
+                {
+                    signature = sha.ComputeHash(descriptorForDigest);
+                }
+
+                Buffer.BlockCopy(signature, 0, foreign, descriptor + DescriptorSize, 32);
+            }
+
+            return foreign;
+        }
+
+        [TestMethod]
         [OSCondition(OperatingSystems.Linux | OperatingSystems.OSX)]
         public void EnumerateFilesWithoutLinks_SkipsFileDirectoryAndCyclicLinks()
         {
