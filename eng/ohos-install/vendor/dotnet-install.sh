@@ -814,7 +814,10 @@ install_ohos_workload_bundle() {
 
     say "Installing the OpenHarmony workload from $bundle_dir."
     local rc=0
-    ( export DOTNET_ROOT="$install_root"; export DOTNET_INSTALL_DIR="$install_root"; sh "$bundle_dir/install-ohos-workload.sh" ) || rc=$?
+    # --dotnet pins the workload to this installation; without it the bundle script
+    # falls back to `dotnet` on PATH and installs into the wrong SDK.
+    ( export DOTNET_ROOT="$install_root"; export DOTNET_INSTALL_DIR="$install_root"; \
+      sh "$bundle_dir/install-ohos-workload.sh" --dotnet "$install_root/dotnet" "$bundle_dir" ) || rc=$?
     rm -rf "$work_dir"
     return $rc
 }
