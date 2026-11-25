@@ -167,12 +167,15 @@ jobs:
             echo "copied $b -> $3/bin"
           }
           copy_bin "$dl/v826" verify.dll "$root/prebuilt-826"
-          copy_bin "$dl/vjit" "*.hap" "$root/prebuilt-jit"
-          # the container publishes an unsigned hap; the gate expects the plain name
-          if [ -f "$root/prebuilt-jit/bin/Release/net11.0-openharmony26.0/openharmony-arm64/hello-maui-app-unsigned.hap" ]; then
-            cp -f "$root/prebuilt-jit/bin/Release/net11.0-openharmony26.0/openharmony-arm64/hello-maui-app-unsigned.hap" \
-                  "$root/prebuilt-jit/bin/Release/net11.0-openharmony26.0/openharmony-arm64/hello-maui-app.hap"
-          fi
+          # the JIT hap (133 MB) does not survive artifact download from this host;
+          # pull the release asset through the ghfast mirror instead
+          _jd="$root/prebuilt-jit/bin/Release/net11.0-openharmony26.0/openharmony-arm64"
+          mkdir -p "$_jd"
+          curl -fL --retry 5 --connect-timeout 20 --max-time 900 \
+            -o "$_jd/hello-maui-app.hap" \
+            "https://ghfast.top/https://github.com/springmin/runtime-ohos/releases/download/ci-prebuilts/jit-hap.hap" \
+            && echo "downloaded JIT hap from ci-prebuilts" || echo "WARN: JIT hap download failed"
+          ls -l "$_jd/hello-maui-app.hap" 2>/dev/null || true
           ls -l "$root/prebuilt-826/bin/Debug/net11.0/verify.dll" 2>/dev/null || true
 
       - name: Run the clean-machine GA gate
