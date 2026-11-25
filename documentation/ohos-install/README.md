@@ -229,20 +229,18 @@ OHOS SDK / harmonybrew（提供 binary-sign-tool），或把预构建
 个别文件签名失败不会中断（仅警告），但 `failed > 0` 会终止安装。重跑脚本即可。
 
 **Q: 构建成功，但 `dotnet run` 报 `Operation not permitted`**
-GA 的 `Microsoft.NETCore.App.Host.openharmony-arm64` pack 自带 `.codesign`；构建改写
-apphost 后，`OpenHarmonyCodesign` 对「外来签名」默认保留（不覆盖），留下的签名已与
-内容不匹配，设备按 EPERM 拒绝执行（`eng/ohos-install/tests/check-elf-codesign.py`
-会报 `root mismatch`）。
+裸 `dotnet build`（不带 `-r`）过去不会启用 `_OpenHarmonyCodeSign`：该开关在 targets
+导入时求值，而 `AppHostRuntimeIdentifier` 要到 `ProcessFrameworkReferences` 之后才有值，
+于是 apphost 保留了从 runtime pack 复制来的、对改写后内容已失效的签名；设备按
+EPERM 拒绝执行（`eng/ohos-install/tests/check-elf-codesign.py` 报 `root mismatch`）。
 
-临时绕过（重签构建输出）：
+当前 SDK 源码已修复：
+- `_OpenHarmonyResolveCodeSign` 在 `Build`/`Publish` 前重新求值开关，裸 build 与
+  `dotnet run` 也会签名；
+- build/publish 输出遇到「已失效的外来签名」会强制重签（仍然匹配内容的外来签名保留）。
 
-```sh
-eng/ohos-install/selfsign-ohos-arm64 bin/Debug/net11.0/<app> --force
-dotnet run --no-build
-```
-
-后续修复方向：构建任务对「已失效的外来签名」强制重签（仅限 build/publish 输出），
-或让 apphost pack 以未签名形式分发。HAP 打包路径不受影响。
+已发布的 GA SDK 若仍遇到：临时 `eng/ohos-install/selfsign-ohos-arm64 <app> --force`，
+或构建时显式加 `-r openharmony-arm64`。HAP 打包路径不受影响。
 
 ## RID independence (2026-09-03)
 
