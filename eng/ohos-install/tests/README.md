@@ -9,6 +9,9 @@ needed) and prints a PASS/FAIL summary:
   `Microsoft.NET.Sdk.targets`.
 - `test-hostfeed-verification.sh` — build-time hostfeed digest enforcement (H-C1), mocked transport.
 - `test-installer-verification.sh` — installer download-verification hardening (D-4), mocked transport.
+- `test-install-from-pins.sh` — offline contract for `install-dotnet-from-pins.sh`: the versions.env
+  thin wrapper installs the pinned layout through the vendored `dotnet-install.sh`, runs the shared
+  post-install steps (DOTNET_ROOT/TMPDIR profile entries) and refuses an unpinned tarball.
 - `test-sdk-arch-check.sh` — SDK architecture guard around `build/check-sdk-arch.py` (prune + tarball verify).
 - `test-packsplit-equivalence.sh` — stage-4 monolith vs split pipeline equivalence against stubbed
   checkouts (6 cases; recreates its scratch dir at startup, see the header for `OHOS_PACKSPLIT_*`
