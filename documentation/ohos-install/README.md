@@ -60,6 +60,31 @@ sh eng/ohos-install/install-dotnet-ohos.sh https://github.com/springmin/sdk-ohos
 INSTALL_DIR=/data/xxx/dotnet sh eng/ohos-install/install-dotnet-ohos.sh sdk
 ```
 
+### 方式 B：versions.env 薄封装（共享 dotnet-install.sh）
+
+`eng/ohos-install/install-dotnet-from-pins.sh` 读取同一份
+`eng/ohos-install/versions.env`，把下载、摘要校验、解压、ELF 签名和（可选）workload
+交给 `eng/ohos-install/vendor/dotnet-install.sh`（来自
+`springmin/install-scripts-ohos`，见 `vendor/README.md`）。本仓只保留后置步骤：
+C++ 运行时、`libhostpolicy`、profile 写入。
+
+```sh
+sh eng/ohos-install/install-dotnet-from-pins.sh sdk
+sh eng/ohos-install/install-dotnet-from-pins.sh runtime
+
+# 本地文件 / 镜像 / 关闭签名（验证用）
+SDK_TARBALL_URL=file:///data/.../dotnet-sdk-11.0.100-openharmony-arm64.tar.gz \
+INSTALL_DIR=/data/xxx/dotnet SIGN_MODE=none \
+  sh eng/ohos-install/install-dotnet-from-pins.sh sdk
+
+# 用另一份 pin 文件
+OHOS_VERSIONS_ENV=~/versions-nosha.env sh eng/ohos-install/install-dotnet-from-pins.sh sdk
+```
+
+无 `SDK_TARBALL_SHA256` 时**拒绝安装**（`ALLOW_UNVERIFIED=1` 仅限本地实验）。
+workload 不做自动 release 解析；需要时传 `WORKLOAD_BUNDLE=<path|url>`，或继续用
+方式 A。
+
 脚本自动完成：
 1. 从 GitHub Release 下载（或使用本地 tar.gz）
 2. 解压到 `$HOME/.dotnet`（默认）
