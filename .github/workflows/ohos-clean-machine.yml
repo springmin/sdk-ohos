@@ -99,6 +99,11 @@ on:
         required: false
         default: ""
 
+      prebuilt_run:
+        description: "Optional runtime-ohos run id to download verify826/jit-hap from"
+        required: false
+        default: ""
+
 permissions:
   contents: read
   issues: write
@@ -141,6 +146,30 @@ jobs:
       - name: Prepare clean root
         run: rm -rf "${{ runner.workspace }}/ohos-clean-ga"
 
+      - name: Download CI prebuilts
+        if: inputs.prebuilt_run != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ inputs.prebuilt_run }}
+        run: |
+          set -eu
+          root="${{ runner.workspace }}/ohos-clean-ga"
+          dl="${{ runner.temp }}/prebuilt-dl"
+          rm -rf "$dl"; mkdir -p "$dl"
+          gh run download "$RUN_ID" -R springmin/runtime-ohos -n verify826 -D "$dl/v826" || true
+          gh run download "$RUN_ID" -R springmin/runtime-ohos -n jit-hap -D "$dl/vjit" || true
+          copy_bin() {
+            m="$(find "$1" -name "$2" -path '*/bin/*' 2>/dev/null | head -1)"
+            if [ -z "$m" ]; then echo "WARN: $2 not found under $1"; return 0; fi
+            b="$(dirname "$m")"
+            while [ "$(basename "$b")" != bin ]; do b="$(dirname "$b")"; done
+            mkdir -p "$3"; rm -rf "$3/bin"; cp -a "$b" "$3/bin"
+            echo "copied $b -> $3/bin"
+          }
+          copy_bin "$dl/v826" verify.dll "$root/prebuilt-826"
+          copy_bin "$dl/vjit" hello-maui-app.hap "$root/prebuilt-jit"
+          ls -l "$root/prebuilt-826/bin/Debug/net11.0/verify.dll" 2>/dev/null || true
+
       - name: Run the clean-machine GA gate
         timeout-minutes: 120
         env:
@@ -159,6 +188,8 @@ jobs:
           AOT_ASSETS: ${{ inputs.aot_assets }}
           RUNTIME_LIBCORECLR: ${{ inputs.runtime_libcoreclr }}
           PREBUILT_826: ${{ github.event_name == 'schedule' && 'true' || inputs.prebuilt_826 }}
+          PREBUILT_826_DIR: ${{ inputs.prebuilt_run != '' && format('{0}/ohos-clean-ga/prebuilt-826', runner.workspace) || '' }}
+          PREBUILT_JIT_DIR: ${{ inputs.prebuilt_run != '' && format('{0}/ohos-clean-ga/prebuilt-jit', runner.workspace) || '' }}
           # JIT publish wedges in the HAP packaging step inside the runner tree;
           # use the verified prebuilt hap unless explicitly disabled.
           PREBUILT_JIT: ${{ inputs.prebuilt_jit == 'false' && 'false' || 'true' }}
