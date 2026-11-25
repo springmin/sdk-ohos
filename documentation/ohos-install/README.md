@@ -228,6 +228,22 @@ OHOS SDK / harmonybrew（提供 binary-sign-tool），或把预构建
 **Q: 签名报 `failed=N`**
 个别文件签名失败不会中断（仅警告），但 `failed > 0` 会终止安装。重跑脚本即可。
 
+**Q: 构建成功，但 `dotnet run` 报 `Operation not permitted`**
+GA 的 `Microsoft.NETCore.App.Host.openharmony-arm64` pack 自带 `.codesign`；构建改写
+apphost 后，`OpenHarmonyCodesign` 对「外来签名」默认保留（不覆盖），留下的签名已与
+内容不匹配，设备按 EPERM 拒绝执行（`eng/ohos-install/tests/check-elf-codesign.py`
+会报 `root mismatch`）。
+
+临时绕过（重签构建输出）：
+
+```sh
+eng/ohos-install/selfsign-ohos-arm64 bin/Debug/net11.0/<app> --force
+dotnet run --no-build
+```
+
+后续修复方向：构建任务对「已失效的外来签名」强制重签（仅限 build/publish 输出），
+或让 apphost pack 以未签名形式分发。HAP 打包路径不受影响。
+
 ## RID independence (2026-09-03)
 
 Per review guidance (openharmony must not pretend to be a Linux flavor at the RID
