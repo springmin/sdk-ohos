@@ -48,11 +48,33 @@ runtime right after the SDK install, re-signing it with the deployed `selfsign`.
     `-p:OpenHarmonyHapSigning=false` and let the device side sign
     (`selfsign` / `sign-for-device.sh`).
 
+## AOT in the container (done)
+
+`aot-hap` builds the AOT hap inside the same image. What it took:
+
+1. fetch the `-rtm` pack assets (`Microsoft.DotNet.ILCompiler.11.0.0-rtm`,
+   `Microsoft.NETCore.App.Runtime.NativeAOT.openharmony-arm64.11.0.0-rtm`,
+   `runtime.openharmony-arm64.Microsoft.DotNet.ILCompiler.11.0.0-rtm`,
+   `Microsoft.NET.ILLink.Tasks.11.0.0-rtm.*`) into `$AOT_WORKDIR/feed`;
+2. register that folder **and** the mirrored Arcade nupkg as `packageSources`
+   (the SDK resolver ignores `RestoreSources`);
+3. `publish-aot.sh` pins `--source "$BASE/feed"`, which hides nuget.org — patch
+   the script in the job to add the offline feed and nuget.org;
+4. analyzers must be off (`CA5394` in the maui-ohos slice is fatal otherwise)
+   and signing is skipped (`-p:OpenHarmonyHapSigning=false`);
+5. link with the image wrappers, not the host binutils:
+   `CppCompilerAndLinker=/opt/ohos-toolchain/bin/aarch64-linux-ohos-cc` and
+   `ObjCopyName=/opt/ohos-toolchain/bin/aarch64-linux-ohos-objcopy`
+   (otherwise `crtn.o` is missing and `objcopy` cannot parse the arm64 `.so`).
+
+Result: `EXIT=0`, IL2026/IL3050/IL3051 = 0, hap ≈ 22 MB
+(run `45523756761`).
+
 ## Still open
 
-- **AOT in the container**: needs the `aot-packs-11.0.0-rtm` feed installed in
-  the image and `publish-aot.sh` (with `AOT_WORKDIR`/`DOTNET`) instead of a plain
-  `dotnet publish`. The gate keeps using `prebuilt_aot` until this lands.
+- **`cross` is flaky**: `ld.lld: cannot open .../libruntimeinfo.a` — a ninja
+  parallel-build race. Re-running the job passes. Mitigate by limiting ninja
+  parallelism (shim `ninja` with `-j4`) if it becomes frequent.
 - **Crash dumps** are unavailable on the port (`createdump` only dumps its
   parent, `ptrace` returns EPERM, `DOTNET_DbgEnableMiniDump` writes nothing), so
   `runtime-ohos#2` stays blocked on dump support.
