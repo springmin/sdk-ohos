@@ -167,7 +167,12 @@ jobs:
             echo "copied $b -> $3/bin"
           }
           copy_bin "$dl/v826" verify.dll "$root/prebuilt-826"
-          copy_bin "$dl/vjit" hello-maui-app.hap "$root/prebuilt-jit"
+          copy_bin "$dl/vjit" "*.hap" "$root/prebuilt-jit"
+          # the container publishes an unsigned hap; the gate expects the plain name
+          if [ -f "$root/prebuilt-jit/bin/Release/net11.0-openharmony26.0/openharmony-arm64/hello-maui-app-unsigned.hap" ]; then
+            cp -f "$root/prebuilt-jit/bin/Release/net11.0-openharmony26.0/openharmony-arm64/hello-maui-app-unsigned.hap" \
+                  "$root/prebuilt-jit/bin/Release/net11.0-openharmony26.0/openharmony-arm64/hello-maui-app.hap"
+          fi
           ls -l "$root/prebuilt-826/bin/Debug/net11.0/verify.dll" 2>/dev/null || true
 
       - name: Run the clean-machine GA gate
