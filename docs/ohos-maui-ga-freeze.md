@@ -51,6 +51,10 @@ the GA build of `verify.dll` against `slice/11.0.10` succeeded in container CI
   `Microsoft.AspNetCore.App.Runtime.openharmony-arm64 11.0.1` in `feed/`.
 - The clean-machine gate now installs that bundle (version, sha256 and
   manifest verified in `install.log`/`workload-list.log`).
+- The container hap jobs install workload **1.0.0** because the linux-x64
+  SDK 11.0.100 known reference requests the 11.0.0 BCL runtime pack; the
+  1.0.1 bundle is installed and validated by the clean-machine gate. This is
+  the documented limit of the current x64 container image, not a MAUI change.
 
 ## M3 — 826 re-baseline against MAUI 11.0.10
 
