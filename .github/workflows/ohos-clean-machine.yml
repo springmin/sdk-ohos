@@ -60,6 +60,10 @@ on:
         description: "Local ohos-workload checkout on the runner"
         required: false
         default: "/storage/Users/currentUser/springsources/ohos-workload"
+      maui_source:
+        description: "Local maui-ohos checkout on the runner"
+        required: false
+        default: "/storage/Users/currentUser/springsources/maui-ohos"
       skip_826:
         description: "Skip the 826 harness"
         type: choice
@@ -136,7 +140,7 @@ jobs:
 
       - name: Check out maui-ohos
         env:
-          MAUI_SOURCE: /storage/Users/currentUser/springsources/maui-ohos
+          MAUI_SOURCE: ${{ github.event_name == 'schedule' && '/storage/Users/currentUser/springsources/maui-ohos' || inputs.maui_source }}
         run: |
           set -euxo pipefail
           rm -rf "$GITHUB_WORKSPACE/maui-ohos"
@@ -184,10 +188,10 @@ jobs:
           CLEAN_ROOT: ${{ runner.workspace }}/ohos-clean-ga
           OHOS_WORKLOAD_DIR: ${{ github.workspace }}/ohos-workload
           SDK_TARBALL: ${{ inputs.sdk_tarball != '' && inputs.sdk_tarball || '/data/storage/el2/base/tmp/opencode/ga-clean/dotnet-sdk-11.0.100-openharmony-arm64.tar.gz' }}
-          WORKLOAD_BUNDLE: ${{ inputs.workload_bundle != '' && inputs.workload_bundle || '/storage/Users/currentUser/springsources/ohos-workload/dist/openharmony-workload-1.0.0.tar.gz' }}
+          WORKLOAD_BUNDLE: ${{ inputs.workload_bundle != '' && inputs.workload_bundle || '/storage/Users/currentUser/springsources/ohos-workload/dist/openharmony-workload-1.0.1.tar.gz' }}
           SDK_TARBALL_SHA256: ${{ inputs.sdk_sha256 != '' && inputs.sdk_sha256 || 'a8fa784e950521895c2986252566ac78ca0f95934f6a4e51fad3ea0ccf000c56' }}
-          WORKLOAD_BUNDLE_SHA256: ${{ inputs.workload_sha256 != '' && inputs.workload_sha256 || '86ef38e3146dd8294b8c5d027dcdcd0f07306012c8dddc0a2919592a9ac63700' }}
-          WORKLOAD_BUNDLE_VERSION: ${{ inputs.workload_version != '' && inputs.workload_version || '1.0.0' }}
+          WORKLOAD_BUNDLE_SHA256: ${{ inputs.workload_sha256 != '' && inputs.workload_sha256 || '088b585d46e4d28fbfdcefe5372e2e44463dfedcb778b529702c786437813cd4' }}
+          WORKLOAD_BUNDLE_VERSION: ${{ inputs.workload_version != '' && inputs.workload_version || '1.0.1' }}
           SKIP_DEVICE: ${{ github.event_name == 'schedule' && 'true' || inputs.skip_device }}
           SKIP_826: ${{ github.event_name == 'schedule' && 'false' || inputs.skip_826 }}
           SKIP_JIT: ${{ github.event_name == 'schedule' && 'false' || inputs.skip_jit }}
