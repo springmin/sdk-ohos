@@ -442,6 +442,11 @@ kill_workspace_build_strays() {
 run_826() { # <log>
     _log="$1"
     : > "$_log"
+    # A prebuilt verify.dll embeds the CI build machine's MauiSliceDir, which does
+    # not exist here. Point the suite's source-contract checks at the slice the
+    # gate checked out next to the workload.
+    MAUI_SLICE_DIR="${MAUI_SLICE_DIR:-$W/maui-ohos/src/Core/src/Platform/OpenHarmony}"
+    export MAUI_SLICE_DIR
     kill_workspace_build_strays
     (
       cd "$OHOS_WORKLOAD_DIR/test/maui-platform-verify" || exit 1
@@ -532,16 +537,18 @@ if [ "$SKIP_JIT" != 1 ]; then
     log "== JIT publish =="
     kill_workspace_build_strays
     _jit_hap="$OHOS_WORKLOAD_DIR/test/hello-maui-app/bin/Release/net11.0-openharmony26.0/openharmony-arm64/hello-maui-app.hap"
+    _jit_prebuilt=0
     if [ "${PREBUILT_JIT:-0}" = 1 ]; then
         _pj="${PREBUILT_JIT_DIR:-/data/storage/el2/base/tmp/opencode/prebuilt-jit}"
         [ -f "$_pj/hello-maui-app.hap" ] || die "PREBUILT_JIT=1 but $_pj/hello-maui-app.hap missing"
         mkdir -p "$(dirname "$_jit_hap")"
         cp -a "$_pj"/. "$(dirname "$_jit_hap")/"
         cp -f "$_pj/jit-publish.log" "$LOG_DIR/jit-publish.log" 2>/dev/null || true
+        _jit_prebuilt=1
         log "JIT using prebuilt hap from $_pj"
     fi
     _j=1
-    while [ "$_j" -le 6 ] && { [ ! -f "$_jit_hap" ] || [ ! -f "$LOG_DIR/jit-publish.log" ]; }; do
+    while [ "$_jit_prebuilt" = 0 ] && [ "$_j" -le 6 ] && { [ ! -f "$_jit_hap" ] || [ ! -f "$LOG_DIR/jit-publish.log" ]; }; do
         log "JIT publish attempt $_j/6"
         rm -rf "$TMPDIR"/MSBuildTemp* "$TMPDIR"/.dotnet/lockfiles 2>/dev/null || true
         ( cd "$OHOS_WORKLOAD_DIR/test/hello-maui-app" && \
@@ -556,7 +563,12 @@ if [ "$SKIP_JIT" != 1 ]; then
         sleep 3
     done
     [ -f "$_jit_hap" ] || { tail -40 "$LOG_DIR/jit-publish.log"; die "JIT publish failed"; }
-    grep -q 'OpenHarmony: signed' "$LOG_DIR/jit-publish.log" || die "JIT publish did not sign the hap"
+    if [ "$_jit_prebuilt" = 0 ]; then
+        grep -q 'OpenHarmony: signed' "$LOG_DIR/jit-publish.log" || die "JIT publish did not sign the hap"
+    else
+        # CI publishes the hap unsigned; sign_and_start signs it for the device.
+        log "JIT prebuilt hap is unsigned by design"
+    fi
     JIT_HAP="$_jit_hap"
     [ "$(unzip -p "$JIT_HAP" ets/modules.abc | sha256sum | awk '{print $1}')" = "9aa02cf80d74f53662330e25bead00c0e4b1b059c824d24fabfab17ff43089b3" ] \
         || die "JIT hap does not carry the 38-built UI shell"
