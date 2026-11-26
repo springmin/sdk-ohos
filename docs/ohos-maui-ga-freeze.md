@@ -77,12 +77,19 @@ The same harness against the rc.2 baseline still prints
 
 ## M4 — clean-machine and device validation
 
-- Container CI (GA slice + MAUI 11.0.10): run `45772391744` —
-  `cross`, `build verify.dll`, `build JIT hap`, `build AOT hap` all success.
-- Clean-machine gate: run `45788553893` (**completed/success**) with
+- Container CI (GA slice + MAUI 11.0.10): run `45792329302` —
+  `cross`, `build verify.dll`, `build JIT hap`, `build AOT hap` all success
+  (the earlier `45772391744` produced the same four green jobs).
+- Clean-machine gate `45788553893` (**completed/success**) with
   SDK 11.0.100 (`a8fa...`), workload bundle 1.0.1 (`088b...`),
   `prebuilt_run=45772391744` and `maui_source=slice/11.0.10`.
-  The job installed the workload and reported:
+  This run used the cached AOT IL-gate log because that artifact predated
+  the log-staging step.
+- Clean-machine gate `45794120507` (**completed/success**) with
+  `prebuilt_run=45792329302`: the fresh AOT artifact is used and its own
+  `publish-aot.log` is consumed (`using the fresh AOT IL-gate log`,
+  15,125 B, 2026-11-26 09:31 UTC, `EXIT=0`). The job installed the
+  workload and reported:
 
 ```
 [verify] preprobe sliceFiles=149 nativeLibraryUses=0 assert=True
