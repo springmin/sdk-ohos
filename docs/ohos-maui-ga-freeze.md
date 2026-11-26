@@ -75,35 +75,38 @@ The same harness against the rc.2 baseline still prints
 
 - Container CI (GA slice + MAUI 11.0.10): run `45772391744` —
   `cross`, `build verify.dll`, `build JIT hap`, `build AOT hap` all success.
-- Device round `45783576391` with the GA JIT hap (MAUI 11.0.10) on the
-  OpenHarmony device: all steps ok, `failures=0`
-  (`device-round-ga110-final/summary.txt`):
-  verify, lock, install/start, first frame, Blazor ×2, slots, a11y,
-  deeplink, tester-run probe, 5-minute soak.
-- Clean-machine direct run (SDK 11.0.100 + workload 1.0.1, GA prebuilt
-  `verify.dll` from container run `45772391744`, JIT/AOT prebuilts,
-  `skip_device=1`): **CLEAN-MACHINE GA PASS**. Evidence
-  (`/data/storage/el2/base/tmp/opencode/gate-direct-ga/logs`):
+- Clean-machine gate: run `45788553893` (**completed/success**) with
+  SDK 11.0.100 (`a8fa...`), workload bundle 1.0.1 (`088b...`),
+  `prebuilt_run=45772391744` and `maui_source=slice/11.0.10`.
+  The job installed the workload and reported:
 
 ```
-[17:00:13] install OK
-[17:00:15] clean workload/pack verification OK
-[17:00:15] 826 using prebuilt verify.dll from .../art-ga2
-[17:00:52] 826 OK
-[17:00:52] JIT publish OK
-[17:00:53] AOT publish OK
-[17:00:53] CLEAN-MACHINE GA PASS
-
-826.log:
 [verify] preprobe sliceFiles=149 nativeLibraryUses=0 assert=True
 [suite] checks=826 total=829 floor=809 assert=True
+Successfully installed workload(s) openharmony.
 ```
 
-  The self-hosted runner later wedged in job cleanup (the known
-  process-exit issue) after the device round finished, so the same script
-  was executed directly on the host with an isolated `CLEAN_ROOT`; the
-  run used the exact workflow inputs (same SDK tarball and sha256, same
-  1.0.1 bundle and sha256, same prebuilt run).
+- Device round: run `45790115314` (**completed/success**) with the GA JIT hap
+  (MAUI 11.0.10) on the OpenHarmony device. The round reported
+  `完成：11 步，failures=0`:
+
+```
+verify: ok — tree=bdd2f98c...
+install_start: ok — runtime_mode=jit(hap)
+first_frame: ok — canvas presented + frames/first.jpeg
+blazor: ok — default boot=yes rendered=yes click=ok(Current count: 1)
+blazor: ok — nocsp boot=yes rendered=yes click=ok(Current count: 1)
+slots: ok — create=2 destroy=1 ...
+a11y: ok — status=<unavailable> node_count=72
+tester_run_probe: ok — v=14
+soak: ok — minutes=5 pid_lost=0 fault_new=0
+```
+
+The same gate script was also executed directly on the host with an isolated
+`CLEAN_ROOT` (same SDK tarball/sha256, same 1.0.1 bundle/sha256, same prebuilt
+run) and printed `CLEAN-MACHINE GA PASS`; the logs are kept in
+`gate-direct-ga/logs`. This was a fallback after the runner wedged in job
+cleanup, not a different configuration.
 
 ## M5 — freeze
 
