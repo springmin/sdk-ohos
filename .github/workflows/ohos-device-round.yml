@@ -19,6 +19,10 @@ on:
         type: choice
         options: ["aot", "jit"]
         default: "aot"
+      hap:
+        description: "Main hap override (required when mode=jit)"
+        required: false
+        default: ""
       suite:
         description: "Run the full suite (Blazor, slots, a11y, deeplink)"
         type: choice
@@ -126,6 +130,9 @@ jobs:
         run: |
           set -eu
           args=(--kit "$KIT" --mode "$MODE" --soak-min "$SOAK" --device "$DEVICE" --out "$RUNNER_TEMP/device-round")
+          if [ -n "${{ inputs.hap }}" ]; then
+            args+=(--hap "${{ inputs.hap }}")
+          fi
           if [ "$SUITE" = "true" ]; then
             args+=(--suite)
           fi
