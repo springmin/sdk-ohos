@@ -173,15 +173,37 @@ jobs:
             echo "copied $b -> $3/bin"
           }
           copy_bin "$dl/v826" verify.dll "$root/prebuilt-826"
-          # the JIT hap (133 MB) does not survive artifact download from this host;
-          # pull the release asset through the ghfast mirror instead
+          # the JIT hap (133 MB) does not survive artifact download from this host.
+          # Prefer the release asset cached on the runner; otherwise pull it through
+          # the ghfast mirror.
           _jd="$root/prebuilt-jit/bin/Release/net11.0-openharmony26.0/openharmony-arm64"
           mkdir -p "$_jd"
-          curl -fL --retry 5 --connect-timeout 20 --max-time 900 \
-            -o "$_jd/hello-maui-app.hap" \
-            "https://ghfast.top/https://github.com/springmin/runtime-ohos/releases/download/ci-prebuilts/jit-hap.hap" \
-            && echo "downloaded JIT hap from ci-prebuilts" || echo "WARN: JIT hap download failed"
-          ls -l "$_jd/hello-maui-app.hap" 2>/dev/null || true
+          _cache=/data/storage/el2/base/tmp/opencode/ci-prebuilts/jit-hap.hap
+          if [ -f "$_cache" ]; then
+            cp -f "$_cache" "$_jd/hello-maui-app.hap"
+            echo "copied JIT hap from local cache"
+          else
+            curl -fL --retry 5 --connect-timeout 20 --max-time 900 \
+              -o "$_jd/hello-maui-app.hap" \
+              "https://ghfast.top/https://github.com/springmin/runtime-ohos/releases/download/ci-prebuilts/jit-hap.hap" \
+              && echo "downloaded JIT hap from ci-prebuilts" || echo "WARN: JIT hap download failed"
+          fi
+          # the gate's prebuilt layout expects the hap at the root of prebuilt-jit
+          cp -f "$_jd/hello-maui-app.hap" "$root/prebuilt-jit/hello-maui-app.hap" 2>/dev/null || true
+          # AOT: assemble the CI artifact (hap + publish libs + publish-aot.log)
+          _ad="$dl/vaot"
+          gh run download "$RUN_ID" -R springmin/runtime-ohos -n aot-hap -D "$_ad" || true
+          _ao="$(find "$_ad" -type d -name openharmony-arm64 2>/dev/null | head -1)"
+          if [ -n "$_ao" ]; then
+            mkdir -p "$root/prebuilt-aot/hap"
+            cp -a "$_ao"/. "$root/prebuilt-aot/hap/"
+            [ -f "$root/prebuilt-aot/hap/hello-maui-app.hap" ] \
+              || cp -f "$root/prebuilt-aot/hap/hello-maui-app-unsigned.hap" "$root/prebuilt-aot/hap/hello-maui-app.hap" 2>/dev/null || true
+            echo "assembled AOT prebuilt from $_ao"
+          else
+            echo "WARN: AOT artifact missing; the gate's default prebuilt-aot is used"
+          fi
+          ls -l "$root/prebuilt-aot/publish-aot.log" "$root/prebuilt-aot/hap/hello-maui-app.hap" 2>/dev/null || true
           ls -l "$root/prebuilt-826/bin/Debug/net11.0/verify.dll" 2>/dev/null || true
 
       - name: Run the clean-machine GA gate
@@ -204,6 +226,7 @@ jobs:
           PREBUILT_826: ${{ github.event_name == 'schedule' && 'true' || inputs.prebuilt_826 }}
           PREBUILT_826_DIR: ${{ inputs.prebuilt_run != '' && format('{0}/ohos-clean-ga/prebuilt-826', runner.workspace) || '' }}
           PREBUILT_JIT_DIR: ${{ inputs.prebuilt_run != '' && format('{0}/ohos-clean-ga/prebuilt-jit', runner.workspace) || '' }}
+          PREBUILT_AOT_DIR: ${{ inputs.prebuilt_run != '' && format('{0}/ohos-clean-ga/prebuilt-aot', runner.workspace) || '' }}
           # JIT publish wedges in the HAP packaging step inside the runner tree;
           # use the verified prebuilt hap unless explicitly disabled.
           PREBUILT_JIT: ${{ inputs.prebuilt_jit == 'false' && 'false' || 'true' }}
