@@ -161,7 +161,9 @@ jobs:
           dl="${{ runner.temp }}/prebuilt-dl"
           rm -rf "$dl"; mkdir -p "$dl"
           gh run download "$RUN_ID" -R springmin/runtime-ohos -n verify826 -D "$dl/v826" || true
-          gh run download "$RUN_ID" -R springmin/runtime-ohos -n jit-hap -D "$dl/vjit" || true
+          # The 133 MB jit-hap artifact cannot be downloaded from this host (the
+          # api.github.com transfer times out), so it is not attempted here; the
+          # release asset below is fetched through the ghfast mirror instead.
           copy_bin() {
             m="$(find "$1" -name "$2" -path '*/bin/*' 2>/dev/null | head -1)"
             if [ -z "$m" ]; then echo "WARN: $2 not found under $1"; return 0; fi
