@@ -199,6 +199,10 @@ jobs:
             cp -a "$_ao"/. "$root/prebuilt-aot/hap/"
             [ -f "$root/prebuilt-aot/hap/hello-maui-app.hap" ] \
               || cp -f "$root/prebuilt-aot/hap/hello-maui-app-unsigned.hap" "$root/prebuilt-aot/hap/hello-maui-app.hap" 2>/dev/null || true
+            if [ -f "$_ao/publish-aot.log" ]; then
+              cp -f "$_ao/publish-aot.log" "$root/prebuilt-aot/publish-aot.log"
+              echo "using the fresh AOT IL-gate log"
+            fi
             echo "assembled AOT prebuilt from $_ao"
           else
             echo "WARN: AOT artifact missing; the gate's default prebuilt-aot is used"
