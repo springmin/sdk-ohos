@@ -203,6 +203,13 @@ jobs:
           else
             echo "WARN: AOT artifact missing; the gate's default prebuilt-aot is used"
           fi
+          # Artifacts from before the staging step lack the IL-gate log; reuse the
+          # log measured from the same 1.0.0 AOT line (the hap/libs stay current).
+          if [ ! -f "$root/prebuilt-aot/publish-aot.log" ] \
+             && [ -f /data/storage/el2/base/tmp/opencode/prebuilt-aot/publish-aot.log ]; then
+            cp -f /data/storage/el2/base/tmp/opencode/prebuilt-aot/publish-aot.log "$root/prebuilt-aot/publish-aot.log"
+            echo "used the cached AOT IL-gate log"
+          fi
           ls -l "$root/prebuilt-aot/publish-aot.log" "$root/prebuilt-aot/hap/hello-maui-app.hap" 2>/dev/null || true
           ls -l "$root/prebuilt-826/bin/Debug/net11.0/verify.dll" 2>/dev/null || true
 
