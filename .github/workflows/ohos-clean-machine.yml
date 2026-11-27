@@ -197,35 +197,36 @@ jobs:
           fi
           # the gate's prebuilt layout expects the hap at the root of prebuilt-jit
           cp -f "$_jd/hello-maui-app.hap" "$root/prebuilt-jit/hello-maui-app.hap" 2>/dev/null || true
-          # AOT: assemble the CI artifact (hap + publish libs + publish-aot.log).
-          # Use the artifact zip URL with a bounded curl: `gh run download` waits
-          # indefinitely on this host for the 60 MB payload.
-          _ad="$dl/vaot"
-          mkdir -p "$_ad"
-          _aid=$(gh api "repos/springmin/runtime-ohos/actions/runs/$RUN_ID/artifacts" \
-            --jq '.artifacts[]|select(.name=="aot-hap")|.id' 2>/dev/null | head -1)
-          if [ -n "$_aid" ]; then
-            curl -fL --retry 3 --connect-timeout 20 --max-time 600 \
-              -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
-              -o "$dl/aot.zip" \
-              "https://api.github.com/repos/springmin/runtime-ohos/actions/artifacts/$_aid/zip" \
-              && unzip -q "$dl/aot.zip" -d "$_ad" || echo "WARN: AOT zip download failed"
+          # AOT: prefer the ci-prebuilts tarball (fast through ghfast). The
+          # 60 MB per-run artifact download is too slow/unreliable on this host.
+          mkdir -p "$root/prebuilt-aot"
+          _aot_url="https://ghfast.top/https://github.com/springmin/runtime-ohos/releases/download/ci-prebuilts/aot-prebuilt.tar.gz"
+          if curl -fL --retry 5 --connect-timeout 20 --max-time 900 \
+               -o "$dl/aot-prebuilt.tar.gz" "$_aot_url"; then
+            tar -xzf "$dl/aot-prebuilt.tar.gz" -C "$root/prebuilt-aot"
+            echo "using the ci-prebuilts AOT tarball"
           else
-            echo "WARN: aot-hap artifact not found for run $RUN_ID"
-          fi
-          _ao="$(find "$_ad" -type d -name openharmony-arm64 2>/dev/null | head -1)"
-          if [ -n "$_ao" ]; then
-            mkdir -p "$root/prebuilt-aot/hap"
-            cp -a "$_ao"/. "$root/prebuilt-aot/hap/"
-            [ -f "$root/prebuilt-aot/hap/hello-maui-app.hap" ] \
-              || cp -f "$root/prebuilt-aot/hap/hello-maui-app-unsigned.hap" "$root/prebuilt-aot/hap/hello-maui-app.hap" 2>/dev/null || true
-            if [ -f "$_ao/publish-aot.log" ]; then
-              cp -f "$_ao/publish-aot.log" "$root/prebuilt-aot/publish-aot.log"
-              echo "using the fresh AOT IL-gate log"
+            # fallback: the per-run artifact zip (bounded)
+            _ad="$dl/vaot"
+            mkdir -p "$_ad"
+            _aid=$(gh api "repos/springmin/runtime-ohos/actions/runs/$RUN_ID/artifacts" \
+              --jq '.artifacts[]|select(.name=="aot-hap")|.id' 2>/dev/null | head -1)
+            if [ -n "$_aid" ]; then
+              curl -fL --retry 3 --connect-timeout 20 --max-time 600 \
+                -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+                -o "$dl/aot.zip" \
+                "https://api.github.com/repos/springmin/runtime-ohos/actions/artifacts/$_aid/zip" \
+                && unzip -q "$dl/aot.zip" -d "$_ad" || echo "WARN: AOT zip download failed"
             fi
-            echo "assembled AOT prebuilt from $_ao"
-          else
-            echo "WARN: AOT artifact missing; the gate's default prebuilt-aot is used"
+            _ao="$(find "$_ad" -type d -name openharmony-arm64 2>/dev/null | head -1)"
+            if [ -n "$_ao" ]; then
+              mkdir -p "$root/prebuilt-aot/hap"
+              cp -a "$_ao"/. "$root/prebuilt-aot/hap/"
+              [ -f "$root/prebuilt-aot/hap/hello-maui-app.hap" ] \
+                || cp -f "$root/prebuilt-aot/hap/hello-maui-app-unsigned.hap" "$root/prebuilt-aot/hap/hello-maui-app.hap" 2>/dev/null || true
+              [ -f "$_ao/publish-aot.log" ] && cp -f "$_ao/publish-aot.log" "$root/prebuilt-aot/publish-aot.log"
+              echo "assembled AOT prebuilt from $_ao"
+            fi
           fi
           # Artifacts from before the staging step lack the IL-gate log; reuse the
           # log measured from the same 1.0.0 AOT line (the hap/libs stay current).
