@@ -240,6 +240,14 @@ jobs:
           ls -l "$root/prebuilt-aot/publish-aot.log" "$root/prebuilt-aot/hap/hello-maui-app.hap" 2>/dev/null || true
           ls -l "$root/prebuilt-826/bin/Debug/net11.0/verify.dll" 2>/dev/null || true
 
+      - name: Download the fixed crypto shim
+        run: |
+          set -eu
+          curl -fL --retry 5 --connect-timeout 20 --max-time 300 \
+            -o "$GITHUB_WORKSPACE/crypto-shim.so" \
+            "https://ghfast.top/https://github.com/springmin/runtime-ohos/releases/download/ci-prebuilts/crypto-shim.so" \
+            && echo "downloaded crypto shim" || echo "WARN: crypto shim download failed"
+          ls -l "$GITHUB_WORKSPACE/crypto-shim.so" 2>/dev/null || true
       - name: Run the clean-machine GA gate
         timeout-minutes: 120
         env:
@@ -265,6 +273,8 @@ jobs:
           # use the verified prebuilt hap unless explicitly disabled.
           PREBUILT_JIT: ${{ inputs.prebuilt_jit == 'false' && 'false' || 'true' }}
           PREBUILT_AOT: ${{ github.event_name == 'schedule' && 'true' || inputs.prebuilt_aot }}
+          # fixed parallel-crypto shim (serialized OpenSSL); the script signs it
+          RUNTIME_SHIM: ${{ github.workspace }}/crypto-shim.so
           HDC: ${{ secrets.OHOS_HDC }}
           UDID: ${{ secrets.OHOS_UDID }}
         run: |
