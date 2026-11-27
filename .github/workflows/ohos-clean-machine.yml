@@ -80,10 +80,10 @@ on:
         options: ["false", "true"]
         default: "false"
       prebuilt_826:
-        description: "Use prebuilt 826 artifacts (workaround: csc SIGSEGVs on the big project)"
+        description: "Use prebuilt 826 artifacts (fallback; the real build works with a warm NuGet cache)"
         type: choice
-        options: ["true", "false"]
-        default: "true"
+        options: ["false", "true"]
+        default: "false"
       prebuilt_jit:
         description: "Use a prebuilt JIT hap (workaround: the real publish stalls in HAP packaging)"
         type: choice
@@ -257,7 +257,7 @@ jobs:
           COLD_NUGET: ${{ github.event_name == 'schedule' && 'false' || inputs.cold_nuget }}
           AOT_ASSETS: ${{ inputs.aot_assets }}
           RUNTIME_LIBCORECLR: ${{ inputs.runtime_libcoreclr }}
-          PREBUILT_826: ${{ github.event_name == 'schedule' && 'true' || inputs.prebuilt_826 }}
+          PREBUILT_826: ${{ github.event_name == 'schedule' && 'false' || inputs.prebuilt_826 }}
           PREBUILT_826_DIR: ${{ (inputs.prebuilt_run != '' || github.event_name == 'schedule') && format('{0}/ohos-clean-ga/prebuilt-826', runner.workspace) || '' }}
           PREBUILT_JIT_DIR: ${{ (inputs.prebuilt_run != '' || github.event_name == 'schedule') && format('{0}/ohos-clean-ga/prebuilt-jit', runner.workspace) || '' }}
           PREBUILT_AOT_DIR: ${{ (inputs.prebuilt_run != '' || github.event_name == 'schedule') && format('{0}/ohos-clean-ga/prebuilt-aot', runner.workspace) || '' }}
