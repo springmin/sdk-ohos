@@ -252,3 +252,56 @@ Minimal repro (host SDK 11.0.100):
   `src/native/libs/System.Security.Cryptography.Native/`) or use a
   threads-safe/updated OpenSSL, then validate with the parallel probe and a
   cold restore. The SDK runtime pack rebuild is the remaining product action.
+
+## 2026-11-28: native fix — serialized static OpenSSL shim
+
+The parallel-crypto double free is fixed in the shim, not just worked around.
+
+### Patch
+
+Branch `fix/crypto-shim-lock` (based on `release/ohos-11.0.0`):
+
+- `pal_lock.c/h`: process-wide **recursive** `pthread_mutex` (`CryptoNative_Lock/Unlock`).
+- `pal_evp.c`: lock the EVP hash path (one-shot, context create/destroy,
+  reset/update/final, copy/current).
+- `pal_evp_pkey_rsa.c`: lock RSA key generation, sign and verify.
+- `pal_x509.c`: lock the X509 store/context/chain verification.
+- `CMakeLists.txt`:
+  - `FEATURE_DISTRO_AGNOSTIC_SSL OFF` — link the shared shim against the
+    **static** OpenSSL (the OpenHarmony loader cannot `dlopen` an app-local
+    OpenSSL; the dynamic 240 KB shim failed with "No usable version of libssl").
+  - `FEATURE_DISTRO_AGNOSTIC_SSL_STATIC ON` — keep the dlopen shim in the AOT
+    static archive (ilc does not link libcrypto).
+  - `--exclude-libs,ALL` on the shared link — hide the static OpenSSL exports
+    so the `verify-entrypoints` check only sees `CryptoNative_*`.
+
+### Build
+
+`ohos-cross-build` run `46034133783` (`source_ref=fix/crypto-shim-lock`,
+`subset=libs.native`) — completed/success. Artifact `crypto-shim`
+4,522,728 B (static; `NEEDED` only `libc.so`). Published as
+`springmin/runtime-ohos@ci-prebuilts/crypto-shim.so`.
+
+### Validation
+
+- Parallel probes with the signed shim (host SDK): `hashpar ok`, `x509par ok`,
+  no new faultlogger.
+- **Cold NuGet restore without `RestoreDisableParallel`**: fresh cache, local
+  feed, 31 packages, 1.76 s, no faultlogger.
+- Direct gate `RUNTIME_SHIM=<shim> PREBUILT_826=0`:
+  `installed crypto shim` → `826 build attempt 1/8` → `826 OK` →
+  `[suite] checks=826 total=829 floor=809 assert=True` →
+  `CLEAN-MACHINE GA PASS`.
+- Workflow gate `46036575263` (completed/success): `Download the fixed crypto
+  shim` + real 826 + `checks=826`.
+
+The gate script now supports `RUNTIME_SHIM` (copy + `chmod` + `selfsign`), and
+the gate workflow downloads `ci-prebuilts/crypto-shim.so` before the gate.
+`RestoreDisableParallel=true` is no longer required with the fixed shim; it is
+retained only as a fallback for unfixed SDKs.
+
+### Remaining distribution step
+
+Rebuild the **SDK runtime pack / tarball** from `fix/crypto-shim-lock` so new
+SDK installs ship the fixed shim by default. The `RUNTIME_SHIM` gate path and
+the `crypto-shim` asset are the interim distribution.
