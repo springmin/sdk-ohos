@@ -157,3 +157,22 @@ port (or a glibc self-hosted reproducer with the same runtime).
 | `sdk-ohos@v11.0.100-openharmony` | SDK 11.0.100 (`a8fa...`) |
 | `sdk-ohos@workload-1.0.1` | workload bundle 1.0.1 (`088b...`) |
 | cache key `ohos-sdk-public-6.0-v1` | Public OHOS SDK (2.37 GB) for packaging |
+
+## 2026-11-27: real 826 build and the OpenSSL parallel-crypto bug
+
+- `prebuilt_826` now defaults to **false**. The real 826 build passes with the
+  warm NuGet cache (direct gate `gate-real-826`, workflow `46027834425`,
+  `[suite] checks=826`, `CLEAN-MACHINE GA PASS`). The prebuilt path stays as a
+  fallback.
+- The old "csc SIGSEGV" was a misattribution: the device faultlogger shows
+  `SIGTRAP` + jemalloc `may double free` in
+  `libSystem.Security.Cryptography.Native.OpenSsl.so` (OpenSSL 3.3.1).
+- Minimal repro: parallel `SHA256`/`SHA512` or parallel `RSA`/`X509Chain`
+  crashes; sequential/single calls pass. A cold `dotnet restore` reproduces it
+  in MSBuild; the warm cache passes.
+- SDK 11.0.101 / runtime 11.0.1 still crashes (not a servicing fix).
+- Workaround: `-p:RestoreDisableParallel=true` (verified on a fresh cache:
+  3.36 s, no dump); the gate's `run_826` restore sets it.
+- Proper fix: serialize the shim's OpenSSL calls or use a threads-safe OpenSSL,
+  then rebuild the SDK runtime pack; validate with the parallel probe and a
+  cold restore.
