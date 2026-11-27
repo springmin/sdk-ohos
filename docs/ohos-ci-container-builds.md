@@ -176,3 +176,21 @@ port (or a glibc self-hosted reproducer with the same runtime).
 - Proper fix: serialize the shim's OpenSSL calls or use a threads-safe OpenSSL,
   then rebuild the SDK runtime pack; validate with the parallel probe and a
   cold restore.
+
+## 2026-11-28: crypto shim build and gate integration
+
+- `ohos-cross-build.yml` can build the shim with
+  `source_ref=fix/crypto-shim-lock`, `subset=libs.native`; it stages
+  `crypto-shim/libSystem.Security.Cryptography.Native.OpenSsl.so` and uploads a
+  `crypto-shim` artifact (run `46034133783`, 4,522,728 B static).
+- The shim is published as `ci-prebuilts/crypto-shim.so`; the clean-machine
+  workflow downloads it and passes `RUNTIME_SHIM` to the gate script, which
+  copies, `chmod`s and `selfsign`s it.
+- The dynamic 240 KB shim cannot load on OpenHarmony ("No usable version of
+  libssl"; the loader restricts app-local `dlopen`), so the fix links the
+  shared shim against the static OpenSSL and hides the OpenSSL exports
+  (`--exclude-libs,ALL`).
+- `RestoreDisableParallel=true` is no longer required with the fixed shim; it
+  remains a fallback for unfixed SDKs.
+- Remaining: rebuild the SDK runtime pack/tarball from the fix branch so new
+  installs ship the shim by default.
