@@ -194,3 +194,17 @@ port (or a glibc self-hosted reproducer with the same runtime).
   remains a fallback for unfixed SDKs.
 - Remaining: rebuild the SDK runtime pack/tarball from the fix branch so new
   installs ship the shim by default.
+
+## 2026-11-28: upstream-ready shim guards
+
+The shim fix is platform-scoped: the lock declarations/bodies and the
+`pal_lock.c` source are OpenHarmony-only (`TARGET_OPENHARMONY`/
+`CLR_CMAKE_TARGET_OPENHARMONY`); other platforms get no-op macros and the
+unchanged OpenSSL configuration. The static OpenSSL/AOT sets are OHOS-only, and
+`--exclude-libs,ALL` is limited to ELF static links (Linux/OpenHarmony).
+
+`shim-linux-check.yml` (runtime-ohos `main`) builds `libs.native` for
+linux-x64 with the branch and inspects the crypto shim for the absence of the
+lock symbols/object. The guarded OHOS build (`46077958926`,
+`subset=libs.native`) and the guarded gate (`46078931800`, real 826,
+`checks=826`) are green.
