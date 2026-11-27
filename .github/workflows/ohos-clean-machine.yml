@@ -204,6 +204,8 @@ jobs:
           if curl -fL --retry 5 --connect-timeout 20 --max-time 900 \
                -o "$dl/aot-prebuilt.tar.gz" "$_aot_url"; then
             tar -xzf "$dl/aot-prebuilt.tar.gz" -C "$root/prebuilt-aot"
+            [ -f "$root/prebuilt-aot/hap/hello-maui-app.hap" ] \
+              || cp -f "$root/prebuilt-aot/hap/hello-maui-app-unsigned.hap" "$root/prebuilt-aot/hap/hello-maui-app.hap" 2>/dev/null || true
             echo "using the ci-prebuilts AOT tarball"
           else
             # fallback: the per-run artifact zip (bounded)
