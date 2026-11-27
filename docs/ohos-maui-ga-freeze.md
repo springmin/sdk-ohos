@@ -203,3 +203,52 @@ P4 — docs and release:
   mirror, the maui-core and csc-repro jobs, and the watchdog.
 - Kit release `kit-11.0.100-maui-11.0.10` carries the machine-readable
   manifest and checksums for this matrix.
+
+## 2026-11-27: real 826 build and the OpenSSL parallel-crypto bug
+
+### Real 826 build (no prebuilt)
+
+The prebuilt 826 workaround is no longer the default. With the warm NuGet
+cache the real build passes:
+
+- Direct gate (`PREBUILT_826=0`, isolated `CLEAN_ROOT`):
+  `[23:41:05] 826 build attempt 2/8` → `[23:42:32] 826 OK` →
+  `[suite] checks=826 total=829 floor=809 assert=True` →
+  `CLEAN-MACHINE GA PASS`.
+- Workflow run `46027834425` (completed/success): `Download CI prebuilts`
+  skipped, real 826 build, `[suite] checks=826 total=829 floor=809
+  assert=True`, `CLEAN-MACHINE GA PASS`.
+
+`prebuilt_826` now defaults to **false**; the prebuilt path remains a fallback.
+The scheduled gate also uses the real build.
+
+### Root cause of the old prebuilt requirement
+
+The csc "SIGSEGV" was a misattribution. The device faultlogger captured the
+crash:
+
+- `SIGTRAP(TRAP_BRKPT)`, `.NET TP Worker`
+- `je_arena_dalloc_small` / `free_default_body` (musl jemalloc)
+- `LastFatalMessage: This is an unexpected memory usage behavior.may double free`
+- stack in `libSystem.Security.Cryptography.Native.OpenSsl.so` (OpenSSL 3.3.1)
+
+Minimal repro (host SDK 11.0.100):
+
+- **parallel** `SHA256.HashData`/`SHA512.HashData` or parallel
+  `RSA`/`CertificateRequest`/`X509Chain` → SIGTRAP/double free;
+- sequential SHA (20k), one HTTPS request, one RSA sign/verify, one
+  `dotnet nuget verify` → pass;
+- cold `dotnet restore` (fresh cache) → MSBuild double free;
+- warm cache restore → pass;
+- **SDK 11.0.101 / runtime 11.0.1 also crashes** (not a servicing fix).
+
+### Workaround and remaining fix
+
+- Cold restores: `-p:RestoreDisableParallel=true` makes a fresh-cache restore
+  pass (verified with the MAUI package probe; 3.36 s, no faultlogger entry).
+  The gate's `run_826` restore now passes it.
+- The gate uses the warm host cache; the real build passes.
+- Proper fix: serialize the shim's OpenSSL calls (a global mutex in
+  `src/native/libs/System.Security.Cryptography.Native/`) or use a
+  threads-safe/updated OpenSSL, then validate with the parallel probe and a
+  cold restore. The SDK runtime pack rebuild is the remaining product action.
