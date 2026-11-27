@@ -373,6 +373,21 @@ if [ -n "${RUNTIME_LIBCORECLR:-}" ] && [ -f "$RUNTIME_LIBCORECLR" ]; then
     fi
 fi
 
+# Optional fixed crypto shim (the parallel OpenSSL double-free fix). The
+# artifact is unsigned; sign it in place after installing.
+if [ -n "${RUNTIME_SHIM:-}" ] && [ -f "$RUNTIME_SHIM" ]; then
+    _ver="$("$CLEAN_DOTNET/dotnet" --list-runtimes 2>/dev/null | awk '/Microsoft.NETCore.App/{print $2; exit}')"
+    _rt="$CLEAN_DOTNET/shared/Microsoft.NETCore.App/$_ver/libSystem.Security.Cryptography.Native.OpenSsl.so"
+    if [ -f "$_rt" ]; then
+        cp -f "$_rt" "$_rt.bak" 2>/dev/null || true
+        cp -f "$RUNTIME_SHIM" "$_rt"
+        if [ -x "$CLEAN_DOTNET/selfsign" ]; then "$CLEAN_DOTNET/selfsign" "$_rt" --force >/dev/null 2>&1 || true; fi
+        log "installed crypto shim: $RUNTIME_SHIM -> $_rt"
+    else
+        log "WARN: no crypto shim under $CLEAN_DOTNET"
+    fi
+fi
+
 export HOME="$CLEAN_HOME"
 export DOTNET_ROOT="$CLEAN_DOTNET"
 export PATH="$CLEAN_DOTNET:$HOST_PATH"
