@@ -61,9 +61,9 @@ on:
         required: false
         default: "/storage/Users/currentUser/springsources/ohos-workload"
       maui_source:
-        description: "Local maui-ohos checkout on the runner"
+        description: "Local maui-ohos checkout on the runner (GA slice by default)"
         required: false
-        default: "/storage/Users/currentUser/springsources/maui-ohos"
+        default: "/storage/Users/currentUser/springsources/maui-ohos-ga"
       skip_826:
         description: "Skip the 826 harness"
         type: choice
@@ -140,7 +140,7 @@ jobs:
 
       - name: Check out maui-ohos
         env:
-          MAUI_SOURCE: ${{ github.event_name == 'schedule' && '/storage/Users/currentUser/springsources/maui-ohos' || inputs.maui_source }}
+          MAUI_SOURCE: ${{ github.event_name == 'schedule' && '/storage/Users/currentUser/springsources/maui-ohos-ga' || inputs.maui_source }}
         run: |
           set -euxo pipefail
           rm -rf "$GITHUB_WORKSPACE/maui-ohos"
