@@ -197,9 +197,22 @@ jobs:
           fi
           # the gate's prebuilt layout expects the hap at the root of prebuilt-jit
           cp -f "$_jd/hello-maui-app.hap" "$root/prebuilt-jit/hello-maui-app.hap" 2>/dev/null || true
-          # AOT: assemble the CI artifact (hap + publish libs + publish-aot.log)
+          # AOT: assemble the CI artifact (hap + publish libs + publish-aot.log).
+          # Use the artifact zip URL with a bounded curl: `gh run download` waits
+          # indefinitely on this host for the 60 MB payload.
           _ad="$dl/vaot"
-          gh run download "$RUN_ID" -R springmin/runtime-ohos -n aot-hap -D "$_ad" || true
+          mkdir -p "$_ad"
+          _aid=$(gh api "repos/springmin/runtime-ohos/actions/runs/$RUN_ID/artifacts" \
+            --jq '.artifacts[]|select(.name=="aot-hap")|.id' 2>/dev/null | head -1)
+          if [ -n "$_aid" ]; then
+            curl -fL --retry 3 --connect-timeout 20 --max-time 600 \
+              -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+              -o "$dl/aot.zip" \
+              "https://api.github.com/repos/springmin/runtime-ohos/actions/artifacts/$_aid/zip" \
+              && unzip -q "$dl/aot.zip" -d "$_ad" || echo "WARN: AOT zip download failed"
+          else
+            echo "WARN: aot-hap artifact not found for run $RUN_ID"
+          fi
           _ao="$(find "$_ad" -type d -name openharmony-arm64 2>/dev/null | head -1)"
           if [ -n "$_ao" ]; then
             mkdir -p "$root/prebuilt-aot/hap"
