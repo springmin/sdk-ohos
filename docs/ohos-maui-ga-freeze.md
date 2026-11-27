@@ -305,3 +305,37 @@ retained only as a fallback for unfixed SDKs.
 Rebuild the **SDK runtime pack / tarball** from `fix/crypto-shim-lock` so new
 SDK installs ship the fixed shim by default. The `RUNTIME_SHIM` gate path and
 the `crypto-shim` asset are the interim distribution.
+
+### Upstream-ready guards (2026-11-28)
+
+The shim fix is now scoped to OpenHarmony so that other platforms keep their
+existing behavior:
+
+- `pal_lock.h`: the `CryptoNative_Lock/Unlock` declarations are under
+  `#if defined(TARGET_OPENHARMONY)`; every other platform gets no-op macros.
+- `pal_lock.c`: the mutex/function bodies are under
+  `#if defined(TARGET_OPENHARMONY)`; the source is only added to the build on
+  OpenHarmony.
+- `CMakeLists.txt`:
+  - the static OpenSSL / AOT-shim `set`s, the `TARGET_OPENHARMONY` define and
+    the `pal_lock.c` source are inside `if (CLR_CMAKE_TARGET_OPENHARMONY)`;
+  - `--exclude-libs,ALL` is limited to
+    `(CLR_CMAKE_TARGET_LINUX OR CLR_CMAKE_TARGET_OPENHARMONY) AND NOT
+    FEATURE_DISTRO_AGNOSTIC_SSL` (ELF static links only).
+
+Other platforms (Linux/macOS/FreeBSD/OpenBSD defaults, Windows/Android/Apple
+shims) are unchanged: the lock code is a no-op and the CMake does not alter
+their OpenSSL configuration.
+
+Validation of the guarded build:
+
+- OHOS `libs.native` run `46077958926` success; `crypto-shim` 4,522,728 B
+  (static, `NEEDED` only `libc.so`), published to `ci-prebuilts`.
+- Parallel `hashpar`/`x509par`: **ok**, no new faultlogger.
+- Cold NuGet restore **without** `RestoreDisableParallel` (fresh cache,
+  31 packages, 2.52 s): **ok**.
+- Guarded workflow gate `46078931800`: success — downloads the guarded shim,
+  real 826, `[suite] checks=826 total=829 floor=809 assert=True`.
+- Linux check (`shim-linux-check`) builds `libs.native` with the same branch;
+  the crypto shim should have no `CryptoNative_Lock` symbols and no
+  `pal_lock` object (the guards/no-op).
