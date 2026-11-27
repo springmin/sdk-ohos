@@ -381,6 +381,7 @@ if [ -n "${RUNTIME_SHIM:-}" ] && [ -f "$RUNTIME_SHIM" ]; then
     if [ -f "$_rt" ]; then
         cp -f "$_rt" "$_rt.bak" 2>/dev/null || true
         cp -f "$RUNTIME_SHIM" "$_rt"
+        chmod 755 "$_rt" 2>/dev/null || true
         if [ -x "$CLEAN_DOTNET/selfsign" ]; then "$CLEAN_DOTNET/selfsign" "$_rt" --force >/dev/null 2>&1 || true; fi
         log "installed crypto shim: $RUNTIME_SHIM -> $_rt"
     else
