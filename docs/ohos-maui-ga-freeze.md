@@ -163,6 +163,10 @@ P0 — the frozen line is now the default:
 - The container publishes `ci-prebuilts/aot-prebuilt.tar.gz` (hap + publish
   libs + `publish-aot.log`); the gate downloads it through `ghfast.top`
   instead of the slow 60 MB per-run artifact.
+- Validation: container `46005467072` (no explicit `maui_ref`/`maui_pin`),
+  gate `46007523333` (`using the ci-prebuilts AOT tarball`,
+  `checks=826`), and gate `46009389206` (`schedule: using latest successful
+  cross-build run 46005467072`, `checks=826`, `CLEAN-MACHINE GA PASS`).
 
 P1 — `runtime-ohos#2` (csc SIGSEGV) narrowed:
 
