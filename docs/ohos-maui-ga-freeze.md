@@ -144,3 +144,58 @@ gh workflow run ohos-clean-machine.yml -R springmin/sdk-ohos \
   -f workload_source=<ohos-workload> \
   -f skip_device=true
 ```
+
+## Post-freeze hardening (2026-11-27)
+
+P0 — the frozen line is now the default:
+
+- Clean-machine gate: `maui_source` defaults to the stable
+  `/storage/Users/currentUser/springsources/maui-ohos-ga` worktree
+  (`slice/11.0.10`); scheduled runs resolve `prebuilt_run` to the newest
+  successful `ohos-cross-build` run and use the assembled `prebuilt-*` dirs.
+  `prebuilt_run=latest` is accepted for testing that path.
+- Container CI: defaults are `maui_ref=slice/11.0.10`, `maui_pin=ga`;
+  `feature/openharmony`/`rc2` remain historical inputs.
+- `Microsoft.Maui.*` 11.0.10 is mirrored as `sdk-ohos@maui-11.0.10`
+  (`maui-11.0.10-nupkgs.tar.gz`, sha256
+  `e820f6a4719ae5efc33b23393363ca4bca3f485bdb11b4d6ef89aa105b65d216`) and
+  used by `verify826` and the hap jobs.
+- The container publishes `ci-prebuilts/aot-prebuilt.tar.gz` (hap + publish
+  libs + `publish-aot.log`); the gate downloads it through `ghfast.top`
+  instead of the slow 60 MB per-run artifact.
+
+P1 — `runtime-ohos#2` (csc SIGSEGV) narrowed:
+
+- New `csc-repro.yml` rebuilds the 1.27 MB harness on a glibc x64
+  GitHub-hosted container, 3 iterations × 3 variants (baseline,
+  `DOTNET_TieredCompilation=0`, 1 GB heap) with dump capture.
+- Run `46002170870`: **9/9 `rc=0`, no dumps**. The crash is
+  OpenHarmony-runtime-specific; the remaining work is dump support on the port
+  (or a glibc self-hosted runner with the same runtime).
+
+P2 — runner liveness:
+
+- `queue-watchdog.sh` now re-registers an **offline** runner after
+  `OFFLINE_STRIKES` (default 2) checks and a runner busy longer than
+  `MAX_BUSY` (3.5 h), in addition to the stale-queue recovery. It stops the
+  supervisor through `.supervisor.lock/pid`, kills surviving listeners, and
+  starts a fresh `supervise.sh`.
+- Dry-run tested: busy state logs `ok busy`, simulated offline logs
+  `runner stayed offline; re-registering` without touching the live runner.
+
+P3 — whole-repo MAUI compile:
+
+- `maui-core-build.yml` builds the maui-ohos repository itself for
+  `net11.0-openharmony20.0` (Core + Controls), with workload 1.0.0, the MAUI
+  11.0.10 mirror, and the Arcade mirror.
+- Run `46004135066`: success —
+  `Microsoft.Maui.dll` 1,092,096 B and `Microsoft.Maui.Controls.dll`
+  2,329,600 B under `artifacts/bin/.../net11.0-openharmony20.0/`.
+
+P4 — docs and release:
+
+- `docs/ohos-ci-container-builds.md` updated with the 1.0.1/11.0.101 split,
+  the AOT tarball/log staging, the scheduled-prebuilt resolution, the MAUI
+  mirror, the maui-core and csc-repro jobs, and the watchdog.
+- Kit release `kit-11.0.100-maui-11.0.10` carries the machine-readable
+  manifest and checksums for this matrix.
