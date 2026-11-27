@@ -151,14 +151,21 @@ jobs:
         run: rm -rf "${{ runner.workspace }}/ohos-clean-ga"
 
       - name: Download CI prebuilts
-        if: inputs.prebuilt_run != ''
+        if: github.event_name == 'schedule' || inputs.prebuilt_run != ''
         env:
           GH_TOKEN: ${{ github.token }}
-          RUN_ID: ${{ inputs.prebuilt_run }}
+          INPUT_RUN_ID: ${{ inputs.prebuilt_run }}
         run: |
           set -eu
           root="${{ runner.workspace }}/ohos-clean-ga"
           dl="${{ runner.temp }}/prebuilt-dl"
+          RUN_ID="${INPUT_RUN_ID:-}"
+          if [ -z "$RUN_ID" ]; then
+            # Scheduled runs have no input: take the newest successful cross-build
+            # so the nightly gate always validates the current frozen artifacts.
+            RUN_ID=$(gh run list -R springmin/runtime-ohos --workflow ohos-cross-build.yml               --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+            echo "schedule: using latest successful cross-build run $RUN_ID"
+          fi
           rm -rf "$dl"; mkdir -p "$dl"
           gh run download "$RUN_ID" -R springmin/runtime-ohos -n verify826 -D "$dl/v826" || true
           # The 133 MB jit-hap artifact cannot be downloaded from this host (the
@@ -235,9 +242,9 @@ jobs:
           AOT_ASSETS: ${{ inputs.aot_assets }}
           RUNTIME_LIBCORECLR: ${{ inputs.runtime_libcoreclr }}
           PREBUILT_826: ${{ github.event_name == 'schedule' && 'true' || inputs.prebuilt_826 }}
-          PREBUILT_826_DIR: ${{ inputs.prebuilt_run != '' && format('{0}/ohos-clean-ga/prebuilt-826', runner.workspace) || '' }}
-          PREBUILT_JIT_DIR: ${{ inputs.prebuilt_run != '' && format('{0}/ohos-clean-ga/prebuilt-jit', runner.workspace) || '' }}
-          PREBUILT_AOT_DIR: ${{ inputs.prebuilt_run != '' && format('{0}/ohos-clean-ga/prebuilt-aot', runner.workspace) || '' }}
+          PREBUILT_826_DIR: ${{ (inputs.prebuilt_run != '' || github.event_name == 'schedule') && format('{0}/ohos-clean-ga/prebuilt-826', runner.workspace) || '' }}
+          PREBUILT_JIT_DIR: ${{ (inputs.prebuilt_run != '' || github.event_name == 'schedule') && format('{0}/ohos-clean-ga/prebuilt-jit', runner.workspace) || '' }}
+          PREBUILT_AOT_DIR: ${{ (inputs.prebuilt_run != '' || github.event_name == 'schedule') && format('{0}/ohos-clean-ga/prebuilt-aot', runner.workspace) || '' }}
           # JIT publish wedges in the HAP packaging step inside the runner tree;
           # use the verified prebuilt hap unless explicitly disabled.
           PREBUILT_JIT: ${{ inputs.prebuilt_jit == 'false' && 'false' || 'true' }}
