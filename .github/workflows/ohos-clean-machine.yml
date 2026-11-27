@@ -104,7 +104,7 @@ on:
         default: ""
 
       prebuilt_run:
-        description: "Optional runtime-ohos run id to download verify826/jit-hap from"
+        description: "runtime-ohos run id, or 'latest' for the newest successful cross-build"
         required: false
         default: ""
 
@@ -160,7 +160,7 @@ jobs:
           root="${{ runner.workspace }}/ohos-clean-ga"
           dl="${{ runner.temp }}/prebuilt-dl"
           RUN_ID="${INPUT_RUN_ID:-}"
-          if [ -z "$RUN_ID" ]; then
+          if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "latest" ]; then
             # Scheduled runs have no input: take the newest successful cross-build
             # so the nightly gate always validates the current frozen artifacts.
             RUN_ID=$(gh run list -R springmin/runtime-ohos --workflow ohos-cross-build.yml               --status success --limit 1 --json databaseId --jq '.[0].databaseId')
