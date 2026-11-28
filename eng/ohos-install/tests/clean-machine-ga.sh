@@ -565,6 +565,10 @@ if [ "$SKIP_JIT" != 1 ]; then
         _jit_prebuilt=1
         log "JIT using prebuilt hap from $_pj"
     fi
+    _arcade_ver="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["msbuild-sdks"]["Microsoft.DotNet.Arcade.Sdk"])' "$W/global.json" 2>/dev/null || true)"
+    [ -n "${_arcade_ver:-}" ] || _arcade_ver=11.0.0-beta.26527.113
+    _arcade_tools="$NUGET_PACKAGES/microsoft.dotnet.arcade.sdk/$_arcade_ver/tools"
+    [ -d "$_arcade_tools" ] || _arcade_tools="$NUGET_PACKAGES/microsoft.dotnet.arcade.sdk/11.0.0-beta.26527.113/tools"
     _j=1
     while [ "$_jit_prebuilt" = 0 ] && [ "$_j" -le 6 ] && { [ ! -f "$_jit_hap" ] || [ ! -f "$LOG_DIR/jit-publish.log" ]; }; do
         log "JIT publish attempt $_j/6"
@@ -576,6 +580,7 @@ if [ "$SKIP_JIT" != 1 ]; then
               -noconlog -tl:off "-flp:logfile=$LOG_DIR/jit-publish.log;verbosity=minimal" \
               -p:OpenHarmonyUIPage=pages/Index -p:OpenHarmonyHapPackage=true \
               -f net11.0-openharmony26.0 -p:OpenHarmonyRuntimeMode=jit -p:InvariantGlobalization=true \
+              -p:ArcadeSdkDir="$_arcade_tools/" \
               -p:RestoreAdditionalProjectSources="$OHOS_WORKLOAD_DIR/.feed" ) || true
         [ -f "$_jit_hap" ] && break
         _j=$((_j + 1))
