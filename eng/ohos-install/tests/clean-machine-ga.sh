@@ -495,7 +495,7 @@ run_826() { # <log>
               # Parallel NuGet restore triggers the OpenHarmony OpenSSL shim
               # double free (parallel SHA/X509); serialize the restore.
               run_bounded_log "$_log" 120 240 "$CLEAN_DOTNET/dotnet" restore \
-                  /p:RestoreSources= /p:RestoreDisableParallel=true /p:NuGetAudit=false /p:ArcadeSdkDir="$_arcade_tools/" || true
+                  /p:RestoreSources= /p:NuGetAudit=false /p:ArcadeSdkDir="$_arcade_tools/" || true
           fi
           # ConsoleLogger randomly NREs (MSB1025) or wedges while being
           # constructed on this platform, so log through the file logger. The
