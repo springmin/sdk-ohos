@@ -95,9 +95,9 @@ on:
         required: false
         default: ""
       aot_assets:
-        description: "Optional local nativeaot pack assets dir (default: download the feed)"
+        description: "Optional local nativeaot pack assets dir (default: local GA 11.0.0 set)"
         required: false
-        default: ""
+        default: "/data/storage/el2/base/tmp/opencode/aot-assets-11"
 
       prebuilt_run:
         description: "Optional runtime-ohos run id to download verify826/jit-hap from"
@@ -204,6 +204,7 @@ jobs:
           SKIP_AOT: ${{ github.event_name == 'schedule' && 'false' || inputs.skip_aot }}
           COLD_NUGET: ${{ github.event_name == 'schedule' && 'false' || inputs.cold_nuget }}
           AOT_ASSETS: ${{ inputs.aot_assets }}
+          AOT_PACKS_VERSION: "11.0.0"
           RUNTIME_LIBCORECLR: ${{ inputs.runtime_libcoreclr }}
           RUNTIME_SHIM: ${{ runner.temp }}/crypto-shim.so
           PREBUILT_826: ${{ github.event_name == 'schedule' && 'true' || inputs.prebuilt_826 }}
