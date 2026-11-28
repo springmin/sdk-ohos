@@ -210,6 +210,12 @@ DRY_RUN=0
 
 # shellcheck source=../versions.env
 . "$W/eng/ohos-install/versions.env"
+# The local AOT asset set is the GA 11.0.0 line; select its asset names and
+# SHA pins instead of the default 11.0.0-rtm mirror line.
+if [ -n "${AOT_ASSETS:-}" ]; then
+    : "${AOT_PACKS_VERSION:=11.0.0}"
+    export AOT_PACKS_VERSION
+fi
 # Default to the release line pinned in versions.env, so the gate follows the
 # branch it runs on (GA on the release branch, the current dev line on dev).
 SDK_TARBALL="${SDK_TARBALL:-https://github.com/${GH_USER}/sdk-ohos/releases/download/${SDK_RELEASE_TAG}/dotnet-sdk-${SDK_VERSION}-${RID}.tar.gz}"
