@@ -125,6 +125,9 @@ jobs:
           rm -rf "$GITHUB_WORKSPACE"/* "$GITHUB_WORKSPACE"/.[!.]* 2>/dev/null || true
           (cd "$SDK_SOURCE" && tar -cf - --exclude=.git .) | (cd "$GITHUB_WORKSPACE" && tar -xf -)
 
+      - name: Prepare device helper
+        run: chmod +x eng/ohos-install/hdc-wireless.sh
+
       - name: Check out ohos-workload
         env:
           WORKLOAD_SOURCE: ${{ github.event_name == 'schedule' && '/storage/Users/currentUser/springsources/ohos-workload' || inputs.workload_source }}
@@ -224,7 +227,7 @@ jobs:
           # use the verified prebuilt hap unless explicitly disabled.
           PREBUILT_JIT: ${{ inputs.prebuilt_jit == 'false' && 'false' || 'true' }}
           PREBUILT_AOT: ${{ github.event_name == 'schedule' && 'true' || inputs.prebuilt_aot }}
-          HDC: ${{ secrets.OHOS_HDC }}
+          HDC: ${{ github.workspace }}/eng/ohos-install/hdc-wireless.sh
           UDID: ${{ secrets.OHOS_UDID }}
         run: |
           sh eng/ohos-install/tests/clean-machine-ga.sh
