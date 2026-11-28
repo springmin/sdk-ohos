@@ -208,3 +208,16 @@ linux-x64 with the branch and inspects the crypto shim for the absence of the
 lock symbols/object. The guarded OHOS build (`46077958926`,
 `subset=libs.native`) and the guarded gate (`46078931800`, real 826,
 `checks=826`) are green.
+
+## 2026-11-28: OpenSSL 3.6.5 fork image
+
+The OpenHarmony cross-build image is now built from the fork branch
+`springmin/dotnet-buildtools-prereqs-docker:openssl-3.6.5`; upstream
+`dotnet/dotnet-buildtools-prereqs-docker` is not modified. The image is
+`ghcr.io/springmin/dotnet-buildtools-prereqs:openharmony-6.0-openssl3.6.5`
+(`sha256:59ce05e400250f6072efb6cdff06b1cea39395a1ed10052ef0253a28484e43cb`).
+
+`runtime-ohos/.github/workflows/ohos-cross-build.yml` pins that image by
+digest. The clean shim build (`libs.native`) produces OpenSSL 3.6.5 static,
+no global lock, `NEEDED` only `libc.so`; the artifact is published to
+`ci-prebuilts/crypto-shim.so` and used by the 826 gate.
