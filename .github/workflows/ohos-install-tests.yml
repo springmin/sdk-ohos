@@ -40,6 +40,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: sh eng/ohos-install/tests/test-installer-verification.sh
 
+      - name: versions.env thin wrapper (shared dotnet-install)
+        if: ${{ !cancelled() }}
+        run: sh eng/ohos-install/tests/test-install-from-pins.sh
+
       - name: Hostfeed digest enforcement (H-C1)
         if: ${{ !cancelled() }}
         run: sh eng/ohos-install/tests/test-hostfeed-verification.sh

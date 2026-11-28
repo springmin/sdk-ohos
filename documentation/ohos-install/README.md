@@ -60,6 +60,31 @@ sh eng/ohos-install/install-dotnet-ohos.sh https://github.com/springmin/sdk-ohos
 INSTALL_DIR=/data/xxx/dotnet sh eng/ohos-install/install-dotnet-ohos.sh sdk
 ```
 
+### 方式 B：versions.env 薄封装（共享 dotnet-install.sh）
+
+`eng/ohos-install/install-dotnet-from-pins.sh` 读取同一份
+`eng/ohos-install/versions.env`，把下载、摘要校验、解压、ELF 签名和（可选）workload
+交给 `eng/ohos-install/vendor/dotnet-install.sh`（来自
+`springmin/install-scripts-ohos`，见 `vendor/README.md`）。本仓只保留后置步骤：
+C++ 运行时、`libhostpolicy`、profile 写入。
+
+```sh
+sh eng/ohos-install/install-dotnet-from-pins.sh sdk
+sh eng/ohos-install/install-dotnet-from-pins.sh runtime
+
+# 本地文件 / 镜像 / 关闭签名（验证用）
+SDK_TARBALL_URL=file:///data/.../dotnet-sdk-11.0.100-openharmony-arm64.tar.gz \
+INSTALL_DIR=/data/xxx/dotnet SIGN_MODE=none \
+  sh eng/ohos-install/install-dotnet-from-pins.sh sdk
+
+# 用另一份 pin 文件
+OHOS_VERSIONS_ENV=~/versions-nosha.env sh eng/ohos-install/install-dotnet-from-pins.sh sdk
+```
+
+无 `SDK_TARBALL_SHA256` 时**拒绝安装**（`ALLOW_UNVERIFIED=1` 仅限本地实验）。
+workload 不做自动 release 解析；需要时传 `WORKLOAD_BUNDLE=<path|url>`，或继续用
+方式 A。
+
 脚本自动完成：
 1. 从 GitHub Release 下载（或使用本地 tar.gz）
 2. 解压到 `$HOME/.dotnet`（默认）
@@ -205,6 +230,20 @@ OHOS SDK / harmonybrew（提供 binary-sign-tool），或把预构建
 
 **Q: 签名报 `failed=N`**
 个别文件签名失败不会中断（仅警告），但 `failed > 0` 会终止安装。重跑脚本即可。
+
+**Q: 构建成功，但 `dotnet run` 报 `Operation not permitted`**
+裸 `dotnet build`（不带 `-r`）过去不会启用 `_OpenHarmonyCodeSign`：该开关在 targets
+导入时求值，而 `AppHostRuntimeIdentifier` 要到 `ProcessFrameworkReferences` 之后才有值，
+于是 apphost 保留了从 runtime pack 复制来的、对改写后内容已失效的签名；设备按
+EPERM 拒绝执行（`eng/ohos-install/tests/check-elf-codesign.py` 报 `root mismatch`）。
+
+当前 SDK 源码已修复：
+- `_OpenHarmonyResolveCodeSign` 在 `Build`/`Publish` 前重新求值开关，裸 build 与
+  `dotnet run` 也会签名；
+- build/publish 输出遇到「已失效的外来签名」会强制重签（仍然匹配内容的外来签名保留）。
+
+已发布的 GA SDK 若仍遇到：临时 `eng/ohos-install/selfsign-ohos-arm64 <app> --force`，
+或构建时显式加 `-r openharmony-arm64`。HAP 打包路径不受影响。
 
 ## RID independence (2026-09-03)
 

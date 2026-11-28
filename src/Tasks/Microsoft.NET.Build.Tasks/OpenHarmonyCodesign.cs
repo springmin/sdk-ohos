@@ -43,10 +43,16 @@ namespace Microsoft.NET.Build.Tasks
                     {
                         try
                         {
-                            switch (ElfSigner.SignFileInPlace(path))
+                            switch (ElfSigner.SignFileInPlace(path, reSignStaleForeign: true))
                             {
                                 case ElfSigner.SignOutcome.Signed:
                                     Log.LogMessage(MessageImportance.Low, "OpenHarmonyCodesign: signed {0}", path);
+                                    break;
+                                case ElfSigner.SignOutcome.StaleForeignSignatureReplaced:
+                                    // A pre-signed input (for example the apphost from the runtime
+                                    // pack) was rewritten by the build; keeping its signature makes
+                                    // the device reject the output with EPERM, so it was re-signed.
+                                    Log.LogMessage(MessageImportance.Low, "OpenHarmonyCodesign: replaced stale foreign signature on {0}", path);
                                     break;
                                 case ElfSigner.SignOutcome.ForeignSignatureRetained:
                                     Log.LogWarning(Strings.OpenHarmonyCodesignRetainedForeignSignature, path);

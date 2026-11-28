@@ -71,6 +71,18 @@ for name, stamp in (('_OpenHarmonyCodeSignBuildOutputs', 'OpenHarmonyCodeSign.st
     if filewrites_at < touch_at:
         errors.append(f'{name}: FileWrites registration must follow the Touch')
 
+# The gate is re-evaluated after AppHostRuntimeIdentifier is resolved; without the resolver a
+# naked `dotnet build`/`dotnet run` (no explicit RID) skips signing and the apphost keeps the
+# stale signature copied from the runtime pack (device EPERM).
+resolve = target_body('_OpenHarmonyResolveCodeSign')
+if resolve is None:
+    errors.append('_OpenHarmonyResolveCodeSign: target not found')
+else:
+    if 'BeforeTargets="Build' not in resolve:
+        errors.append('_OpenHarmonyResolveCodeSign: must run before Build')
+    if '_EnableOpenHarmonyCodeSign' not in resolve:
+        errors.append('_OpenHarmonyResolveCodeSign: does not re-evaluate the gate')
+
 # The two passes must not share a stamp (a shared stamp would let one pass mask the other).
 if 'OpenHarmonyCodeSign.stamp' == 'OpenHarmonyCodeSignPublish.stamp':
     errors.append('the two stamps collide')

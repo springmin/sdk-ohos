@@ -21,6 +21,19 @@ different ownership. Keep the two target contracts in sync.
   <PropertyGroup>
     <_EnableOpenHarmonyCodeSign Condition="'$(_EnableOpenHarmonyCodeSign)' == '' and ($(RuntimeIdentifier.StartsWith('openharmony')) or $(AppHostRuntimeIdentifier.StartsWith('openharmony')))">true</_EnableOpenHarmonyCodeSign>
   </PropertyGroup>
+
+  <!-- The AppHostRuntimeIdentifier is resolved after this file is imported
+       (ProcessFrameworkReferences). Re-evaluate the gate before the collect targets run so
+       RID-less builds (naked `dotnet build` / `dotnet run`, portable apphost resolution) are
+       signed too; otherwise the apphost keeps the signature copied from the runtime pack, which
+       no longer matches the rewritten content and the device rejects it with EPERM. An explicit
+       _EnableOpenHarmonyCodeSign=false still wins. -->
+  <Target Name="_OpenHarmonyResolveCodeSign"
+          BeforeTargets="Build;Publish;_OpenHarmonyCodeSignBuildOutputs;_OpenHarmonyCodeSignPublishOutputs">
+    <PropertyGroup>
+      <_EnableOpenHarmonyCodeSign Condition="'$(_EnableOpenHarmonyCodeSign)' == '' and ($(RuntimeIdentifier.StartsWith('openharmony')) or $(AppHostRuntimeIdentifier.StartsWith('openharmony')))">true</_EnableOpenHarmonyCodeSign>
+    </PropertyGroup>
+  </Target>
   <Target Name="_OpenHarmonyCodeSignCollectBuildInputs"
           BeforeTargets="_OpenHarmonyCodeSignBuildOutputs"
           Condition="'$(_EnableOpenHarmonyCodeSign)' == 'true'">

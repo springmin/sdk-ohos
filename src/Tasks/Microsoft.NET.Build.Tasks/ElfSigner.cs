@@ -93,6 +93,13 @@ namespace Microsoft.NET.Build.Tasks
             /// force opt-in so a build can never silently rewrite someone else's signature.
             /// </summary>
             ForeignSignatureRetained,
+
+            /// <summary>
+            /// A foreign signature that no longer matches the file content was replaced with a
+            /// fresh self-signature (opt-in through <c>reSignStaleForeign</c>, used for build and
+            /// publish outputs where a pre-signed input such as the apphost is rewritten).
+            /// </summary>
+            StaleForeignSignatureReplaced,
         }
 
         /// <summary>How an existing .codesign section relates to this signer.</summary>
@@ -119,7 +126,10 @@ namespace Microsoft.NET.Build.Tasks
         /// carries a valid self-signature (verified by recomputing the page Merkle root and the
         /// descriptor digest), the file is left untouched so repeated builds do not rewrite it.
         /// A foreign .codesign section is also left untouched unless <paramref name="force"/> is
-        /// set. Re-signing never drops data that follows the signature block.
+        /// set, or <paramref name="reSignStaleForeign"/> is set and the foreign signature no
+        /// longer matches the content (the build/publish case: a pre-signed input such as the
+        /// apphost is rewritten, leaving a signature the device rejects with EPERM).
+        /// Re-signing never drops data that follows the signature block.
         ///
         /// Cost contract: only the 64-byte ELF header is read before the file is committed to
         /// being an ELF, and an already-valid signature is verified by streaming the file page
@@ -127,12 +137,14 @@ namespace Microsoft.NET.Build.Tasks
         /// so a 532-file/171MB output tree (26 ELF/30MB, one 32MB .hap) never loads .hap, .pdb
         /// or .json bodies, and never loads an up-to-date ELF into the LOH.
         /// </summary>
-        public static SignOutcome SignFileInPlace(string path, bool force = false)
+        public static SignOutcome SignFileInPlace(string path, bool force = false, bool reSignStaleForeign = false)
         {
             if (!File.Exists(path))
             {
                 return SignOutcome.NotElf;
             }
+
+            bool replacingStaleForeign = false;
 
             // Probe only the header first: formats such as .hap/.zip/.nupkg (containers),
             // .pdb (MSF) and .json/.xml/.txt (text) are rejected here after 64 bytes instead
@@ -153,7 +165,8 @@ namespace Microsoft.NET.Build.Tasks
                 {
                     // Streamed validation: an unchanged, validly signed ELF (the repeat-build
                     // case) is verified without materializing the body.
-                    CodesignState state = ClassifyCodesign(ElfImage.FromStream(stream), out _, out _, out _, out string? anomaly);
+                    ElfImage image = ElfImage.FromStream(stream);
+                    CodesignState state = ClassifyCodesign(image, out int csOff, out int csLen, out _, out string? anomaly);
                     if (state == CodesignState.Malformed)
                     {
                         throw new InvalidDataException($"refusing to sign: {anomaly}");
@@ -166,7 +179,16 @@ namespace Microsoft.NET.Build.Tasks
 
                     if (state == CodesignState.Foreign)
                     {
-                        return SignOutcome.ForeignSignatureRetained;
+                        if (reSignStaleForeign && !IsSignatureIntact(image, csOff, csLen))
+                        {
+                            // The content no longer matches the foreign signature (for example an
+                            // apphost patched after it was signed); rewrite it below.
+                            replacingStaleForeign = true;
+                        }
+                        else
+                        {
+                            return SignOutcome.ForeignSignatureRetained;
+                        }
                     }
                 }
             }
@@ -181,7 +203,7 @@ namespace Microsoft.NET.Build.Tasks
                 return SignOutcome.NotElf;
             }
 
-            CodesignState memoryState = ClassifyCodesign(raw, out _, out _, out _, out string? memoryAnomaly);
+            CodesignState memoryState = ClassifyCodesign(raw, out int memoryCsOff, out int memoryCsLen, out _, out string? memoryAnomaly);
             if (memoryState == CodesignState.Malformed)
             {
                 throw new InvalidDataException($"refusing to sign: {memoryAnomaly}");
@@ -194,13 +216,18 @@ namespace Microsoft.NET.Build.Tasks
 
             if (memoryState == CodesignState.Foreign && !force)
             {
-                return SignOutcome.ForeignSignatureRetained;
+                if (!replacingStaleForeign || IsSignatureIntact(ElfImage.FromArray(raw), memoryCsOff, memoryCsLen))
+                {
+                    // Either the caller did not opt in, or the file changed between the probe and
+                    // the read and the foreign signature matches again: keep it.
+                    return SignOutcome.ForeignSignatureRetained;
+                }
             }
 
             byte[] signed = SignElf(raw, force: true);
             // FileMode.Create truncates the existing inode in place, preserving its Unix permissions.
             File.WriteAllBytes(path, signed);
-            return SignOutcome.Signed;
+            return replacingStaleForeign ? SignOutcome.StaleForeignSignatureReplaced : SignOutcome.Signed;
         }
 
         /// <summary>Reads up to <paramref name="count"/> bytes, tolerating short reads.</summary>
@@ -508,19 +535,22 @@ namespace Microsoft.NET.Build.Tasks
         }
 
         /// <summary>
-        /// True when the file carries a .codesign payload that matches the current content: the
-        /// descriptor is well-formed, the stored page Merkle root equals the recomputed one, and
-        /// the stored signature equals SHA-256 of the descriptor with signSize zeroed.
+        /// True when the file carries a self-signature that matches the current content.
         /// </summary>
-        private static bool IsValidlySigned(ElfImage elf, int csOff, int csLen)
+        private static bool IsValidlySigned(ElfImage elf, int csOff, int csLen) =>
+            IsSelfSignDescriptor(elf, csOff, csLen) && IsSignatureIntact(elf, csOff, csLen);
+
+        /// <summary>
+        /// True when the .codesign payload matches the current content, regardless of who produced
+        /// it: the descriptor is well-formed, the stored page Merkle root equals the recomputed
+        /// one, and the stored signature equals SHA-256 of the descriptor with signSize zeroed.
+        /// Used to tell a foreign signature that is still valid (keep it) from one left behind by
+        /// rewriting the file (the content changed, so the device rejects it with EPERM).
+        /// </summary>
+        private static bool IsSignatureIntact(ElfImage elf, int csOff, int csLen)
         {
             try
             {
-                if (!IsSelfSignDescriptor(elf, csOff, csLen))
-                {
-                    return false;
-                }
-
                 int dOff = csOff + 8;
                 uint signSize = ReadU32(elf, dOff + 4);
                 ulong fileSize = ReadU64(elf, dOff + 8);
