@@ -214,8 +214,8 @@ jobs:
         env:
           CLEAN_ROOT: ${{ runner.workspace }}/ohos-clean-ga
           OHOS_WORKLOAD_DIR: ${{ github.workspace }}/ohos-workload
-          SDK_TARBALL: ${{ inputs.sdk_tarball != '' && inputs.sdk_tarball || 'https://github.com/springmin/sdk-ohos/releases/download/v11.0.100-openharmony-r2/dotnet-sdk-11.0.100-openharmony-arm64.tar.gz' }}
-          WORKLOAD_BUNDLE: ${{ inputs.workload_bundle != '' && inputs.workload_bundle || 'https://github.com/springmin/sdk-ohos/releases/download/workload-1.0.2/openharmony-workload-1.0.2.tar.gz' }}
+          SDK_TARBALL: ${{ inputs.sdk_tarball != '' && inputs.sdk_tarball || '/data/storage/el2/base/tmp/opencode/release-r2/dotnet-sdk-11.0.100-openharmony-arm64.tar.gz' }}
+          WORKLOAD_BUNDLE: ${{ inputs.workload_bundle != '' && inputs.workload_bundle || '/data/storage/el2/base/tmp/opencode/release-r2/openharmony-workload-1.0.2.tar.gz' }}
           SDK_TARBALL_SHA256: ${{ inputs.sdk_sha256 != '' && inputs.sdk_sha256 || 'e395a47c79b1a3598e565eeb08ad072fbde779158ea43946b3e2290e1db945aa' }}
           WORKLOAD_BUNDLE_SHA256: ${{ inputs.workload_sha256 != '' && inputs.workload_sha256 || '7435ce70c0b9981f47f596dc6e829478a0efd3b60b8fefcf3791feb1e8b13db8' }}
           WORKLOAD_BUNDLE_VERSION: ${{ inputs.workload_version != '' && inputs.workload_version || '1.0.2' }}
