@@ -560,6 +560,9 @@ JIT_HAP=""
 if [ "$SKIP_JIT" != 1 ]; then
     log "== JIT publish =="
     kill_workspace_build_strays
+    # Force a clean publish: an incremental publish can reuse the existing hap
+    # without running the signing target, and the gate checks the sign log.
+    rm -rf "$OHOS_WORKLOAD_DIR/test/hello-maui-app/obj" "$OHOS_WORKLOAD_DIR/test/hello-maui-app/bin"
     _jit_hap="$OHOS_WORKLOAD_DIR/test/hello-maui-app/bin/Release/net11.0-openharmony26.0/openharmony-arm64/hello-maui-app.hap"
     _jit_prebuilt=0
     if [ "${PREBUILT_JIT:-0}" = 1 ]; then
