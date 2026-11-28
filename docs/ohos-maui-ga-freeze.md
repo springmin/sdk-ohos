@@ -339,3 +339,23 @@ Validation of the guarded build:
 - Linux check (`shim-linux-check`) builds `libs.native` with the same branch;
   the crypto shim should have no `CryptoNative_Lock` symbols and no
   `pal_lock` object (the guards/no-op).
+
+## Final: static OpenSSL 3.6.5, no global lock (2026-11-28)
+
+The OpenSSL 3.3.1 static shim was the trigger for the parallel EVP/X509
+double free. The final shim uses **OpenSSL 3.6.5 static** and has **no
+`pal_lock.c` and no global crypto lock**.
+
+- Fork prereqs image (upstream untouched):
+  `ghcr.io/springmin/dotnet-buildtools-prereqs:openharmony-6.0-openssl3.6.5@sha256:59ce05e400250f6072efb6cdff06b1cea39395a1ed10052ef0253a28484e43cb`
+  built from `springmin/dotnet-buildtools-prereqs-docker:openssl-3.6.5`.
+- Canonical shim branch: `fix/crypto-static-365`; the old
+  `fix/crypto-shim-lock` branch is archived as `archive/crypto-shim-lock`.
+- CI clean shim artifact (`run 46107172642`):
+  - 5,236,168 B; `NEEDED` only `libc.so`;
+  - OpenSSL 3.6.5; 408 `CryptoNative_*` exports; 0 `CryptoNative_Lock`;
+  - SHA256 `94706833a0066420be26673fc2ed3e880eec69db902a9b65f1139bd7bab594db`.
+- Parallel `hashpar` / `x509par`: 3/3 passed, no new crypto faultlogger.
+- Clean-machine gate: `[suite] checks=826 total=829 floor=809 assert=True`
+  and `CLEAN-MACHINE GA PASS`; `RestoreDisableParallel` is no longer used.
+- `ci-prebuilts/crypto-shim.so` now points at the 3.6.5 no-lock shim.
