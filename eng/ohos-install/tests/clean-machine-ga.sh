@@ -575,7 +575,8 @@ if [ "$SKIP_JIT" != 1 ]; then
             "$CLEAN_DOTNET/dotnet" publish hello-maui-app.csproj -c Release -r openharmony-arm64 -m:1 \
               -noconlog -tl:off "-flp:logfile=$LOG_DIR/jit-publish.log;verbosity=minimal" \
               -p:OpenHarmonyUIPage=pages/Index -p:OpenHarmonyHapPackage=true \
-              -f net11.0-openharmony26.0 -p:OpenHarmonyRuntimeMode=jit -p:InvariantGlobalization=true ) || true
+              -f net11.0-openharmony26.0 -p:OpenHarmonyRuntimeMode=jit -p:InvariantGlobalization=true \
+              -p:RestoreAdditionalProjectSources="$OHOS_WORKLOAD_DIR/.feed" ) || true
         [ -f "$_jit_hap" ] && break
         _j=$((_j + 1))
         sleep 3
