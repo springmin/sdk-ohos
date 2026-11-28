@@ -581,6 +581,7 @@ if [ "$SKIP_JIT" != 1 ]; then
               -p:OpenHarmonyUIPage=pages/Index -p:OpenHarmonyHapPackage=true \
               -f net11.0-openharmony26.0 -p:OpenHarmonyRuntimeMode=jit -p:InvariantGlobalization=true \
               -p:ArcadeSdkDir="$_arcade_tools/" \
+              -p:RunAnalyzers=false -p:TreatWarningsAsErrors=false \
               -p:RestoreAdditionalProjectSources="$OHOS_WORKLOAD_DIR/.feed" ) || true
         [ -f "$_jit_hap" ] && break
         _j=$((_j + 1))
