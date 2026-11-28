@@ -60,10 +60,6 @@ on:
         description: "Local ohos-workload checkout on the runner"
         required: false
         default: "/storage/Users/currentUser/springsources/ohos-workload"
-      maui_source:
-        description: "Local maui-ohos checkout on the runner (GA slice by default)"
-        required: false
-        default: "/storage/Users/currentUser/springsources/maui-ohos-ga"
       skip_826:
         description: "Skip the 826 harness"
         type: choice
@@ -80,10 +76,10 @@ on:
         options: ["false", "true"]
         default: "false"
       prebuilt_826:
-        description: "Use prebuilt 826 artifacts (fallback; the real build works with a warm NuGet cache)"
+        description: "Use prebuilt 826 artifacts (workaround: csc SIGSEGVs on the big project)"
         type: choice
-        options: ["false", "true"]
-        default: "false"
+        options: ["true", "false"]
+        default: "true"
       prebuilt_jit:
         description: "Use a prebuilt JIT hap (workaround: the real publish stalls in HAP packaging)"
         type: choice
@@ -104,7 +100,7 @@ on:
         default: ""
 
       prebuilt_run:
-        description: "runtime-ohos run id, or 'latest' for the newest successful cross-build"
+        description: "Optional runtime-ohos run id to download verify826/jit-hap from"
         required: false
         default: ""
 
@@ -140,7 +136,7 @@ jobs:
 
       - name: Check out maui-ohos
         env:
-          MAUI_SOURCE: ${{ github.event_name == 'schedule' && '/storage/Users/currentUser/springsources/maui-ohos-ga' || inputs.maui_source }}
+          MAUI_SOURCE: /storage/Users/currentUser/springsources/maui-ohos
         run: |
           set -euxo pipefail
           rm -rf "$GITHUB_WORKSPACE/maui-ohos"
@@ -150,27 +146,28 @@ jobs:
       - name: Prepare clean root
         run: rm -rf "${{ runner.workspace }}/ohos-clean-ga"
 
+      - name: Download fixed crypto shim
+        run: |
+          set -euxo pipefail
+          shim="${{ runner.temp }}/crypto-shim.so"
+          curl -fL --retry 5 --connect-timeout 20 --max-time 300 \
+            -o "$shim" \
+            "https://ghfast.top/https://github.com/springmin/runtime-ohos/releases/download/ci-prebuilts/crypto-shim.so"
+          ls -l "$shim"
+          echo "RUNTIME_SHIM=$shim" >> "$GITHUB_ENV"
+
       - name: Download CI prebuilts
-        if: github.event_name == 'schedule' || inputs.prebuilt_run != ''
+        if: inputs.prebuilt_run != ''
         env:
           GH_TOKEN: ${{ github.token }}
-          INPUT_RUN_ID: ${{ inputs.prebuilt_run }}
+          RUN_ID: ${{ inputs.prebuilt_run }}
         run: |
           set -eu
           root="${{ runner.workspace }}/ohos-clean-ga"
           dl="${{ runner.temp }}/prebuilt-dl"
-          RUN_ID="${INPUT_RUN_ID:-}"
-          if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "latest" ]; then
-            # Scheduled runs have no input: take the newest successful cross-build
-            # so the nightly gate always validates the current frozen artifacts.
-            RUN_ID=$(gh run list -R springmin/runtime-ohos --workflow ohos-cross-build.yml               --status success --limit 1 --json databaseId --jq '.[0].databaseId')
-            echo "schedule: using latest successful cross-build run $RUN_ID"
-          fi
           rm -rf "$dl"; mkdir -p "$dl"
           gh run download "$RUN_ID" -R springmin/runtime-ohos -n verify826 -D "$dl/v826" || true
-          # The 133 MB jit-hap artifact cannot be downloaded from this host (the
-          # api.github.com transfer times out), so it is not attempted here; the
-          # release asset below is fetched through the ghfast mirror instead.
+          gh run download "$RUN_ID" -R springmin/runtime-ohos -n jit-hap -D "$dl/vjit" || true
           copy_bin() {
             m="$(find "$1" -name "$2" -path '*/bin/*' 2>/dev/null | head -1)"
             if [ -z "$m" ]; then echo "WARN: $2 not found under $1"; return 0; fi
@@ -180,84 +177,27 @@ jobs:
             echo "copied $b -> $3/bin"
           }
           copy_bin "$dl/v826" verify.dll "$root/prebuilt-826"
-          # the JIT hap (133 MB) does not survive artifact download from this host.
-          # Prefer the release asset cached on the runner; otherwise pull it through
-          # the ghfast mirror.
+          # the JIT hap (133 MB) does not survive artifact download from this host;
+          # pull the release asset through the ghfast mirror instead
           _jd="$root/prebuilt-jit/bin/Release/net11.0-openharmony26.0/openharmony-arm64"
           mkdir -p "$_jd"
-          _cache=/data/storage/el2/base/tmp/opencode/ci-prebuilts/jit-hap.hap
-          if [ -f "$_cache" ]; then
-            cp -f "$_cache" "$_jd/hello-maui-app.hap"
-            echo "copied JIT hap from local cache"
-          else
-            curl -fL --retry 5 --connect-timeout 20 --max-time 900 \
-              -o "$_jd/hello-maui-app.hap" \
-              "https://ghfast.top/https://github.com/springmin/runtime-ohos/releases/download/ci-prebuilts/jit-hap.hap" \
-              && echo "downloaded JIT hap from ci-prebuilts" || echo "WARN: JIT hap download failed"
-          fi
-          # the gate's prebuilt layout expects the hap at the root of prebuilt-jit
-          cp -f "$_jd/hello-maui-app.hap" "$root/prebuilt-jit/hello-maui-app.hap" 2>/dev/null || true
-          # AOT: prefer the ci-prebuilts tarball (fast through ghfast). The
-          # 60 MB per-run artifact download is too slow/unreliable on this host.
-          mkdir -p "$root/prebuilt-aot"
-          _aot_url="https://ghfast.top/https://github.com/springmin/runtime-ohos/releases/download/ci-prebuilts/aot-prebuilt.tar.gz"
-          if curl -fL --retry 5 --connect-timeout 20 --max-time 900 \
-               -o "$dl/aot-prebuilt.tar.gz" "$_aot_url"; then
-            tar -xzf "$dl/aot-prebuilt.tar.gz" -C "$root/prebuilt-aot"
-            [ -f "$root/prebuilt-aot/hap/hello-maui-app.hap" ] \
-              || cp -f "$root/prebuilt-aot/hap/hello-maui-app-unsigned.hap" "$root/prebuilt-aot/hap/hello-maui-app.hap" 2>/dev/null || true
-            echo "using the ci-prebuilts AOT tarball"
-          else
-            # fallback: the per-run artifact zip (bounded)
-            _ad="$dl/vaot"
-            mkdir -p "$_ad"
-            _aid=$(gh api "repos/springmin/runtime-ohos/actions/runs/$RUN_ID/artifacts" \
-              --jq '.artifacts[]|select(.name=="aot-hap")|.id' 2>/dev/null | head -1)
-            if [ -n "$_aid" ]; then
-              curl -fL --retry 3 --connect-timeout 20 --max-time 600 \
-                -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
-                -o "$dl/aot.zip" \
-                "https://api.github.com/repos/springmin/runtime-ohos/actions/artifacts/$_aid/zip" \
-                && unzip -q "$dl/aot.zip" -d "$_ad" || echo "WARN: AOT zip download failed"
-            fi
-            _ao="$(find "$_ad" -type d -name openharmony-arm64 2>/dev/null | head -1)"
-            if [ -n "$_ao" ]; then
-              mkdir -p "$root/prebuilt-aot/hap"
-              cp -a "$_ao"/. "$root/prebuilt-aot/hap/"
-              [ -f "$root/prebuilt-aot/hap/hello-maui-app.hap" ] \
-                || cp -f "$root/prebuilt-aot/hap/hello-maui-app-unsigned.hap" "$root/prebuilt-aot/hap/hello-maui-app.hap" 2>/dev/null || true
-              [ -f "$_ao/publish-aot.log" ] && cp -f "$_ao/publish-aot.log" "$root/prebuilt-aot/publish-aot.log"
-              echo "assembled AOT prebuilt from $_ao"
-            fi
-          fi
-          # Artifacts from before the staging step lack the IL-gate log; reuse the
-          # log measured from the same 1.0.0 AOT line (the hap/libs stay current).
-          if [ ! -f "$root/prebuilt-aot/publish-aot.log" ] \
-             && [ -f /data/storage/el2/base/tmp/opencode/prebuilt-aot/publish-aot.log ]; then
-            cp -f /data/storage/el2/base/tmp/opencode/prebuilt-aot/publish-aot.log "$root/prebuilt-aot/publish-aot.log"
-            echo "used the cached AOT IL-gate log"
-          fi
-          ls -l "$root/prebuilt-aot/publish-aot.log" "$root/prebuilt-aot/hap/hello-maui-app.hap" 2>/dev/null || true
+          curl -fL --retry 5 --connect-timeout 20 --max-time 900 \
+            -o "$_jd/hello-maui-app.hap" \
+            "https://ghfast.top/https://github.com/springmin/runtime-ohos/releases/download/ci-prebuilts/jit-hap.hap" \
+            && echo "downloaded JIT hap from ci-prebuilts" || echo "WARN: JIT hap download failed"
+          ls -l "$_jd/hello-maui-app.hap" 2>/dev/null || true
           ls -l "$root/prebuilt-826/bin/Debug/net11.0/verify.dll" 2>/dev/null || true
 
-      - name: Download the fixed crypto shim
-        run: |
-          set -eu
-          curl -fL --retry 5 --connect-timeout 20 --max-time 300 \
-            -o "$GITHUB_WORKSPACE/crypto-shim.so" \
-            "https://ghfast.top/https://github.com/springmin/runtime-ohos/releases/download/ci-prebuilts/crypto-shim.so" \
-            && echo "downloaded crypto shim" || echo "WARN: crypto shim download failed"
-          ls -l "$GITHUB_WORKSPACE/crypto-shim.so" 2>/dev/null || true
       - name: Run the clean-machine GA gate
         timeout-minutes: 120
         env:
           CLEAN_ROOT: ${{ runner.workspace }}/ohos-clean-ga
           OHOS_WORKLOAD_DIR: ${{ github.workspace }}/ohos-workload
           SDK_TARBALL: ${{ inputs.sdk_tarball != '' && inputs.sdk_tarball || '/data/storage/el2/base/tmp/opencode/ga-clean/dotnet-sdk-11.0.100-openharmony-arm64.tar.gz' }}
-          WORKLOAD_BUNDLE: ${{ inputs.workload_bundle != '' && inputs.workload_bundle || '/storage/Users/currentUser/springsources/ohos-workload/dist/openharmony-workload-1.0.1.tar.gz' }}
+          WORKLOAD_BUNDLE: ${{ inputs.workload_bundle != '' && inputs.workload_bundle || '/storage/Users/currentUser/springsources/ohos-workload/dist/openharmony-workload-1.0.0.tar.gz' }}
           SDK_TARBALL_SHA256: ${{ inputs.sdk_sha256 != '' && inputs.sdk_sha256 || 'a8fa784e950521895c2986252566ac78ca0f95934f6a4e51fad3ea0ccf000c56' }}
-          WORKLOAD_BUNDLE_SHA256: ${{ inputs.workload_sha256 != '' && inputs.workload_sha256 || '088b585d46e4d28fbfdcefe5372e2e44463dfedcb778b529702c786437813cd4' }}
-          WORKLOAD_BUNDLE_VERSION: ${{ inputs.workload_version != '' && inputs.workload_version || '1.0.1' }}
+          WORKLOAD_BUNDLE_SHA256: ${{ inputs.workload_sha256 != '' && inputs.workload_sha256 || '86ef38e3146dd8294b8c5d027dcdcd0f07306012c8dddc0a2919592a9ac63700' }}
+          WORKLOAD_BUNDLE_VERSION: ${{ inputs.workload_version != '' && inputs.workload_version || '1.0.0' }}
           SKIP_DEVICE: ${{ github.event_name == 'schedule' && 'true' || inputs.skip_device }}
           SKIP_826: ${{ github.event_name == 'schedule' && 'false' || inputs.skip_826 }}
           SKIP_JIT: ${{ github.event_name == 'schedule' && 'false' || inputs.skip_jit }}
@@ -265,16 +205,14 @@ jobs:
           COLD_NUGET: ${{ github.event_name == 'schedule' && 'false' || inputs.cold_nuget }}
           AOT_ASSETS: ${{ inputs.aot_assets }}
           RUNTIME_LIBCORECLR: ${{ inputs.runtime_libcoreclr }}
-          PREBUILT_826: ${{ github.event_name == 'schedule' && 'false' || inputs.prebuilt_826 }}
-          PREBUILT_826_DIR: ${{ (inputs.prebuilt_run != '' || github.event_name == 'schedule') && format('{0}/ohos-clean-ga/prebuilt-826', runner.workspace) || '' }}
-          PREBUILT_JIT_DIR: ${{ (inputs.prebuilt_run != '' || github.event_name == 'schedule') && format('{0}/ohos-clean-ga/prebuilt-jit', runner.workspace) || '' }}
-          PREBUILT_AOT_DIR: ${{ (inputs.prebuilt_run != '' || github.event_name == 'schedule') && format('{0}/ohos-clean-ga/prebuilt-aot', runner.workspace) || '' }}
+          RUNTIME_SHIM: ${{ runner.temp }}/crypto-shim.so
+          PREBUILT_826: ${{ github.event_name == 'schedule' && 'true' || inputs.prebuilt_826 }}
+          PREBUILT_826_DIR: ${{ inputs.prebuilt_run != '' && format('{0}/ohos-clean-ga/prebuilt-826', runner.workspace) || '' }}
+          PREBUILT_JIT_DIR: ${{ inputs.prebuilt_run != '' && format('{0}/ohos-clean-ga/prebuilt-jit', runner.workspace) || '' }}
           # JIT publish wedges in the HAP packaging step inside the runner tree;
           # use the verified prebuilt hap unless explicitly disabled.
           PREBUILT_JIT: ${{ inputs.prebuilt_jit == 'false' && 'false' || 'true' }}
           PREBUILT_AOT: ${{ github.event_name == 'schedule' && 'true' || inputs.prebuilt_aot }}
-          # fixed parallel-crypto shim (serialized OpenSSL); the script signs it
-          RUNTIME_SHIM: ${{ github.workspace }}/crypto-shim.so
           HDC: ${{ secrets.OHOS_HDC }}
           UDID: ${{ secrets.OHOS_UDID }}
         run: |
