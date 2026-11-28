@@ -166,7 +166,15 @@ jobs:
           set -euxo pipefail
           dst="$GITHUB_WORKSPACE/aot-assets-11"
           rm -rf "$dst"; mkdir -p "$dst"
-          gh release download aot-packs-11.0.0 -R springmin/sdk-ohos             -D "$dst" --pattern '*.nupkg' --clobber
+          # Fixed feed is aot-packs-11.0.0. Prefer the runner-local cache when
+          # present (large GitHub asset downloads are slow on this host); the
+          # gate still verifies every SHA pin through fetch-nativeaot-packs.sh.
+          if [ -d /data/storage/el2/base/tmp/opencode/aot-assets-11 ]; then
+            cp -a /data/storage/el2/base/tmp/opencode/aot-assets-11/. "$dst/"
+          else
+            gh release download aot-packs-11.0.0 -R springmin/sdk-ohos \
+              -D "$dst" --pattern '*.nupkg' --clobber
+          fi
           ls -l "$dst"
 
       - name: Download CI prebuilts
